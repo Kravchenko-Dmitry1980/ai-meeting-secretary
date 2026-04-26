@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -12,7 +13,8 @@ class Settings(BaseSettings):
     redis_url: str
     celery_broker_url: str
     celery_result_backend: str
-    max_upload_size_mb: int
+    app_api_key: str
+    max_upload_size_mb: int = Field(ge=1)
     storage_path: str = "storage"
     ffmpeg_binary: str = "ffmpeg"
 
@@ -39,5 +41,5 @@ except Exception as exc:
     raise RuntimeError(
         "Settings validation failed. Ensure required env vars are set: "
         "DATABASE_URL, REDIS_URL, CELERY_BROKER_URL, CELERY_RESULT_BACKEND, "
-        "MAX_UPLOAD_SIZE_MB."
+        "APP_API_KEY, MAX_UPLOAD_SIZE_MB."
     ) from exc

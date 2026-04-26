@@ -5,6 +5,7 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./test_integration.db"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_BROKER_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/1"
+os.environ["APP_API_KEY"] = "test-api-key"
 os.environ["MAX_UPLOAD_SIZE_MB"] = "1"
 
 from fastapi.testclient import TestClient
@@ -23,6 +24,10 @@ from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.db.session import engine
 from app.main import app
 from app.workers.tasks import process_meeting_pipeline
+
+
+def _auth_headers(user_email: str) -> dict[str, str]:
+    return {"X-User-Email": user_email, "X-API-Key": settings.app_api_key}
 
 
 def _cleanup_sqlite_db() -> None:
@@ -76,7 +81,7 @@ def test_upload_file() -> None:
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp3", b"fake-audio-bytes", "audio/mpeg")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
 
     assert response.status_code == 200
@@ -92,7 +97,7 @@ def test_meeting_created_after_upload() -> None:
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.wav", b"fake-wav-bytes", "audio/wav")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     meeting_id = response.json()["meeting_id"]
 
@@ -185,7 +190,7 @@ def test_celery_pipeline_started(monkeypatch) -> None:
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp4", b"fake-video-bytes", "video/mp4")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     meeting_id = response.json()["meeting_id"]
 
@@ -275,13 +280,13 @@ def test_get_processing_status(monkeypatch) -> None:
     upload_response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting_status.mp3", b"audio", "audio/mpeg")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     meeting_id = upload_response.json()["meeting_id"]
 
     status_response = client.get(
         f"/api/v1/meetings/{meeting_id}",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert status_response.status_code == 200
 
@@ -299,7 +304,7 @@ def test_upload_unsupported_extension_returns_415() -> None:
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.txt", b"not-supported", "text/plain")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
 
     assert response.status_code == 415
@@ -313,7 +318,33 @@ def test_upload_oversize_returns_413() -> None:
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("big.mp3", oversized_payload, "audio/mpeg")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
 
     assert response.status_code == 413
+
+
+def test_missing_api_key_returns_401() -> None:
+    user_email = _create_test_user()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/meetings/upload",
+        files={"file": ("meeting.mp3", b"fake-audio-bytes", "audio/mpeg")},
+        headers={"X-User-Email": user_email},
+    )
+
+    assert response.status_code == 401
+
+
+def test_wrong_api_key_returns_403() -> None:
+    user_email = _create_test_user()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/meetings/upload",
+        files={"file": ("meeting.mp3", b"fake-audio-bytes", "audio/mpeg")},
+        headers={"X-User-Email": user_email, "X-API-Key": "wrong-key"},
+    )
+
+    assert response.status_code == 403

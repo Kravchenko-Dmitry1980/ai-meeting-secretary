@@ -33,13 +33,26 @@ from app.workers.tasks import process_meeting_pipeline
 
 router = APIRouter()
 ALLOWED_UPLOAD_EXTENSIONS = {".mp3", ".wav", ".mp4", ".mkv"}
+ALLOWED_UPLOAD_CONTENT_TYPES = {
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "video/mp4",
+    "video/x-matroska",
+}
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
 def get_current_user(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     db: Session = Depends(get_db_session),
 ) -> User:
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+    if x_api_key != settings.app_api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
     if not x_user_email:
         raise HTTPException(status_code=401, detail="Missing X-User-Email header")
 
@@ -58,8 +71,13 @@ def _get_user_meeting_or_404(db: Session, meeting_id: str, user_id: str) -> Meet
     raise HTTPException(status_code=404, detail="Meeting not found")
 
 
-@router.get("/health", response_model=HealthResponse)
-def healthcheck(db: Session = Depends(get_db_session)) -> HealthResponse:
+@router.get("/healthz")
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.get("/readyz", response_model=HealthResponse)
+def readyz(db: Session = Depends(get_db_session)) -> HealthResponse:
     db.execute(select(1))
     redis_client = Redis.from_url(settings.redis_url)
     redis_client.ping()
@@ -79,6 +97,8 @@ def upload_meeting_file(
     file_extension = Path(file.filename or "meeting.bin").suffix.lower()
     if file_extension not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(status_code=415, detail="Unsupported file extension")
+    if (file.content_type or "").lower() not in ALLOWED_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="Unsupported content type")
 
     target_name = f"{meeting_id}{file_extension}"
     target_path = storage_dir / target_name

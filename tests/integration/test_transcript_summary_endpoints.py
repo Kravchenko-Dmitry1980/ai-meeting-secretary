@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./test_integration.db"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_BROKER_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/1"
+os.environ["APP_API_KEY"] = "test-api-key"
 os.environ["MAX_UPLOAD_SIZE_MB"] = "1"
 
 from app.infrastructure.config.settings import settings
@@ -22,6 +23,10 @@ from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.db.session import engine
 from app.main import app
 from app.workers.tasks import process_meeting_pipeline
+
+
+def _auth_headers(user_email: str) -> dict[str, str]:
+    return {"X-User-Email": user_email, "X-API-Key": settings.app_api_key}
 
 
 @pytest.fixture(autouse=True)
@@ -160,14 +165,14 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     upload_response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp4", b"video-binary", "video/mp4")},
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert upload_response.status_code == 200
     meeting_id = upload_response.json()["meeting_id"]
 
     status_response = client.get(
         f"/api/v1/meetings/{meeting_id}",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert status_response.status_code == 200
     status_payload = status_response.json()
@@ -177,7 +182,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     transcript_response = client.get(
         f"/api/v1/meetings/{meeting_id}/transcript",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert transcript_response.status_code == 200
     transcript_payload = transcript_response.json()
@@ -187,7 +192,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     summary_response = client.get(
         f"/api/v1/meetings/{meeting_id}/summary",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert summary_response.status_code == 200
     summary_payload = summary_response.json()
@@ -196,7 +201,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     segments_response = client.get(
         f"/api/v1/meetings/{meeting_id}/segments",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert segments_response.status_code == 200
     segments_payload = segments_response.json()
@@ -206,7 +211,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     tasks_response = client.get(
         f"/api/v1/meetings/{meeting_id}/tasks",
-        headers={"X-User-Email": user_email},
+        headers=_auth_headers(user_email),
     )
     assert tasks_response.status_code == 200
     tasks_payload = tasks_response.json()

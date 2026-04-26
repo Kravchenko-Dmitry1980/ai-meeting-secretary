@@ -1,6 +1,6 @@
 """Convert transcript segment timestamps from string to float.
 
-Revision ID: 0003_transcript_segment_timestamps_float
+Revision ID: 0003_ts_segments_float
 Revises: 0002_tasks_speaker_confidence
 Create Date: 2026-04-26 20:45:00
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "0003_transcript_segment_timestamps_float"
+revision = "0003_ts_segments_float"
 down_revision = "0002_tasks_speaker_confidence"
 branch_labels = None
 depends_on = None
