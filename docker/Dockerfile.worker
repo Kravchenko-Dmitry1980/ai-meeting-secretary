@@ -10,4 +10,8 @@ RUN pip install --no-cache-dir .
 
 COPY . /app
 
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["celery", "-A", "app.infrastructure.queue.celery_app:celery_app", "worker", "--loglevel=info"]

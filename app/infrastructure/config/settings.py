@@ -8,13 +8,11 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
 
-    database_url: str = (
-        "postgresql+psycopg://postgres:postgres@localhost:5432/"
-        "meeting_secretary"
-    )
-    redis_url: str = "redis://localhost:6379/0"
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/1"
+    database_url: str
+    redis_url: str
+    celery_broker_url: str
+    celery_result_backend: str
+    max_upload_size_mb: int
     storage_path: str = "storage"
     ffmpeg_binary: str = "ffmpeg"
 
@@ -35,4 +33,11 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+try:
+    settings = Settings()
+except Exception as exc:
+    raise RuntimeError(
+        "Settings validation failed. Ensure required env vars are set: "
+        "DATABASE_URL, REDIS_URL, CELERY_BROKER_URL, CELERY_RESULT_BACKEND, "
+        "MAX_UPLOAD_SIZE_MB."
+    ) from exc

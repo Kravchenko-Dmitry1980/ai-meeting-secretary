@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: meeting_secretary
       POSTGRES_USER: postgres
@@ -15,9 +16,15 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -26,6 +33,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   migrate:
     build:
@@ -44,6 +56,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
     env_file:
       - .env
     ports:
@@ -53,18 +66,50 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./:/app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-2}
+    command:
+      - celery
+      - -A
+      - app.infrastructure.queue.celery_app:celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=${CELERY_CONCURRENCY:-2}
     depends_on:
       migrate:
         condition: service_completed_successfully
     volumes:
       - ./:/app
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

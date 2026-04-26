@@ -35,8 +35,8 @@ class SummaryResponse(BaseModel):
 
 class SegmentItemResponse(BaseModel):
     speaker: str
-    start_sec: str
-    end_sec: str
+    start_sec: float
+    end_sec: float
     text: str
 
 

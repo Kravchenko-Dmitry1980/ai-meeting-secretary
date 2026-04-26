@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./test_integration.db"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_BROKER_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/1"
+os.environ["MAX_UPLOAD_SIZE_MB"] = "1"
 
 from app.infrastructure.config.settings import settings
 from app.infrastructure.db.base import Base
@@ -16,6 +17,7 @@ from app.infrastructure.db.models import ProcessingJob
 from app.infrastructure.db.models import TaskItem
 from app.infrastructure.db.models import Transcript
 from app.infrastructure.db.models import TranscriptSegment
+from app.infrastructure.db.models import User
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.db.session import engine
 from app.main import app
@@ -36,7 +38,24 @@ def reset_db(monkeypatch):
     yield
 
 
+def _create_test_user(email: str = "user@example.com") -> str:
+    db = SessionLocal()
+    try:
+        user = User(
+            email=email,
+            full_name="Test User",
+            hashed_password="hashed-password",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        return email
+    finally:
+        db.close()
+
+
 def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> None:
+    user_email = _create_test_user()
     calls = {"audio_extracted": False}
 
     def fake_prepare_audio_file(media_file_path: str) -> str:
@@ -141,38 +160,54 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     upload_response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp4", b"video-binary", "video/mp4")},
+        headers={"X-User-Email": user_email},
     )
     assert upload_response.status_code == 200
     meeting_id = upload_response.json()["meeting_id"]
 
-    status_response = client.get(f"/api/v1/meetings/{meeting_id}")
+    status_response = client.get(
+        f"/api/v1/meetings/{meeting_id}",
+        headers={"X-User-Email": user_email},
+    )
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["stage"] == "done"
     assert status_payload["job_status"] == "done"
     assert calls["audio_extracted"] is True
 
-    transcript_response = client.get(f"/api/v1/meetings/{meeting_id}/transcript")
+    transcript_response = client.get(
+        f"/api/v1/meetings/{meeting_id}/transcript",
+        headers={"X-User-Email": user_email},
+    )
     assert transcript_response.status_code == 200
     transcript_payload = transcript_response.json()
     assert transcript_payload["meeting_id"] == meeting_id
     assert "кампании" in transcript_payload["transcript"]
     assert transcript_payload["provider"] == "faster-whisper"
 
-    summary_response = client.get(f"/api/v1/meetings/{meeting_id}/summary")
+    summary_response = client.get(
+        f"/api/v1/meetings/{meeting_id}/summary",
+        headers={"X-User-Email": user_email},
+    )
     assert summary_response.status_code == 200
     summary_payload = summary_response.json()
     assert summary_payload["meeting_id"] == meeting_id
     assert "кампании" in summary_payload["summary"]
 
-    segments_response = client.get(f"/api/v1/meetings/{meeting_id}/segments")
+    segments_response = client.get(
+        f"/api/v1/meetings/{meeting_id}/segments",
+        headers={"X-User-Email": user_email},
+    )
     assert segments_response.status_code == 200
     segments_payload = segments_response.json()
     assert len(segments_payload["segments"]) == 2
     assert segments_payload["segments"][0]["speaker"] == "SPEAKER_01"
     assert segments_payload["segments"][1]["speaker"] == "SPEAKER_02"
 
-    tasks_response = client.get(f"/api/v1/meetings/{meeting_id}/tasks")
+    tasks_response = client.get(
+        f"/api/v1/meetings/{meeting_id}/tasks",
+        headers={"X-User-Email": user_email},
+    )
     assert tasks_response.status_code == 200
     tasks_payload = tasks_response.json()
     assert len(tasks_payload["tasks"]) == 1

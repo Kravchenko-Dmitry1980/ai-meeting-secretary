@@ -123,8 +123,8 @@ class TranscriptSegment(Base):
         ForeignKey("speakers.id"),
         nullable=True,
     )
-    start_sec: Mapped[str] = mapped_column(String(30), default="0")
-    end_sec: Mapped[str] = mapped_column(String(30), default="0")
+    start_sec: Mapped[float] = mapped_column(Float, default=0.0)
+    end_sec: Mapped[float] = mapped_column(Float, default=0.0)
     text: Mapped[str] = mapped_column(Text, default="")
 
 

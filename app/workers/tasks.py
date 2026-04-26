@@ -117,8 +117,8 @@ def process_meeting_pipeline(meeting_id: str) -> None:
                 TranscriptSegment(
                     transcript_id=transcript.id,
                     speaker_id=speaker.id,
-                    start_sec=f"{segment.start_sec:.2f}",
-                    end_sec=f"{segment.end_sec:.2f}",
+                    start_sec=float(segment.start_sec),
+                    end_sec=float(segment.end_sec),
                     text=segment.text,
                 )
             )

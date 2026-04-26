@@ -5,6 +5,7 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./test_integration.db"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_BROKER_URL"] = "redis://localhost:6379/0"
 os.environ["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/1"
+os.environ["MAX_UPLOAD_SIZE_MB"] = "1"
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from app.infrastructure.db.models import MeetingSummary
 from app.infrastructure.db.models import ProcessingJob
 from app.infrastructure.db.models import TaskItem
 from app.infrastructure.db.models import Transcript
+from app.infrastructure.db.models import User
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.db.session import engine
 from app.main import app
@@ -27,6 +29,22 @@ def _cleanup_sqlite_db() -> None:
     sqlite_path = Path("test_integration.db")
     if sqlite_path.exists():
         sqlite_path.unlink()
+
+
+def _create_test_user(email: str = "user@example.com") -> str:
+    db = SessionLocal()
+    try:
+        user = User(
+            email=email,
+            full_name="Test User",
+            hashed_password="hashed-password",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        return email
+    finally:
+        db.close()
 
 
 def setup_module() -> None:
@@ -53,10 +71,12 @@ def reset_db_and_storage(monkeypatch):
 
 
 def test_upload_file() -> None:
+    user_email = _create_test_user()
     client = TestClient(app)
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp3", b"fake-audio-bytes", "audio/mpeg")},
+        headers={"X-User-Email": user_email},
     )
 
     assert response.status_code == 200
@@ -67,10 +87,12 @@ def test_upload_file() -> None:
 
 
 def test_meeting_created_after_upload() -> None:
+    user_email = _create_test_user()
     client = TestClient(app)
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.wav", b"fake-wav-bytes", "audio/wav")},
+        headers={"X-User-Email": user_email},
     )
     meeting_id = response.json()["meeting_id"]
 
@@ -157,11 +179,13 @@ def test_celery_pipeline_started(monkeypatch) -> None:
         )
         process_meeting_pipeline(args[0])
 
+    user_email = _create_test_user()
     monkeypatch.setattr("app.api.routes.celery_app.send_task", fake_send_task)
     client = TestClient(app)
     response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting.mp4", b"fake-video-bytes", "video/mp4")},
+        headers={"X-User-Email": user_email},
     )
     meeting_id = response.json()["meeting_id"]
 
@@ -245,15 +269,20 @@ def test_get_processing_status(monkeypatch) -> None:
         )
         process_meeting_pipeline(args[0])
 
+    user_email = _create_test_user()
     monkeypatch.setattr("app.api.routes.celery_app.send_task", fake_send_task)
     client = TestClient(app)
     upload_response = client.post(
         "/api/v1/meetings/upload",
         files={"file": ("meeting_status.mp3", b"audio", "audio/mpeg")},
+        headers={"X-User-Email": user_email},
     )
     meeting_id = upload_response.json()["meeting_id"]
 
-    status_response = client.get(f"/api/v1/meetings/{meeting_id}")
+    status_response = client.get(
+        f"/api/v1/meetings/{meeting_id}",
+        headers={"X-User-Email": user_email},
+    )
     assert status_response.status_code == 200
 
     payload = status_response.json()
@@ -261,3 +290,30 @@ def test_get_processing_status(monkeypatch) -> None:
     assert payload["meeting_status"] == "done"
     assert payload["job_status"] == "done"
     assert payload["stage"] == "done"
+
+
+def test_upload_unsupported_extension_returns_415() -> None:
+    user_email = _create_test_user()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/meetings/upload",
+        files={"file": ("meeting.txt", b"not-supported", "text/plain")},
+        headers={"X-User-Email": user_email},
+    )
+
+    assert response.status_code == 415
+
+
+def test_upload_oversize_returns_413() -> None:
+    user_email = _create_test_user()
+    client = TestClient(app)
+    oversized_payload = b"a" * (settings.max_upload_size_mb * 1024 * 1024 + 1)
+
+    response = client.post(
+        "/api/v1/meetings/upload",
+        files={"file": ("big.mp3", oversized_payload, "audio/mpeg")},
+        headers={"X-User-Email": user_email},
+    )
+
+    assert response.status_code == 413

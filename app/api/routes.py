@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import File
+from fastapi import Header
 from fastapi import HTTPException
 from fastapi import UploadFile
 from redis import Redis
@@ -31,23 +32,30 @@ from app.infrastructure.queue.celery_app import celery_app
 from app.workers.tasks import process_meeting_pipeline
 
 router = APIRouter()
+ALLOWED_UPLOAD_EXTENSIONS = {".mp3", ".wav", ".mp4", ".mkv"}
+UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
-def _get_or_create_default_user(db: Session) -> User:
-    user = db.scalar(select(User).where(User.email == "default@local"))
-    if user is not None:
-        return user
+def get_current_user(
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    db: Session = Depends(get_db_session),
+) -> User:
+    if not x_user_email:
+        raise HTTPException(status_code=401, detail="Missing X-User-Email header")
 
-    user = User(
-        email="default@local",
-        full_name="Default User",
-        hashed_password="not-used",
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    user = db.scalar(select(User).where(User.email == x_user_email))
+    if user is None:
+        raise HTTPException(status_code=403, detail="User not found")
     return user
+
+
+def _get_user_meeting_or_404(db: Session, meeting_id: str, user_id: str) -> Meeting:
+    meeting = db.scalar(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.owner_id == user_id)
+    )
+    if meeting is not None:
+        return meeting
+    raise HTTPException(status_code=404, detail="Meeting not found")
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -62,22 +70,36 @@ def healthcheck(db: Session = Depends(get_db_session)) -> HealthResponse:
 def upload_meeting_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> UploadMeetingResponse:
     storage_dir = Path(settings.storage_path)
     storage_dir.mkdir(parents=True, exist_ok=True)
 
     meeting_id = str(uuid.uuid4())
-    file_extension = Path(file.filename or "meeting.bin").suffix
+    file_extension = Path(file.filename or "meeting.bin").suffix.lower()
+    if file_extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(status_code=415, detail="Unsupported file extension")
+
     target_name = f"{meeting_id}{file_extension}"
     target_path = storage_dir / target_name
 
+    max_upload_size_bytes = settings.max_upload_size_mb * 1024 * 1024
+    uploaded_size = 0
     with target_path.open("wb") as target_file:
-        target_file.write(file.file.read())
+        while True:
+            chunk = file.file.read(UPLOAD_CHUNK_SIZE_BYTES)
+            if not chunk:
+                break
+            uploaded_size += len(chunk)
+            if uploaded_size > max_upload_size_bytes:
+                target_file.close()
+                target_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="File too large")
+            target_file.write(chunk)
 
-    owner = _get_or_create_default_user(db)
     meeting = Meeting(
         id=meeting_id,
-        owner_id=owner.id,
+        owner_id=current_user.id,
         title=file.filename or "Uploaded meeting",
         source_type="upload",
         status="uploaded",
@@ -111,10 +133,9 @@ def upload_meeting_file(
 def get_meeting_status(
     meeting_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> MeetingStatusResponse:
-    meeting = db.scalar(select(Meeting).where(Meeting.id == meeting_id))
-    if meeting is None:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    meeting = _get_user_meeting_or_404(db, meeting_id, current_user.id)
 
     job = db.scalar(
         select(ProcessingJob).where(ProcessingJob.meeting_id == meeting_id)
@@ -138,7 +159,9 @@ def get_meeting_status(
 def get_meeting_transcript(
     meeting_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> TranscriptResponse:
+    _get_user_meeting_or_404(db, meeting_id, current_user.id)
     transcript = db.scalar(
         select(Transcript)
         .where(Transcript.meeting_id == meeting_id)
@@ -159,7 +182,9 @@ def get_meeting_transcript(
 def get_meeting_summary(
     meeting_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> SummaryResponse:
+    _get_user_meeting_or_404(db, meeting_id, current_user.id)
     summary = db.scalar(
         select(MeetingSummary)
         .where(MeetingSummary.meeting_id == meeting_id)
@@ -178,10 +203,9 @@ def get_meeting_summary(
 def get_meeting_segments(
     meeting_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> SegmentsResponse:
-    meeting = db.scalar(select(Meeting).where(Meeting.id == meeting_id))
-    if meeting is None:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    _get_user_meeting_or_404(db, meeting_id, current_user.id)
 
     rows = db.execute(
         select(
@@ -197,7 +221,7 @@ def get_meeting_segments(
     if not rows:
         raise HTTPException(status_code=404, detail="Segments not found")
 
-    sorted_rows = sorted(rows, key=lambda row: float(row.start_sec))
+    sorted_rows = sorted(rows, key=lambda row: row.start_sec)
     return SegmentsResponse(
         meeting_id=meeting_id,
         segments=[
@@ -216,10 +240,9 @@ def get_meeting_segments(
 def get_meeting_tasks(
     meeting_id: str,
     db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ) -> TasksResponse:
-    meeting = db.scalar(select(Meeting).where(Meeting.id == meeting_id))
-    if meeting is None:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+    _get_user_meeting_or_404(db, meeting_id, current_user.id)
 
     tasks = db.scalars(
         select(TaskItem)
