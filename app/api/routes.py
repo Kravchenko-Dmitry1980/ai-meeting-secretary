@@ -140,7 +140,7 @@ def upload_meeting_file(
     celery_app.send_task(
         process_meeting_pipeline.name,
         args=[meeting_id],
-        queue="meetings",
+        queue="celery",
     )
     return UploadMeetingResponse(
         meeting_id=meeting_id,
