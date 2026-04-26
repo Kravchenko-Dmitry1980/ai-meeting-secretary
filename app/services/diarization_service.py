@@ -21,7 +21,7 @@ def diarize_audio_file(audio_file_path: str) -> list[DiarizationInterval]:
 
     pipeline = Pipeline.from_pretrained(
         settings.pyannote_model_id,
-        use_auth_token=settings.pyannote_auth_token,
+        token=settings.pyannote_auth_token,
     )
     diarization = pipeline(audio_file_path)
     results: list[DiarizationInterval] = []
