@@ -31,7 +31,10 @@ const request = async <T>(
   settings: FrontendSettings,
   init?: RequestInit,
 ): Promise<T> => {
-  const response = await fetch(`${settings.apiUrl}${path}`, {
+  const isLocalBackend =
+    settings.apiUrl.includes('localhost:8000') || settings.apiUrl.includes('127.0.0.1:8000');
+  const baseUrl = isLocalBackend ? '' : settings.apiUrl;
+  const response = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       ...headers(settings),
