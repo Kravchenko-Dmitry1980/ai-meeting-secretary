@@ -1,4 +1,5 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -21,3 +22,14 @@ build/
 
 .idea/
 .vscode/
+
+content/
+storage/
+*.wav
+*.mp3
+*.mp4
+*.mkv
+*.avi
+
+.DS_Store
+Thumbs.db
