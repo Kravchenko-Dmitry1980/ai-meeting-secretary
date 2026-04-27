@@ -24,8 +24,13 @@ def diarize_audio_file(audio_file_path: str) -> list[DiarizationInterval]:
         token=settings.pyannote_auth_token,
     )
     diarization = pipeline(audio_file_path)
+    if hasattr(diarization, "itertracks"):
+        iterator = diarization.itertracks(yield_label=True)
+    else:
+        iterator = diarization.speaker_diarization.itertracks(yield_label=True)
+
     results: list[DiarizationInterval] = []
-    for turn, _track, speaker in diarization.itertracks(yield_label=True):
+    for turn, _track, speaker in iterator:
         results.append(
             DiarizationInterval(
                 speaker_label=speaker,
