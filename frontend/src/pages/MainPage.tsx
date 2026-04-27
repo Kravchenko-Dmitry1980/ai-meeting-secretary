@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, Settings, UploadCloud, X } from 'lucide-react';
+import { Copy, LoaderCircle, Settings, UploadCloud, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useMeetingProcessor } from '../hooks/useMeetingProcessor';
@@ -91,6 +91,8 @@ export const MainPage = () => {
   const [search, setSearch] = useState('');
   const [lead, setLead] = useState({ name: '', company: '', email: '' });
   const [kpiValues, setKpiValues] = useState([0, 0, 0, 0]);
+  const [processingStartedAt, setProcessingStartedAt] = useState(0);
+  const [processingTick, setProcessingTick] = useState(0);
 
   const filteredTasks = useMemo(() => {
     const tasks = results?.tasks ?? [];
@@ -123,8 +125,18 @@ export const MainPage = () => {
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = window.setInterval(() => {
+      setProcessingTick(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isLoading]);
+
   const onUpload = async () => {
     if (!file) return;
+    setProcessingStartedAt(Date.now());
+    setProcessingTick(Date.now());
     await start(file);
   };
   const scrollToUpload = () =>
@@ -143,6 +155,11 @@ export const MainPage = () => {
     const payload = tasks.map((task) => `${task.title} [${task.priority ?? 'n/a'}]`).join('\n');
     await navigator.clipboard.writeText(payload);
   };
+  const showLongProcessingHint =
+    isLoading &&
+    stage !== 'completed' &&
+    stage !== 'failed' &&
+    processingTick - processingStartedAt > 30000;
 
   return (
     <div className="relative overflow-hidden px-4 py-8 text-slate-100 md:px-8 md:py-10">
@@ -428,9 +445,12 @@ export const MainPage = () => {
                   }`}
                 />
                 <span
-                  className={`text-sm ${idx === activeStepIndex ? 'text-white' : 'text-slate-400'}`}
+                  className={`flex items-center gap-2 text-sm ${idx === activeStepIndex ? 'text-white' : 'text-slate-400'}`}
                 >
                   {step.label}
+                  {idx === activeStepIndex && stage !== 'completed' && stage !== 'failed' && (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin text-violet-300" />
+                  )}
                 </span>
               </motion.div>
             ))}
@@ -445,6 +465,11 @@ export const MainPage = () => {
             <Badge>{stageText[stage]}</Badge>
             {meetingId && <span>Сессия: {meetingId}</span>}
           </div>
+          {showLongProcessingHint && (
+            <p className="mt-3 text-sm text-amber-200">
+              Идет обработка... это может занять несколько минут.
+            </p>
+          )}
           {error && (
             <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-500/15 p-3 text-sm">
               {error} <Button onClick={retry}>Повторить</Button>
