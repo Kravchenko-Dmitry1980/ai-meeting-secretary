@@ -104,13 +104,14 @@ export const MainPage = () => {
   const transcript = useMemo(
     () =>
       (results?.transcript ?? []).filter((item) =>
-        item.text.toLowerCase().includes(search.toLowerCase()),
+        (item.text ?? '').toLowerCase().includes(search.toLowerCase()),
       ),
     [results?.transcript, search],
   );
 
   const activeStepIndex = steps.findIndex((item) => item.key === stage);
   const isCompleted = stage === 'completed' && Boolean(results);
+  const summaryText = results?.summary?.summary ?? '';
 
   useEffect(() => {
     const startedAt = performance.now();
@@ -154,6 +155,45 @@ export const MainPage = () => {
   const copyTasks = async (tasks: TaskItem[]) => {
     const payload = tasks.map((task) => `${task.title} [${task.priority ?? 'n/a'}]`).join('\n');
     await navigator.clipboard.writeText(payload);
+  };
+  const exportResults = () => {
+    if (!results) return;
+    const taskLines =
+      results.tasks.length > 0
+        ? results.tasks.map(
+            (task, index) =>
+              `${index + 1}. ${task.title}\n   Ответственный: ${task.assignee ?? 'Не назначено'}\n   Приоритет: ${task.priority ?? 'n/a'}\n   Срок: ${task.due_date ?? 'n/a'}`,
+          )
+        : ['Нет задач'];
+    const transcriptLines =
+      results.transcript.length > 0
+        ? results.transcript.map(
+            (line) => `[${line.timestamp || '--:--'}] ${line.speaker || 'Неизвестный'}: ${line.text || ''}`,
+          )
+        : ['Нет расшифровки'];
+
+    const content = [
+      `Meeting ID: ${meetingId ?? 'unknown'}`,
+      '',
+      '=== SUMMARY ===',
+      summaryText || 'Нет итогов',
+      '',
+      '=== TASKS ===',
+      ...taskLines,
+      '',
+      '=== TRANSCRIPT ===',
+      ...transcriptLines,
+    ].join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `meeting-${meetingId ?? 'unknown'}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
   const showLongProcessingHint =
     isLoading &&
@@ -495,12 +535,14 @@ export const MainPage = () => {
                 initial={{ opacity: 0, y: 8 }}
               >
                 <Card className="bg-black/20">
-                  <p>{results?.summary.summary ?? ''}</p>
+                  <p>{summaryText}</p>
                   <div className="mt-3 flex gap-2">
-                    <Button onClick={() => copyText(results?.summary.summary ?? '')}>
+                    <Button onClick={() => copyText(summaryText)}>
                       <Copy className="mr-2 inline h-3 w-3" /> Скопировать
                     </Button>
-                    <Button variant="ghost">Экспорт</Button>
+                    <Button disabled={!isCompleted} onClick={exportResults} variant="ghost">
+                      Экспорт
+                    </Button>
                   </div>
                 </Card>
               </motion.div>

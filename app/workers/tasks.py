@@ -10,6 +10,7 @@ from app.infrastructure.db.models import Transcript
 from app.infrastructure.db.models import TranscriptSegment
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.queue.celery_app import celery_app
+from app.services.diarization_service import DiarizationInterval
 from app.services.diarization_service import diarize_audio_file
 from app.services.media_service import prepare_audio_file
 from app.services.segmentation_service import assign_speakers_to_stt_segments
@@ -17,6 +18,13 @@ from app.services.segmentation_service import build_speaker_aware_transcript
 from app.services.summary_service import summarize_transcript_text
 from app.services.task_extraction_service import extract_tasks_from_transcript
 from app.services.transcription_service import transcribe_audio_file
+
+
+def _format_timestamp(seconds: float) -> str:
+    total = max(0, int(seconds))
+    minutes = total // 60
+    remainder = total % 60
+    return f"{minutes:02d}:{remainder:02d}"
 
 
 def _update_job_and_meeting(
@@ -65,6 +73,12 @@ def process_meeting_pipeline(meeting_id: str) -> None:
         )
 
         transcript_text, stt_segments = transcribe_audio_file(audio_file_path)
+        if not transcript_text.strip() and stt_segments:
+            transcript_text = " ".join(
+                segment.text.strip()
+                for segment in stt_segments
+                if segment.text.strip()
+            )
         transcript = Transcript(
             meeting_id=meeting_id,
             provider="faster-whisper",
@@ -82,7 +96,18 @@ def process_meeting_pipeline(meeting_id: str) -> None:
             meeting_status="processing",
         )
 
-        diarization_intervals = diarize_audio_file(audio_file_path)
+        try:
+            diarization_intervals = diarize_audio_file(audio_file_path)
+        except Exception:  # noqa: BLE001
+            diarization_intervals = []
+            for segment in stt_segments:
+                diarization_intervals.append(
+                    DiarizationInterval(
+                        speaker_label="SPEAKER_01",
+                        start_sec=float(segment.start_sec),
+                        end_sec=float(segment.end_sec),
+                    )
+                )
         _update_job_and_meeting(
             db=db,
             meeting_id=meeting_id,
@@ -123,6 +148,16 @@ def process_meeting_pipeline(meeting_id: str) -> None:
                 )
             )
         db.commit()
+        if not transcript.full_text.strip() and speaker_segments:
+            transcript.full_text = "\n".join(
+                (
+                    f"{segment.speaker_label} "
+                    f"[{_format_timestamp(segment.start_sec)}]: {segment.text}"
+                )
+                for segment in speaker_segments
+                if segment.text.strip()
+            )
+            db.commit()
         _update_job_and_meeting(
             db=db,
             meeting_id=meeting_id,

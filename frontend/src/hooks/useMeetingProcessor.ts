@@ -49,10 +49,19 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const pollingTimerRef = useRef<number | null>(null);
 
-  const canRequest = useMemo(
-    () => Boolean(settings.apiUrl && settings.apiKey && settings.userEmail),
-    [settings],
-  );
+  const canRequest = useMemo(() => Boolean(settings.apiUrl), [settings.apiUrl]);
+
+  const isApiUnavailableError = (value: unknown): boolean => {
+    if (!(value instanceof Error)) return false;
+    const message = value.message.toLowerCase();
+    return (
+      message.includes('failed to fetch') ||
+      message.includes('networkerror') ||
+      message.includes('network request failed') ||
+      message.includes('err_connection_refused') ||
+      message.includes('load failed')
+    );
+  };
 
   const runDemoFlow = () => {
     setIsDemoMode(true);
@@ -139,8 +148,12 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
         setError('Ошибка авторизации: проверьте API-ключ и email.');
         return;
       }
-      setError('Сервер недоступен. Включен демо-режим.');
-      runDemoFlow();
+      if (isApiUnavailableError(uploadError)) {
+        setError('Сервер недоступен. Включен демо-режим.');
+        runDemoFlow();
+        return;
+      }
+      setError(uploadError instanceof Error ? uploadError.message : 'Ошибка загрузки файла.');
     }
   };
 
