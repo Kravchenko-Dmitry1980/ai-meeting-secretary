@@ -42,6 +42,14 @@ const extractStatusValue = (raw: Record<string, unknown>): string => {
     raw.pipeline_stage,
   ];
 
+  // Backend can expose multiple status fields simultaneously.
+  // If any of them reports completion, prioritize it immediately.
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string' && candidate.trim().toLowerCase() === 'done') {
+      return candidate;
+    }
+  }
+
   for (const candidate of directCandidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
       return candidate;
@@ -58,6 +66,9 @@ const extractStatusValue = (raw: Record<string, unknown>): string => {
         objectValue.stage ??
         objectValue.meeting_status ??
         objectValue.job_status;
+      if (typeof nestedStatus === 'string' && nestedStatus.trim().toLowerCase() === 'done') {
+        return nestedStatus;
+      }
       if (typeof nestedStatus === 'string' && nestedStatus.trim()) {
         return nestedStatus;
       }

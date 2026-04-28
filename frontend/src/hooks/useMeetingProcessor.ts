@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMeetingDetails, fetchMeetingResults, uploadMeeting } from '../services/meetingApi';
 import type { FrontendSettings, MeetingResults, MeetingStage } from '../types/meeting';
 
@@ -47,6 +47,7 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const pollingTimerRef = useRef<number | null>(null);
 
   const canRequest = useMemo(
     () => Boolean(settings.apiUrl && settings.apiKey && settings.userEmail),
@@ -78,6 +79,10 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   };
 
   const start = async (file: File) => {
+    if (pollingTimerRef.current !== null) {
+      window.clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
     setError(null);
     setResults(null);
     setIsLoading(true);
@@ -92,23 +97,36 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
       setMeetingId(uploaded.meeting_id);
       setIsDemoMode(false);
 
-      const timer = window.setInterval(async () => {
+      pollingTimerRef.current = window.setInterval(async () => {
         try {
           const details = await fetchMeetingDetails(uploaded.meeting_id, settings);
+          if (import.meta.env.DEV) {
+            // Temporary debug helper for polling sync issues.
+            console.log('[meeting-polling] response', details);
+          }
           setStage(details.status);
           if (details.status === 'completed') {
-            window.clearInterval(timer);
+            if (pollingTimerRef.current !== null) {
+              window.clearInterval(pollingTimerRef.current);
+              pollingTimerRef.current = null;
+            }
             const payload = await fetchMeetingResults(uploaded.meeting_id, settings);
             setResults(payload);
             setIsLoading(false);
           }
           if (details.status === 'failed') {
-            window.clearInterval(timer);
+            if (pollingTimerRef.current !== null) {
+              window.clearInterval(pollingTimerRef.current);
+              pollingTimerRef.current = null;
+            }
             setError(details.error ?? 'Во время обработки произошла ошибка.');
             setIsLoading(false);
           }
         } catch (pollError) {
-          window.clearInterval(timer);
+          if (pollingTimerRef.current !== null) {
+            window.clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
           setError(
             pollError instanceof Error ? pollError.message : 'Не удалось получить статус обработки.',
           );
@@ -127,10 +145,24 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   };
 
   const retry = () => {
+    if (pollingTimerRef.current !== null) {
+      window.clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
     setError(null);
     setStage('uploaded');
     setResults(null);
   };
+
+  useEffect(
+    () => () => {
+      if (pollingTimerRef.current !== null) {
+        window.clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   return { meetingId, stage, results, isLoading, error, isDemoMode, start, retry };
 };
