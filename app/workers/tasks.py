@@ -10,21 +10,15 @@ from app.infrastructure.db.models import Transcript
 from app.infrastructure.db.models import TranscriptSegment
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.queue.celery_app import celery_app
+from app.services.alignment_service import align_stt_with_diarization
 from app.services.diarization_service import DiarizationInterval
 from app.services.diarization_service import diarize_audio_file
 from app.services.media_service import prepare_audio_file
-from app.services.segmentation_service import assign_speakers_to_stt_segments
-from app.services.segmentation_service import build_speaker_aware_transcript
 from app.services.summary_service import summarize_transcript_text
 from app.services.task_extraction_service import extract_tasks_from_transcript
+from app.services.transcript_cleanup_service import build_readable_transcript
+from app.services.transcript_cleanup_service import clean_transcript_segments
 from app.services.transcription_service import transcribe_audio_file
-
-
-def _format_timestamp(seconds: float) -> str:
-    total = max(0, int(seconds))
-    minutes = total // 60
-    remainder = total % 60
-    return f"{minutes:02d}:{remainder:02d}"
 
 
 def _update_job_and_meeting(
@@ -116,10 +110,12 @@ def process_meeting_pipeline(meeting_id: str) -> None:
             meeting_status="processing",
         )
 
-        speaker_segments = assign_speakers_to_stt_segments(
+        aligned_segments = align_stt_with_diarization(
             stt_segments,
             diarization_intervals,
         )
+        cleaned_segments = clean_transcript_segments(aligned_segments)
+        persisted_segments = cleaned_segments or aligned_segments
         speaker_map: dict[str, Speaker] = {}
         db.execute(
             delete(TranscriptSegment).where(
@@ -128,36 +124,30 @@ def process_meeting_pipeline(meeting_id: str) -> None:
         )
         db.execute(delete(Speaker).where(Speaker.meeting_id == meeting_id))
         db.commit()
-        for segment in speaker_segments:
-            speaker = speaker_map.get(segment.speaker_label)
+        for segment in persisted_segments:
+            speaker = speaker_map.get(segment.speaker)
             if speaker is None:
                 speaker = Speaker(
                     meeting_id=meeting_id,
-                    speaker_label=segment.speaker_label,
+                    speaker_label=segment.speaker,
                 )
                 db.add(speaker)
                 db.flush()
-                speaker_map[segment.speaker_label] = speaker
+                speaker_map[segment.speaker] = speaker
             db.add(
                 TranscriptSegment(
                     transcript_id=transcript.id,
                     speaker_id=speaker.id,
-                    start_sec=float(segment.start_sec),
-                    end_sec=float(segment.end_sec),
-                    text=segment.text,
+                    start_sec=float(segment.start),
+                    end_sec=float(segment.end),
+                    text=segment.text_clean or segment.text_raw,
                 )
             )
         db.commit()
-        if not transcript.full_text.strip() and speaker_segments:
-            transcript.full_text = "\n".join(
-                (
-                    f"{segment.speaker_label} "
-                    f"[{_format_timestamp(segment.start_sec)}]: {segment.text}"
-                )
-                for segment in speaker_segments
-                if segment.text.strip()
-            )
-            db.commit()
+        transcript.full_text = (
+            build_readable_transcript(persisted_segments).strip() or transcript.full_text
+        )
+        db.commit()
         _update_job_and_meeting(
             db=db,
             meeting_id=meeting_id,
@@ -166,8 +156,8 @@ def process_meeting_pipeline(meeting_id: str) -> None:
             meeting_status="processing",
         )
 
-        speaker_aware_text = build_speaker_aware_transcript(speaker_segments)
-        summary_text = summarize_transcript_text(speaker_aware_text)
+        llm_input_text = transcript.full_text.strip() or transcript_text.strip()
+        summary_text = summarize_transcript_text(llm_input_text)
         summary = db.scalar(
             select(MeetingSummary).where(MeetingSummary.meeting_id == meeting_id)
         )
@@ -189,7 +179,7 @@ def process_meeting_pipeline(meeting_id: str) -> None:
             meeting_status="processing",
         )
 
-        extracted_tasks = extract_tasks_from_transcript(speaker_aware_text)
+        extracted_tasks = extract_tasks_from_transcript(llm_input_text)
         db.execute(delete(TaskItem).where(TaskItem.meeting_id == meeting_id))
         for extracted_task in extracted_tasks:
             db.add(
