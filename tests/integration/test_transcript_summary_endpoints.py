@@ -136,7 +136,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     def fake_send_task(name: str, args: list[str], queue: str) -> None:
         assert name == "app.workers.tasks.process_meeting_pipeline"
-        assert queue == "celery"
+        assert queue == "meetings"
         monkeypatch.setattr(
             "app.workers.tasks.prepare_audio_file",
             fake_prepare_audio_file,

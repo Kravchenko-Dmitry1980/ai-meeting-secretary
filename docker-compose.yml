@@ -92,14 +92,16 @@ services:
     env_file:
       - .env
     environment:
-      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-2}
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-1}
     command:
       - celery
       - -A
       - app.infrastructure.queue.celery_app:celery_app
       - worker
       - --loglevel=info
-      - --concurrency=${CELERY_CONCURRENCY:-2}
+      - -Q
+      - meetings
+      - --concurrency=${CELERY_CONCURRENCY:-1}
     depends_on:
       migrate:
         condition: service_completed_successfully
