@@ -48,10 +48,18 @@ def get_current_user(
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     db: Session = Depends(get_db_session),
 ) -> User:
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
-    if x_api_key != settings.app_api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+    if settings.app_disable_auth:
+        return User(
+            id="00000000-0000-0000-0000-000000000000",
+            email=x_user_email or "test@test.com",
+            full_name="Local Test User",
+        )
+
+    if not settings.app_disable_auth:
+        if not x_api_key:
+            raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+        if x_api_key != settings.app_api_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
 
     if not x_user_email:
         raise HTTPException(status_code=401, detail="Missing X-User-Email header")
