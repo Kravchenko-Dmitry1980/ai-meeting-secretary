@@ -136,7 +136,7 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
 
     def fake_send_task(name: str, args: list[str], queue: str) -> None:
         assert name == "app.workers.tasks.process_meeting_pipeline"
-        assert queue == "celery"
+        assert queue == "meetings"
         monkeypatch.setattr(
             "app.workers.tasks.prepare_audio_file",
             fake_prepare_audio_file,
@@ -186,9 +186,9 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     )
     assert transcript_response.status_code == 200
     transcript_payload = transcript_response.json()
-    assert transcript_payload["meeting_id"] == meeting_id
-    assert "кампании" in transcript_payload["transcript"]
-    assert transcript_payload["provider"] == "faster-whisper"
+    assert len(transcript_payload) == 2
+    assert transcript_payload[0]["speaker"] == "SPEAKER_01"
+    assert "кампанию" in transcript_payload[0]["text"]
 
     summary_response = client.get(
         f"/api/v1/meetings/{meeting_id}/summary",
@@ -196,7 +196,6 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     )
     assert summary_response.status_code == 200
     summary_payload = summary_response.json()
-    assert summary_payload["meeting_id"] == meeting_id
     assert "кампании" in summary_payload["summary"]
 
     segments_response = client.get(
@@ -205,9 +204,9 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     )
     assert segments_response.status_code == 200
     segments_payload = segments_response.json()
-    assert len(segments_payload["segments"]) == 2
-    assert segments_payload["segments"][0]["speaker"] == "SPEAKER_01"
-    assert segments_payload["segments"][1]["speaker"] == "SPEAKER_02"
+    assert len(segments_payload) == 2
+    assert segments_payload[0]["speaker"] == "SPEAKER_01"
+    assert segments_payload[1]["speaker"] == "SPEAKER_02"
 
     tasks_response = client.get(
         f"/api/v1/meetings/{meeting_id}/tasks",
@@ -215,8 +214,8 @@ def test_video_upload_pipeline_and_transcript_summary_endpoints(monkeypatch) -> 
     )
     assert tasks_response.status_code == 200
     tasks_payload = tasks_response.json()
-    assert len(tasks_payload["tasks"]) == 1
-    assert tasks_payload["tasks"][0]["assignee_speaker_label"] == "SPEAKER_02"
+    assert len(tasks_payload) == 1
+    assert tasks_payload[0]["assignee"] == "SPEAKER_02"
 
     db = SessionLocal()
     try:

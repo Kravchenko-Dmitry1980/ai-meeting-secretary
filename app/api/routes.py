@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import HealthResponse
 from app.api.schemas import MeetingStatusResponse
-from app.api.schemas import SegmentsResponse
+from app.api.schemas import SegmentItemResponse
 from app.api.schemas import SummaryResponse
-from app.api.schemas import TasksResponse
+from app.api.schemas import TaskItemResponse
 from app.api.schemas import TranscriptResponse
 from app.api.schemas import UploadMeetingResponse
 from app.infrastructure.config.settings import settings
@@ -48,10 +48,18 @@ def get_current_user(
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     db: Session = Depends(get_db_session),
 ) -> User:
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="Missing X-API-Key header")
-    if x_api_key != settings.app_api_key:
-        raise HTTPException(status_code=403, detail="Invalid API key")
+    if settings.app_disable_auth:
+        return User(
+            id="00000000-0000-0000-0000-000000000000",
+            email=x_user_email or "test@test.com",
+            full_name="Local Test User",
+        )
+
+    if not settings.app_disable_auth:
+        if not x_api_key:
+            raise HTTPException(status_code=401, detail="Missing X-API-Key header")
+        if x_api_key != settings.app_api_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
 
     if not x_user_email:
         raise HTTPException(status_code=401, detail="Missing X-User-Email header")
@@ -140,7 +148,7 @@ def upload_meeting_file(
     celery_app.send_task(
         process_meeting_pipeline.name,
         args=[meeting_id],
-        queue="celery",
+        queue="meetings",
     )
     return UploadMeetingResponse(
         meeting_id=meeting_id,
@@ -174,13 +182,13 @@ def get_meeting_status(
 
 @router.get(
     "/api/v1/meetings/{meeting_id}/transcript",
-    response_model=TranscriptResponse,
+    response_model=list[TranscriptResponse],
 )
 def get_meeting_transcript(
     meeting_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> TranscriptResponse:
+) -> list[TranscriptResponse]:
     _get_user_meeting_or_404(db, meeting_id, current_user.id)
     transcript = db.scalar(
         select(Transcript)
@@ -190,12 +198,27 @@ def get_meeting_transcript(
     if transcript is None:
         raise HTTPException(status_code=404, detail="Transcript not found")
 
-    return TranscriptResponse(
-        meeting_id=meeting_id,
-        transcript=transcript.full_text,
-        provider=transcript.provider,
-        language=transcript.language,
-    )
+    rows = db.execute(
+        select(
+            TranscriptSegment.start_sec,
+            TranscriptSegment.text,
+            Speaker.speaker_label,
+        )
+        .join(Speaker, Speaker.id == TranscriptSegment.speaker_id, isouter=True)
+        .where(TranscriptSegment.transcript_id == transcript.id)
+        .order_by(TranscriptSegment.start_sec)
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Transcript segments not found")
+
+    return [
+        TranscriptResponse(
+            speaker=row.speaker_label or "SPEAKER_01",
+            timestamp=f"{int(row.start_sec // 60):02d}:{int(row.start_sec % 60):02d}",
+            text=row.text,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/api/v1/meetings/{meeting_id}/summary", response_model=SummaryResponse)
@@ -213,18 +236,18 @@ def get_meeting_summary(
     if summary is None:
         raise HTTPException(status_code=404, detail="Summary not found")
 
-    return SummaryResponse(meeting_id=meeting_id, summary=summary.summary_text)
+    return SummaryResponse(summary=summary.summary_text)
 
 
 @router.get(
     "/api/v1/meetings/{meeting_id}/segments",
-    response_model=SegmentsResponse,
+    response_model=list[SegmentItemResponse],
 )
 def get_meeting_segments(
     meeting_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> SegmentsResponse:
+) -> list[SegmentItemResponse]:
     _get_user_meeting_or_404(db, meeting_id, current_user.id)
 
     rows = db.execute(
@@ -242,26 +265,23 @@ def get_meeting_segments(
         raise HTTPException(status_code=404, detail="Segments not found")
 
     sorted_rows = sorted(rows, key=lambda row: row.start_sec)
-    return SegmentsResponse(
-        meeting_id=meeting_id,
-        segments=[
-            {
-                "speaker": row.speaker_label or "UNKNOWN",
-                "start_sec": row.start_sec,
-                "end_sec": row.end_sec,
-                "text": row.text,
-            }
-            for row in sorted_rows
-        ],
-    )
+    return [
+        SegmentItemResponse(
+            speaker=row.speaker_label or "SPEAKER_01",
+            start=row.start_sec,
+            end=row.end_sec,
+            text=row.text,
+        )
+        for row in sorted_rows
+    ]
 
 
-@router.get("/api/v1/meetings/{meeting_id}/tasks", response_model=TasksResponse)
+@router.get("/api/v1/meetings/{meeting_id}/tasks", response_model=list[TaskItemResponse])
 def get_meeting_tasks(
     meeting_id: str,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
-) -> TasksResponse:
+) -> list[TaskItemResponse]:
     _get_user_meeting_or_404(db, meeting_id, current_user.id)
 
     tasks = db.scalars(
@@ -272,18 +292,15 @@ def get_meeting_tasks(
     if not tasks:
         raise HTTPException(status_code=404, detail="Tasks not found")
 
-    return TasksResponse(
-        meeting_id=meeting_id,
-        tasks=[
-            {
-                "id": task.id,
-                "description": task.description,
-                "assignee_speaker_label": task.assignee_speaker_label,
-                "due_date": task.due_date,
-                "priority": task.priority,
-                "source_quote": task.source_quote,
-                "confidence": task.confidence,
-            }
-            for task in tasks
-        ],
-    )
+    return [
+        TaskItemResponse(
+            id=task.id,
+            title=task.description,
+            assignee=task.assignee_speaker_label,
+            due_date=task.due_date,
+            priority=task.priority,
+            source_quote=task.source_quote,
+            confidence=task.confidence,
+        )
+        for task in tasks
+    ]

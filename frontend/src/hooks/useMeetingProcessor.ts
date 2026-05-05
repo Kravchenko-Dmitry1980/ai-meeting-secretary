@@ -1,42 +1,42 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMeetingDetails, fetchMeetingResults, uploadMeeting } from '../services/meetingApi';
 import type { FrontendSettings, MeetingResults, MeetingStage } from '../types/meeting';
 
 const FALLBACK_RESULTS: MeetingResults = {
   summary: {
     summary:
-      'Demo mode: sprint sync covered onboarding blockers, release timeline, and integration risks.',
-    key_decisions: ['Ship beta next Thursday', 'Assign API hardening to platform team'],
-    action_recap: ['Prepare release notes', 'Confirm QA checklist by Wednesday'],
+      'Демо-режим: команда обсудила риски релиза, точки роста и приоритеты по внедрению.',
+    key_decisions: ['Запуск пилота на следующей неделе', 'Усилить контроль качества интеграции API'],
+    action_recap: ['Подготовить релизные материалы', 'Согласовать чек-лист с QA до среды'],
   },
   tasks: [
     {
       id: '1',
-      title: 'Finalize release checklist',
-      assignee: 'Anna',
+      title: 'Финализировать чек-лист релиза',
+      assignee: 'Анна',
       priority: 'high',
       due_date: '2026-05-01',
       confidence: 92,
-      source_quote: 'Need release readiness checklist by Friday.',
+      source_quote: 'Нужен финальный чек-лист готовности к релизу до пятницы.',
     },
     {
       id: '2',
-      title: 'Review speaker diarization edge cases',
-      assignee: 'Dmitry',
+      title: 'Проверить сложные кейсы разделения спикеров',
+      assignee: 'Дмитрий',
       priority: 'medium',
       due_date: '2026-05-03',
       confidence: 81,
-      source_quote: 'Speaker switch around 14:20 looked noisy.',
+      source_quote: 'Переключение спикеров около 14:20 выглядит нестабильно.',
     },
   ],
   transcript: [
-    { speaker: 'Speaker A', timestamp: '00:01', text: 'Quick status on AI secretary release.' },
-    { speaker: 'Speaker B', timestamp: '00:34', text: 'Transcription quality improved by 18%.' },
+    { speaker: 'Спикер A', timestamp: '00:01', text: 'Коротко сверяем статус релиза AI-секретаря.' },
+    { speaker: 'Спикер B', timestamp: '00:34', text: 'Качество расшифровки выросло на 18%.' },
   ],
   segments: [
-    { speaker: 'Speaker A', start: 0, end: 95 },
-    { speaker: 'Speaker B', start: 95, end: 210 },
-    { speaker: 'Speaker C', start: 210, end: 360 },
+    { speaker: 'Спикер A', start: 0, end: 95 },
+    { speaker: 'Спикер B', start: 95, end: 210 },
+    { speaker: 'Спикер C', start: 210, end: 360 },
   ],
 };
 
@@ -47,11 +47,21 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const pollingTimerRef = useRef<number | null>(null);
 
-  const canRequest = useMemo(
-    () => Boolean(settings.apiUrl && settings.apiKey && settings.userEmail),
-    [settings],
-  );
+  const canRequest = useMemo(() => Boolean(settings.apiUrl), [settings.apiUrl]);
+
+  const isApiUnavailableError = (value: unknown): boolean => {
+    if (!(value instanceof Error)) return false;
+    const message = value.message.toLowerCase();
+    return (
+      message.includes('failed to fetch') ||
+      message.includes('networkerror') ||
+      message.includes('network request failed') ||
+      message.includes('err_connection_refused') ||
+      message.includes('load failed')
+    );
+  };
 
   const runDemoFlow = () => {
     setIsDemoMode(true);
@@ -78,6 +88,10 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
   };
 
   const start = async (file: File) => {
+    if (pollingTimerRef.current !== null) {
+      window.clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
     setError(null);
     setResults(null);
     setIsLoading(true);
@@ -92,43 +106,76 @@ export const useMeetingProcessor = (settings: FrontendSettings) => {
       setMeetingId(uploaded.meeting_id);
       setIsDemoMode(false);
 
-      const timer = window.setInterval(async () => {
+      pollingTimerRef.current = window.setInterval(async () => {
         try {
           const details = await fetchMeetingDetails(uploaded.meeting_id, settings);
+          if (import.meta.env.DEV) {
+            // Temporary debug helper for polling sync issues.
+            console.log('[meeting-polling] response', details);
+          }
           setStage(details.status);
           if (details.status === 'completed') {
-            window.clearInterval(timer);
+            if (pollingTimerRef.current !== null) {
+              window.clearInterval(pollingTimerRef.current);
+              pollingTimerRef.current = null;
+            }
             const payload = await fetchMeetingResults(uploaded.meeting_id, settings);
             setResults(payload);
             setIsLoading(false);
           }
           if (details.status === 'failed') {
-            window.clearInterval(timer);
-            setError(details.error ?? 'Processing failed.');
+            if (pollingTimerRef.current !== null) {
+              window.clearInterval(pollingTimerRef.current);
+              pollingTimerRef.current = null;
+            }
+            setError(details.error ?? 'Во время обработки произошла ошибка.');
             setIsLoading(false);
           }
         } catch (pollError) {
-          window.clearInterval(timer);
-          setError(pollError instanceof Error ? pollError.message : 'Polling error');
+          if (pollingTimerRef.current !== null) {
+            window.clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+          setError(
+            pollError instanceof Error ? pollError.message : 'Не удалось получить статус обработки.',
+          );
           setIsLoading(false);
         }
       }, 3000);
     } catch (uploadError) {
       setIsLoading(false);
       if (uploadError instanceof Error && uploadError.message === 'AUTH_ERROR') {
-        setError('Auth error: проверьте API key/email.');
+        setError('Ошибка авторизации: проверьте API-ключ и email.');
         return;
       }
-      setError('Backend недоступен. Включен demo mode.');
-      runDemoFlow();
+      if (isApiUnavailableError(uploadError)) {
+        setError('Сервер недоступен. Включен демо-режим.');
+        runDemoFlow();
+        return;
+      }
+      setError(uploadError instanceof Error ? uploadError.message : 'Ошибка загрузки файла.');
     }
   };
 
   const retry = () => {
+    if (pollingTimerRef.current !== null) {
+      window.clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
     setError(null);
     setStage('uploaded');
     setResults(null);
   };
+
+  useEffect(
+    () => () => {
+      if (pollingTimerRef.current !== null) {
+        window.clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   return { meetingId, stage, results, isLoading, error, isDemoMode, start, retry };
 };

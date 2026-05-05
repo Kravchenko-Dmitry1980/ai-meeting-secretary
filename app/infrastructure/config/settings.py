@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     celery_broker_url: str
     celery_result_backend: str
     app_api_key: str
+    app_disable_auth: bool = False
     max_upload_size_mb: int = Field(ge=1)
     storage_path: str = "storage"
     ffmpeg_binary: str = "ffmpeg"
