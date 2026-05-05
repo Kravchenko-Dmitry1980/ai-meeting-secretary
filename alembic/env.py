@@ -7,6 +7,7 @@ from sqlalchemy import pool
 from app.infrastructure.config.settings import settings
 from app.infrastructure.db.base import Base
 from app.infrastructure.db import models  # noqa: F401
+from app.models import memory  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

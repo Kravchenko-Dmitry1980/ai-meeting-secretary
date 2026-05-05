@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC
 from datetime import datetime
 
 from sqlalchemy import DateTime
@@ -10,6 +11,10 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 
 from app.infrastructure.db.base import Base
+
+
+def now_utc() -> datetime:
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -26,7 +31,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_utc,
     )
 
 
@@ -45,7 +50,7 @@ class Meeting(Base):
     media_file_path: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_utc,
     )
 
 
@@ -103,7 +108,7 @@ class Transcript(Base):
     full_text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_utc,
     )
 
 
@@ -143,7 +148,7 @@ class MeetingSummary(Base):
     summary_text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_utc,
     )
 
 
@@ -192,10 +197,10 @@ class ProcessingJob(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=now_utc,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=now_utc,
+        onupdate=now_utc,
     )

@@ -20,6 +20,9 @@ from app.services.alignment_service import align_stt_with_diarization
 from app.services.diarization_service import DiarizationInterval
 from app.services.diarization_service import diarize_audio_file
 from app.services.media_service import prepare_audio_file
+from app.services.memory_service import build_active_tasks_context
+from app.services.memory_service import extract_task_items
+from app.services.memory_service import save_task_items
 from app.services.summary_service import summarize_transcript_text
 from app.services.task_extraction_service import extract_tasks_from_transcript
 from app.services.transcript_cleanup_service import build_readable_transcript
@@ -248,7 +251,21 @@ def process_meeting_pipeline(self, meeting_id: str) -> None:
         )
         logger.info("pipeline_stage_end stage=segmented meeting_id=%s", meeting_id)
 
-        llm_input_text = transcript.full_text.strip() or transcript_text.strip()
+        llm_base_text = transcript.full_text.strip() or transcript_text.strip()
+        user_id = (meeting.owner_id if meeting and meeting.owner_id else "").strip() or "default_user"
+        memory_context = ""
+        try:
+            memory_context = build_active_tasks_context(user_id=user_id, db=db, limit=10)
+        except Exception:  # noqa: BLE001
+            logger.exception("memory_context_load_failed meeting_id=%s", meeting_id)
+            memory_context = ""
+        if memory_context:
+            llm_input_text = (
+                f"Context from previous meetings:\n{memory_context}\n\n"
+                f"Current user request/transcript:\n{llm_base_text}"
+            )
+        else:
+            llm_input_text = llm_base_text
         logger.info("pipeline_stage_start stage=summarized meeting_id=%s", meeting_id)
         summary_text = measure(
             "llm_summary",
@@ -276,6 +293,21 @@ def process_meeting_pipeline(self, meeting_id: str) -> None:
             meeting_status="processing",
         )
         logger.info("pipeline_stage_end stage=summarized meeting_id=%s", meeting_id)
+        try:
+            memory_source_text = f"{llm_base_text}\n\n{summary_text}".strip()
+            memory_task_items = extract_task_items(memory_source_text)
+            save_task_items(
+                user_id=user_id,
+                task_items=memory_task_items,
+                db=db,
+                source="llm",
+                meeting_id=meeting_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "memory_extract_or_save_failed meeting_id=%s",
+                meeting_id,
+            )
 
         logger.info("pipeline_stage_start stage=tasks_extracted meeting_id=%s", meeting_id)
         extracted_tasks = measure(
