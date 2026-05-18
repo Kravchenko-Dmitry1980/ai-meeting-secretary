@@ -161,7 +161,7 @@ def test_celery_pipeline_started(monkeypatch) -> None:
     def fake_send_task(name: str, args: list[str], queue: str) -> None:
         called["value"] = True
         assert name == "app.workers.tasks.process_meeting_pipeline"
-        assert queue == "celery"
+        assert queue == "meetings"
         monkeypatch.setattr(
             "app.workers.tasks.prepare_audio_file",
             fake_prepare_audio_file,

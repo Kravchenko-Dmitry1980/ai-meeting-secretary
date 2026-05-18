@@ -2,16 +2,23 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/99-retries \
+    && apt-get update && apt-get install -y --no-install-recommends ffmpeg util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml /app/pyproject.toml
-RUN pip install --no-cache-dir .
+# Layer cache: reinstall deps only when pyproject.toml changes
+COPY pyproject.toml ./
+RUN pip install .
 
-COPY . /app
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Application source (invalidates only layers below when code changes)
+COPY . .
 
 RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /app/.cache/huggingface \
     && chown -R appuser:appuser /app
-USER appuser
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["celery", "-A", "app.infrastructure.queue.celery_app:celery_app", "worker", "--loglevel=info"]

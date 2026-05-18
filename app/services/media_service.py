@@ -11,13 +11,10 @@ AUDIO_EXTENSIONS = {".mp3", ".wav"}
 def prepare_audio_file(media_file_path: str) -> str:
     media_path = Path(media_file_path)
     extension = media_path.suffix.lower()
-    if extension in AUDIO_EXTENSIONS:
-        return str(media_path)
-
-    if extension not in VIDEO_EXTENSIONS:
+    if extension not in AUDIO_EXTENSIONS and extension not in VIDEO_EXTENSIONS:
         raise ValueError(f"Unsupported media format: {extension}")
 
-    audio_path = media_path.with_suffix(".wav")
+    audio_path = media_path.with_name(f"{media_path.stem}_normalized.wav")
     command = [
         settings.ffmpeg_binary,
         "-y",
@@ -27,6 +24,8 @@ def prepare_audio_file(media_file_path: str) -> str:
         "1",
         "-ar",
         "16000",
+        "-af",
+        "loudnorm=I=-16:TP=-1.5:LRA=11",
         str(audio_path),
     ]
     result = subprocess.run(

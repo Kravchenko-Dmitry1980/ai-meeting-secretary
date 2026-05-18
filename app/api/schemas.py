@@ -22,39 +22,27 @@ class MeetingStatusResponse(BaseModel):
 
 
 class TranscriptResponse(BaseModel):
-    meeting_id: str
-    transcript: str
-    provider: str
-    language: str
+    speaker: str
+    timestamp: str
+    text: str
 
 
 class SummaryResponse(BaseModel):
-    meeting_id: str
     summary: str
 
 
 class SegmentItemResponse(BaseModel):
     speaker: str
-    start_sec: float
-    end_sec: float
+    start: float
+    end: float
     text: str
-
-
-class SegmentsResponse(BaseModel):
-    meeting_id: str
-    segments: list[SegmentItemResponse]
 
 
 class TaskItemResponse(BaseModel):
     id: str
-    description: str
-    assignee_speaker_label: str | None = None
+    title: str
+    assignee: str | None = None
     due_date: str | None = None
     priority: str
     source_quote: str
     confidence: float | None = None
-
-
-class TasksResponse(BaseModel):
-    meeting_id: str
-    tasks: list[TaskItemResponse]

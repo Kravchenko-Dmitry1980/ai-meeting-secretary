@@ -11,5 +11,9 @@ celery_app = Celery(
 celery_app.conf.task_routes = {
     "app.workers.tasks.process_meeting_pipeline": {"queue": "meetings"},
 }
+celery_app.conf.task_default_queue = "meetings"
+celery_app.conf.task_acks_late = True
+celery_app.conf.task_reject_on_worker_lost = True
+celery_app.conf.worker_prefetch_multiplier = 1
 
 celery_app.autodiscover_tasks(["app.workers"])
