@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-10-02",
+  "repository": "speechbrain/spkrec-ecapa-voxceleb",
+  "revision": "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286",
+  "license": "Apache-2.0",
+  "source": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/tree/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286",
+  "sample_rate_hz": 16000,
+  "channels": 1,
+  "embedding_dimension": 192,
+  "architecture": {
+    "input_size": 80,
+    "channels": [1024, 1024, 1024, 1024, 3072],
+    "kernel_sizes": [5, 3, 3, 3, 1],
+    "dilations": [1, 2, 3, 4, 1],
+    "attention_channels": 128,
+    "lin_neurons": 192
+  },
+  "local_directory": ".runtime/voice/models/spkrec-ecapa-voxceleb/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286",
+  "files": [
+    {
+      "name": "README.md",
+      "size_bytes": 5377,
+      "sha256": "00f58c3cbd7a7510de9374080da0e82a4c4e8f4df567f7338fe6efe108be705a",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/README.md"
+    },
+    {
+      "name": "classifier.ckpt",
+      "size_bytes": 5534328,
+      "sha256": "fd9e3634fe68bd0a427c95e354c0c677374f62b3f434e45b78599950d860d535",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/classifier.ckpt"
+    },
+    {
+      "name": "embedding_model.ckpt",
+      "size_bytes": 83316686,
+      "sha256": "0575cb64845e6b9a10db9bcb74d5ac32b326b8dc90352671d345e2ee3d0126a2",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/embedding_model.ckpt"
+    },
+    {
+      "name": "hyperparams.yaml",
+      "size_bytes": 1919,
+      "sha256": "6f78854fa04ba59e761437b76a2575d3aba5e5016de3e9b69f0c9a5077fb1a41",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/hyperparams.yaml"
+    },
+    {
+      "name": "label_encoder.txt",
+      "size_bytes": 128619,
+      "sha256": "e13c3a167bb4112685670ee896d20e2b565af16b3a4ceeaa8689fa4d22adb8b9",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/label_encoder.txt"
+    },
+    {
+      "name": "mean_var_norm_emb.ckpt",
+      "size_bytes": 1921,
+      "sha256": "cd70225b05b37be64fc5a95e24395d804231d43f74b2e1e5a513db7b69b34c33",
+      "url": "https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb/resolve/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286/mean_var_norm_emb.ckpt"
+    }
+  ],
+  "download_bytes": 88988850,
+  "remote_code": false,
+  "yaml_review": "Only installed speechbrain.* constructors, !ref paths; no custom.py included. All inputs hash checked before loading.",
+  "qualification": "runtime-only; recognition quality not qualified"
+}

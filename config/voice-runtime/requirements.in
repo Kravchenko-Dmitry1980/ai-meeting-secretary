@@ -1,0 +1,7 @@
+# Optional isolated Windows/Python 3.12 CPU runtime; never merge into uv.lock.
+speechbrain==1.1.1
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+# SpeechBrain fetch API still uses huggingface_hub's pre-1.0 API.
+huggingface-hub==0.36.2
+psutil==7.2.2

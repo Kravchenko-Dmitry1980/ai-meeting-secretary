@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-10-02T22:45:07.970857+03:00",
+  "catalog_url": "https://polza.ai/api/v1/models",
+  "catalog_http_status": 200,
+  "catalog_count": 419,
+  "catalog_page_checked": "https://polza.ai/api/v1/models/catalog?limit=100",
+  "model_cards": {
+    "aiesa/transcribe": 200,
+    "aiesa/transcribe-fast": 200,
+    "openai/gpt-4o-transcribe-diarize": 404
+  },
+  "paid_requests": 1,
+  "models": [
+    {
+      "id": "aiesa/transcribe",
+      "catalog_present": true,
+      "timestamps": "documented_segment_seconds",
+      "speaker_labels": "anonymous_per_request_documented",
+      "known_speaker_references": "not_documented",
+      "qualification": "live-contract-qualified",
+      "live_qualified": true,
+      "documentation_source": "https://polza.ai/docs/gaidy/aiesa-transcribe",
+      "timing_labels_live_confirmed": true,
+      "recognition_quality_qualified": false,
+      "room_quality_qualified": false,
+      "live_evidence": ".runtime/speaker-implementation/provider-smoke/state.json",
+      "provider_request_id": "gen_2217387886402211841",
+      "synthetic_audio_duration_seconds": 24.845,
+      "live_segment_count": 8,
+      "live_timed_segment_count": 8,
+      "live_anonymous_speakers": 2,
+      "live_elapsed_seconds": 23.859,
+      "confirmed_rub": null,
+      "billing_receipt_confirmed": false
+    },
+    {
+      "id": "aiesa/transcribe-fast",
+      "catalog_present": true,
+      "timestamps": "documented_segment_seconds",
+      "speaker_labels": "anonymous_per_request_documented",
+      "known_speaker_references": "not_documented",
+      "qualification": "public-only",
+      "live_qualified": false,
+      "documentation_source": "https://polza.ai/docs/gaidy/aiesa-transcribe"
+    },
+    {
+      "id": "openai/whisper-large-v3-turbo",
+      "catalog_present": true,
+      "timestamps": "not_confirmed_for_current_route",
+      "speaker_labels": "not_documented_for_current_route",
+      "known_speaker_references": "not_documented",
+      "qualification": "public-only",
+      "live_qualified": false,
+      "documentation_source": "https://polza.ai/docs/api-reference/audio/transcriptions"
+    },
+    {
+      "id": "openai/gpt-4o-transcribe-diarize",
+      "catalog_present": false,
+      "timestamps": "not_confirmed_for_current_route",
+      "speaker_labels": "not_documented_for_current_route",
+      "known_speaker_references": "not_documented",
+      "qualification": "public-only",
+      "live_qualified": false,
+      "documentation_source": "https://polza.ai/docs/api-reference/audio/transcriptions"
+    }
+  ],
+  "interpretation": "Aiesa/transcribe timing and anonymous labels qualified by one root-owned synthetic SAPI live smoke. No person identity, reference recognition, room quality, accuracy or billing qualification.",
+  "root_owned_live_evidence": ".runtime/speaker-implementation/provider-smoke/state.json",
+  "public_get_authentication_used": false,
+  "root_live_request_authentication_used": true
+}

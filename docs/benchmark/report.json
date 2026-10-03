@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-10-01T18:25:55.728174+00:00",
+  "cloud": "не измерено",
+  "quality": "не измерено",
+  "cost": "не измерено",
+  "p50": null,
+  "p95": null,
+  "reason": "API-ключ и разрешённый запуск на проверенной записи ещё не предоставлены",
+  "decision_task_fidelity": "manual review of each evidence reference required",
+  "sample_count": 0,
+  "confirmed_rub_per_hour": null,
+  "config_restored": null
+}

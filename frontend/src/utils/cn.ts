@@ -1,3 +1,4 @@
+// Reused from owner's ai-meeting-secretary, commit 0268c2bd. See REUSE.md.
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 

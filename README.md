@@ -1,164 +1,71 @@
-# AI Meeting Secretary
+# Secretary
 
-AI Meeting Secretary is a production-oriented backend that converts raw
-meeting recordings into structured business outcomes: searchable transcript,
-speaker-attributed segments, concise summary, and actionable tasks.
+Локальное приложение для русских совещаний на Windows: запись микрофона и системного звука, импорт аудио/видео, хранение на диске, облачная обработка через Polza, протокол с ссылками на расшифровку. Запись и импорт доступны без API-ключа. Реальное качество облачных моделей ещё не измерено.
 
-Designed for B2B teams (sales, customer success, operations), it is built
-around modular providers so STT, LLM, and CRM integrations can evolve without
-rewriting the core pipeline.
+## Запуск
 
-## 1. Product overview
+Из PowerShell, независимо от текущей папки:
 
-Meeting recordings contain decisions, commitments, and deadlines, but most of
-that value is lost after the call. This project automates post-meeting work:
-
-- ingest audio/video from uploads,
-- transcribe speech locally,
-- diarize speakers and map text to speaker intervals,
-- generate executive summary,
-- extract action items with ownership hints.
-
-The result is a reliable API-first foundation for internal tooling, CRM sync,
-and workflow automation.
-
-## 2. Features
-
-- Upload meeting files (`mp3`, `wav`, `mp4`, `mkv`)
-- Audio preprocessing via `ffmpeg` for video inputs
-- Local STT with `faster-whisper`
-- Speaker diarization with `pyannote.audio`
-- Overlap-based speaker assignment for STT segments
-- Structured persistence in PostgreSQL (`meetings`, `transcripts`,
-  `transcript_segments`, `tasks`, `processing_jobs`, etc.)
-- Async long-running pipeline via Celery + Redis
-- Summary generation via OpenAI
-- Task extraction with:
-  - description
-  - assignee speaker label
-  - due date
-  - priority
-  - source quote
-  - confidence
-- REST API with OpenAPI docs
-- Alembic migrations and Dockerized local environment
-
-## 3. Architecture
-
-The system follows a modular service architecture with clear boundaries:
-
-- **API layer** (`FastAPI`): HTTP contracts, validation, orchestration trigger
-- **Worker layer** (`Celery`): long-running processing pipeline
-- **Service layer**: media, transcription, diarization, segmentation,
-  summarization, task extraction
-- **Infrastructure layer**: PostgreSQL, Redis, file storage, migrations
-
-Pipeline stages:
-
-`uploaded -> audio_ready -> transcribed -> diarized -> segmented -> summarized -> tasks_extracted -> done`
-
-Failure path:
-
-`... -> failed` with a persisted error in `processing_jobs.error`.
-
-## 4. Tech stack
-
-- **Python 3.11**
-- **FastAPI** + **Pydantic v2**
-- **SQLAlchemy 2.0** + **Alembic**
-- **PostgreSQL 16**
-- **Redis 7**
-- **Celery 5**
-- **faster-whisper** (local transcription)
-- **pyannote.audio** (speaker diarization)
-- **OpenAI API** (summary and task extraction)
-- **Docker Compose** (local orchestration)
-
-## 5. Quick start via Docker
-
-### Prerequisites
-
-- Docker + Docker Compose
-- `.env` file in project root (start from `.env.example`)
-- `OPENAI_API_KEY` and `PYANNOTE_AUTH_TOKEN` configured in `.env`
-
-### Run
-
-```bash
-cp .env.example .env
-docker compose up --build
+```powershell
+& 'D:\AI\Projects\Active\Secretary\scripts\start.ps1'
 ```
 
-Services:
+Первый запуск вызывает bootstrap: создаёт `.venv` с **уже установленным Python 3.12**, ставит зафиксированные зависимости из `uv.lock` и `frontend/package-lock.json`, собирает UI. Нужны локальные `uv`, Node.js (22.12+ или 24), npm, FFmpeg/FFprobe. Глобальные установки, ExecutionPolicy, Docker/WSL/CUDA не меняются.
 
-- API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
+UI: http://127.0.0.1:8765. Сервер слушает только loopback. При занятом порте скрипт остановится, сохранив чужой процесс; можно выбрать `-Port 8766`. Скрытый процесс Secretary отслеживается по PID, времени создания и собственному launcher. Повторный start не создаёт вторую копию. Штатная остановка завершает worker и запись:
 
-Health check:
-
-```bash
-curl http://localhost:8000/health
+```powershell
+& 'D:\AI\Projects\Active\Secretary\scripts\stop.ps1'
+& 'D:\AI\Projects\Active\Secretary\scripts\doctor.ps1'
 ```
 
-## 6. API endpoints
+Если политика PowerShell запрещает локальные скрипты, для отдельного процесса можно использовать `powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'D:\AI\Projects\Active\Secretary\scripts\start.ps1'`. Это не меняет системную политику. Автоматические команды используют явный `.venv\Scripts\python.exe`; активация не требуется.
 
-### Core
+## Ключ и обработка
 
-- `GET /health`
-- `POST /api/v1/meetings/upload`
-- `GET /api/v1/meetings/{id}` (pipeline status)
+Bootstrap создаёт локальный `.env` из `.env.example`. Откройте **`D:\AI\Projects\Active\Secretary\.env` локально** и заполните `POLZA_API_KEY=`. Ключ не вводится в чате или UI, не возвращается API и не хранится в браузере. После изменения `.env` перезапустите Secretary. Настройки моделей и дополнительного контроля расходов доступны в UI. Неопределённый исход оплачиваемого запроса приостанавливает его повторную отправку.
 
-### Outputs
+Ключ хранится только в `.env`; `.env.example` оставляйте пустым. Наличие ключа и разрешение облачной обработки — разные настройки. Обработкой управляет переключатель «Разрешить облачную обработку через Polza».
 
-- `GET /api/v1/meetings/{id}/transcript`
-- `GET /api/v1/meetings/{id}/segments`
-- `GET /api/v1/meetings/{id}/summary`
-- `GET /api/v1/meetings/{id}/tasks`
+«Дополнительные лимиты Secretary» — отдельный необязательный контроль расходов (`local_cost_limits_enabled`). Когда он выключен, приложение не передаёт `provider.max_price`, не останавливает встречу по локальному бюджету или отсутствующей оценке тарифа; учёт запросов и фактических квитанций сохраняется. Лимит API-ключа задаётся в кабинете Polza; Secretary не изменяет и не синхронизирует его сумму. Старые сохранённые оценки тарифов не включают дополнительные лимиты обратно. Неопределённый исход уже отправленного запроса по-прежнему защищён от повторного списания.
 
-## 7. Example workflow
+Подготовленные модели: `openai/whisper-large-v3-turbo` для файловой STT и `qwen/qwen3-30b-a3b-instruct-2507` для итогов. Это предварительный выбор по документированным возможностям, скорости маршрута и опубликованным тарифам. Он требует проверки качества на вашей эталонной русской записи. `aiesa/transcribe` доступна как явная альтернатива для диаризации; speaker labels независимых чанков не обозначают гарантированно одного человека. Подробности и неизвестные параметры: [docs/POLZA_CONTRACT.md](docs/POLZA_CONTRACT.md).
 
-1. Upload recording:
+Для повторной обработки итогов длинной записи 2 октября 2026 в рабочем профиле выбрана `openai/gpt-4.1-mini`: Qwen не прошла проверку некоторых цитат. Эта модель также доступна в списке настроек. Автоматическая проверка ссылок и цитат не заменяет ручную проверку смысла решений. Если после одного корректирующего запроса отдельные пункты по-прежнему не подтверждаются источником, приложение исключает их и показывает количество исключённых пунктов; проверенная часть итогов сохраняется.
 
-```bash
-curl -X POST "http://localhost:8000/api/v1/meetings/upload" \
-  -F "file=@./sample.mp4"
+Создайте встречу и выберите файл либо устройства записи. Запись запускается кнопкой, сохраняется постепенно и продолжается без ключа. Обработка живой встречи идёт завершёнными файлами-чанками: это не API приёма непрерывного аудиопотока. При отсутствии ключа показывается «Для облачной обработки нужен API-ключ»; аудио остаётся локально. Нажмите на ссылку источника решения/задачи для перехода к исходному сегменту. Неизвестные имена/сроки остаются пустыми. Исходный текст хранится отдельно от читаемой версии.
+
+## Данные и диагностика
+
+Данные и записи: `data/`. Журналы текущего запуска: `.runtime/server.stdout.log`, `.runtime/server.stderr.log`. SQLite и WAV принадлежат этому проекту; переносить их следует после штатной остановки. `.env`, данные, окружения, `.reference` и runtime исключены из Git. Исходники, тесты, инструкции и лицензии размещаются в [ai-meeting-secretary](https://github.com/Kravchenko-Dmitry1980/ai-meeting-secretary). Репозиторий не содержит личных записей, базы встреч, голосовых образцов или готовых окружений; их нужно хранить и переносить отдельно.
+
+API/OpenAPI: `/docs`, `/openapi.json`; префикс `/api/v1`. Браузерный клиент получает CSRF token в память; изменяющие запросы требуют `X-Secretary-Token`, а Origin/Host проверяются. API является локальным однопользовательским интерфейсом, без внешней аутентификации и публичного deployment.
+
+## Участники и общий микрофон
+
+В режиме «Общий микрофон · узнавание участников» доступны постоянные профили, гости встречи, голосовые образцы, локальное сравнение голосов и ручное исправление говорящих. Образцы требуют согласия и прослушивания; до калибровки на независимой разметке личности остаются неопределёнными и кандидаты проверяются вручную. Ответственные по задачам подтверждаются отдельно по исходным цитатам. Инструкция: [SPEAKER_MANUAL_ACCEPTANCE.md](docs/SPEAKER_MANUAL_ACCEPTANCE.md), результаты и ограничения: [SPEAKER_IDENTIFICATION_VALIDATION.md](docs/SPEAKER_IDENTIFICATION_VALIDATION.md).
+
+## Проверки
+
+```powershell
+Set-Location -LiteralPath 'D:\AI\Projects\Active\Secretary'
+& '.\.venv\Scripts\python.exe' -m pytest -q
+Push-Location frontend
+npm.cmd run test:processing
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+Pop-Location
 ```
 
-2. Poll status:
+Актуальные результаты и непроверенные сценарии: [docs/VALIDATION.md](docs/VALIDATION.md). Аудит и повторное использование: [docs/AUDIT_REUSE.md](docs/AUDIT_REUSE.md), архитектура: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), лицензии: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-```bash
-curl "http://localhost:8000/api/v1/meetings/<meeting_id>"
+Ограниченный облачный benchmark запускается **после предоставления ключа и проверенной записи**, только явной командой с бюджетом. В настройках можно явно подставить публичную оценку из каталога; она не является подтверждением списаний. Полная инструкция и условия сверки: [docs/BENCHMARK.md](docs/BENCHMARK.md). Без `--run-cloud` скрипт не делает сетевых запросов и пишет «не измерено»:
+
+```powershell
+& '.\.venv\Scripts\python.exe' scripts\benchmark.py
+# Следующая команда пока не выполнялась:
+& '.\.venv\Scripts\python.exe' scripts\benchmark.py --run-cloud --audio 'D:\path\test.wav' --reference 'D:\path\reference.txt' --max-rub 5 --output '.runtime\benchmark\report.json'
 ```
 
-3. Fetch artifacts:
-
-```bash
-curl "http://localhost:8000/api/v1/meetings/<meeting_id>/transcript"
-curl "http://localhost:8000/api/v1/meetings/<meeting_id>/segments"
-curl "http://localhost:8000/api/v1/meetings/<meeting_id>/summary"
-curl "http://localhost:8000/api/v1/meetings/<meeting_id>/tasks"
-```
-
-## 8. Roadmap
-
-- Native Zoom / Telemost ingestion
-- Speaker-to-participant identity mapping (human-in-the-loop)
-- amoCRM integration (deal/task sync, meeting notes)
-- Role-based auth and multi-tenant isolation
-- Observability stack (metrics, traces, alerting)
-- Better task normalization and SLA policy engine
-
-## 9. Screenshots placeholder
-
-Add screenshots here after UI/consumer integration:
-
-- `docs/screenshots/upload.png`
-- `docs/screenshots/processing-status.png`
-- `docs/screenshots/summary-and-tasks.png`
-- `docs/screenshots/api-swagger.png`
-
-## 10. License
-
-This project is currently distributed without a final open-source license.
-Choose and add a `LICENSE` file (for example, MIT, Apache-2.0, or proprietary)
-before public distribution.
+Один запуск даёт единичную задержку, а не p50/p95. WER/CER требуют проверенного эталона; решения, задачи, имена, даты, числа и отрицания проверяются по исходным ссылкам. Неопределённую стоимость нельзя считать нулевой. Не повторяйте автоматически запрос после timeout: провайдер мог его принять и списать средства.

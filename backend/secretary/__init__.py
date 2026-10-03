@@ -1,0 +1,2 @@
+"""Secretary local application."""
+

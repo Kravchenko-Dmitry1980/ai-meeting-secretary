@@ -1,0 +1,247 @@
+{
+  "updated_at": "2026-10-01",
+  "observed_at_utc": "2026-10-01T17:43:39.4126283+00:00",
+  "source": "public_polza_metadata",
+  "source_urls": [
+    "https://polza.ai/api/v1/models",
+    "https://polza.ai/api/v1/models/catalog",
+    "https://polza.ai/docs/api-reference/models/catalog"
+  ],
+  "http_read_evidence": {
+    "paid_requests": 0,
+    "authenticated": false,
+    "catalog": 200,
+    "models": 200
+  },
+  "defaults": {
+    "summary_model": "qwen/qwen3-30b-a3b-instruct-2507",
+    "selection_status": "provisional_until_russian_benchmark",
+    "stt_model": "openai/whisper-large-v3-turbo"
+  },
+  "models": [
+    {
+      "id": "aiesa/transcribe-fast",
+      "name": "Aiesa Транскрипция (Молния)",
+      "type": "stt",
+      "endpoints": [
+        "/api/v1/audio/transcriptions"
+      ],
+      "provider_at_observation": "aiesa",
+      "price_rub_per_minute": "0.40000000",
+      "input_rub_per_million": null,
+      "output_rub_per_million": null,
+      "billing_unit": "whole_minute_ceiling",
+      "minimum_billing_seconds": 60,
+      "russian_support": "language_ru_documented_not_live_verified",
+      "timestamps": "provider_segment",
+      "diarization": true,
+      "async_operation": true,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": null,
+      "supported_parameters": null,
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/gaidy/aiesa-transcribe"
+      ]
+    },
+    {
+      "id": "aiesa/transcribe",
+      "name": "Aiesa Транскрипция",
+      "type": "stt",
+      "endpoints": [
+        "/api/v1/audio/transcriptions"
+      ],
+      "provider_at_observation": "aiesa",
+      "price_rub_per_minute": "0.12000000",
+      "input_rub_per_million": null,
+      "output_rub_per_million": null,
+      "billing_unit": "whole_minute_ceiling",
+      "minimum_billing_seconds": 60,
+      "russian_support": "language_ru_documented_not_live_verified",
+      "timestamps": "provider_segment",
+      "diarization": true,
+      "async_operation": true,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": null,
+      "supported_parameters": null,
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/gaidy/aiesa-transcribe"
+      ]
+    },
+    {
+      "id": "openai/whisper-large-v3",
+      "name": "OpenAI: Whisper Large V3",
+      "type": "stt",
+      "endpoints": [
+        "/api/v1/audio/transcriptions"
+      ],
+      "provider_at_observation": "together",
+      "price_rub_per_minute": "0.10800000",
+      "input_rub_per_million": null,
+      "output_rub_per_million": null,
+      "billing_unit": "per_second",
+      "minimum_billing_seconds": null,
+      "russian_support": "language_ru_documented_not_live_verified",
+      "timestamps": "provider_segments_if_present",
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": 0,
+      "supported_parameters": [],
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/api-reference/models/catalog"
+      ]
+    },
+    {
+      "id": "openai/whisper-large-v3-turbo",
+      "name": "OpenAI: Whisper Large V3 Turbo",
+      "type": "stt",
+      "endpoints": [
+        "/api/v1/audio/transcriptions"
+      ],
+      "provider_at_observation": "groq",
+      "price_rub_per_minute": "0.04800000",
+      "input_rub_per_million": null,
+      "output_rub_per_million": null,
+      "billing_unit": "per_second",
+      "minimum_billing_seconds": null,
+      "russian_support": "language_ru_documented_not_live_verified",
+      "timestamps": "chunk_default_provider_segments_if_present",
+      "request_response_format": "json",
+      "response_format_observation": {
+        "observed_at": "2026-10-02",
+        "source": "live_polza_http_400",
+        "advertised_allowed_values": ["json", "text"],
+        "rejected_value": "verbose_json",
+        "documentation_conflict": true
+      },
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": 0,
+      "supported_parameters": [],
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/api-reference/models/catalog"
+      ]
+    },
+    {
+      "id": "openai/gpt-4o-mini-transcribe",
+      "name": "gpt 4o mini transcribe",
+      "type": "stt",
+      "endpoints": [
+        "/api/v1/audio/transcriptions"
+      ],
+      "provider_at_observation": "openai",
+      "price_rub_per_minute": "0.35057400",
+      "input_rub_per_million": null,
+      "output_rub_per_million": null,
+      "billing_unit": "per_second",
+      "minimum_billing_seconds": null,
+      "russian_support": "language_ru_documented_not_live_verified",
+      "timestamps": "chunk_only",
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": null,
+      "supported_parameters": null,
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/api-reference/models/catalog"
+      ]
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "OpenAI: GPT-4.1 Mini",
+      "type": "chat",
+      "endpoints": ["/api/v1/chat/completions"],
+      "provider_at_observation": "azure",
+      "price_rub_per_minute": null,
+      "input_rub_per_million": "46.74320000",
+      "output_rub_per_million": "186.97280000",
+      "billing_unit": "token",
+      "minimum_billing_seconds": null,
+      "russian_support": "manual_quality_review_required",
+      "timestamps": "not_applicable",
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": 1047576,
+      "supported_parameters": ["max_tokens", "response_format", "structured_outputs", "temperature"],
+      "status": "summary_reprocessing_candidate",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "observed_at": "2026-10-02",
+      "source_urls": ["https://polza.ai/api/v1/models/openai/gpt-4.1-mini"]
+    },
+    {
+      "id": "qwen/qwen3-30b-a3b-instruct-2507",
+      "name": "Qwen: Qwen3 30B A3B Instruct 2507",
+      "type": "chat",
+      "endpoints": [
+        "/api/v1/chat/completions"
+      ],
+      "provider_at_observation": "streamlake",
+      "price_rub_per_minute": null,
+      "input_rub_per_million": "5.62671270",
+      "output_rub_per_million": "22.55943690",
+      "billing_unit": "token",
+      "minimum_billing_seconds": null,
+      "russian_support": "not_live_verified",
+      "timestamps": "provider_segments_if_present",
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": 128000,
+      "supported_parameters": [
+        "tools",
+        "tool_choice",
+        "response_format",
+        "structured_outputs",
+        "logprobs",
+        "top_logprobs",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "stop",
+        "presence_penalty"
+      ],
+      "status": "public_only_not_qualified",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "source_urls": [
+        "https://polza.ai/api/v1/models",
+        "https://polza.ai/docs/api-reference/audio/transcriptions",
+        "https://polza.ai/docs/api-reference/chat/completions",
+        "https://polza.ai/docs/api-reference/models/catalog"
+      ]
+    }
+  ]
+}
