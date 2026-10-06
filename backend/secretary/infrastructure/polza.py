@@ -1549,17 +1549,33 @@ class PolzaClient:
                 if len(partials) <= 1:
                     break
                 # First retain the original grouping so paid merge checkpoints remain
-                # reusable. Compact protocols may need more space than raw-text map
-                # batches; only expand a stalled stage, within the existing 40KB cap.
-                try:
-                    groups = merge_batches(context,partials,byte_limit) if context is not None else self._pack(partials, byte_limit)
-                except (ProviderError, ValueError) as exc:
-                    if isinstance(exc,ProviderError) and exc.code != "summary_too_large":
-                        raise
-                    groups = merge_batches(context,partials,40000) if context is not None else self._pack(partials, 40000)
-                if len(groups) >= len(partials) and byte_limit < 40000:
-                    groups = merge_batches(context,partials,40000) if context is not None else self._pack(partials, 40000)
-                if len(groups) >= len(partials):
+                # reusable. If that stalls at 40KB, v2 may use the remaining exact
+                # request budget. Legacy keeps its historical checkpoint graph.
+
+                def pack_merges(limit):
+                    if context is None:
+                        return self._pack(partials, limit)
+                    return merge_batches(
+                        context, partials, limit,
+                        request_bytes=lambda group: len(_json_bytes(
+                            self.summary_payload(group, merge=True, context=context))),
+                        request_limit=MAX_SUMMARY_REQUEST_BYTES,
+                    )
+
+                def try_pack_merges(limit):
+                    try:
+                        return pack_merges(limit)
+                    except (ProviderError, ValueError) as exc:
+                        if isinstance(exc,ProviderError) and exc.code != "summary_too_large":
+                            raise
+                        return None
+
+                groups = try_pack_merges(byte_limit)
+                if (groups is None or len(groups) >= len(partials)) and byte_limit < 40000:
+                    groups = try_pack_merges(40000)
+                if (groups is None or len(groups) >= len(partials)) and context is not None:
+                    groups = try_pack_merges(MAX_SUMMARY_REQUEST_BYTES)
+                if groups is None or len(groups) >= len(partials):
                     raise ProviderError("summary_reduce_limit", "Частичные итоги слишком велики для безопасного объединения")
                 merged = []
                 for group in groups:

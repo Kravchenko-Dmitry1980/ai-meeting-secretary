@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 
 from secretary.application.summary_context import provider_context
 from secretary.domain.summary_context import FrozenSummaryContext, FrozenSummarySource, canonical_json
@@ -111,14 +112,25 @@ def map_batches(context: FrozenSummaryContext, byte_limit: int) -> list[list[dic
     return batches
 
 
-def merge_batches(context: FrozenSummaryContext, partials: list[dict], byte_limit: int) -> list[list[dict]]:
+def merge_batches(context: FrozenSummaryContext, partials: list[dict], byte_limit: int, *,
+                  request_bytes: Callable[[list[dict]], int] | None = None,
+                  request_limit: int | None = None) -> list[list[dict]]:
     if type(byte_limit) is not int or byte_limit <= 0:
         raise SummaryContextPayloadError("summary_byte_limit_invalid")
+    if ((request_bytes is None) != (request_limit is None)
+            or request_limit is not None and (type(request_limit) is not int or request_limit <= 0)):
+        raise SummaryContextPayloadError("summary_request_limit_invalid")
+
+    def fits(group):
+        if body_bytes(context, group, merge=True) > byte_limit:
+            return False
+        return request_bytes is None or request_bytes(group) <= request_limit
+
     groups, current = [], []
     for partial in partials:
-        if body_bytes(context, [partial], merge=True) > byte_limit:
+        if not fits([partial]):
             raise SummaryContextPayloadError("summary_protocol_too_large")
-        if current and body_bytes(context, [*current, partial], merge=True) > byte_limit:
+        if current and not fits([*current, partial]):
             groups.append(current)
             current = []
         current.append(partial)
