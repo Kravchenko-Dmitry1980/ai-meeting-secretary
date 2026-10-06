@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     allow_unknown_price: bool = False
     unknown_request_reservation_rub: float | None = Field(default=None, gt=0, le=100000)
     cloud_enabled: bool = True
+    # Owner deployment policy, deliberately excluded from editable team/local config.
+    approved_monthly_external_costs_rub: float = Field(default=0, ge=0, le=3000, allow_inf_nan=False)
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     stt_price_rub_per_minute: float | None = Field(default=None, ge=0, allow_inf_nan=False)

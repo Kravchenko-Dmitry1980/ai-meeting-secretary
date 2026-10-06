@@ -6,6 +6,7 @@ const summary = (version = 1, transcript = 1) => ({ id: `summary-${version}`, me
 function results(props) {
   const { MeetingResults } = load('components/MeetingResults.tsx', {
     './AssignmentReviewPanel': { AssignmentReviewPanel: 'AssignmentReviewPanel' },
+    './TaskPublicationPanel': { TaskPublicationPanel: 'TaskPublicationPanel' },
     'react/jsx-runtime': { jsx: (type, props, key) => ({ type, props, key }), jsxs: (type, props, key) => ({ type, props, key }) },
   });
   return MeetingResults(props);
@@ -17,8 +18,13 @@ test('selected summary mounts assignments with exact versions, meeting IDs, dead
   let tree = results(props); let panel = get(tree, (node) => node.type === 'AssignmentReviewPanel');
   assert.equal(panel.props.transcriptVersion, 2); assert.equal(panel.props.summaryVersion, 4);
   assert.equal(panel.props.roster[0].id, 'meeting-person'); assert.equal(panel.props.dueDates.task, 'Friday');
+  const publication = get(tree, (node) => node.type === 'TaskPublicationPanel');
+  assert.equal(publication.props.meetingId, 'A'); assert.equal(publication.props.transcriptVersion, 2); assert.equal(publication.props.summaryVersion, 4);
+  assert.equal(publication.props.refreshKey, 'r1'); assert.equal(publication.props.onSource, props.onSource);
   const key = panel.key; props.assignments.refreshKey = 'r2'; props.assignments.roster = [{ id: 'meeting-person', display_name: 'Renamed', enabled: true }];
   panel = get(results(props), (node) => node.type === 'AssignmentReviewPanel'); assert.equal(panel.key, key);
+  const refreshedPublication = get(results(props), (node) => node.type === 'TaskPublicationPanel');
+  assert.equal(refreshedPublication.props.refreshKey, 'r2'); assert.equal(refreshedPublication.key, publication.key);
   props.summary = summary(5, 2); panel = get(results(props), (node) => node.type === 'AssignmentReviewPanel'); assert.notEqual(panel.key, key);
   assert.match(text(tree), /Old owner/); assert.match(text(tree), /Friday/);
 });
@@ -29,6 +35,7 @@ test('summary evidence requests its own transcript version; missing summary reta
   assert.deepEqual(calls, [['source', 2]]);
   tree = results({ ...props, summary: null }); assert.match(text(tree), /Итоги ещё не сформированы/);
   assert.equal(walk(tree).some((node) => node.type === 'AssignmentReviewPanel'), false);
+  assert.equal(walk(tree).some((node) => node.type === 'TaskPublicationPanel'), false);
 });
 
 test('App passes meeting roster and refreshes compatibility summary after identity revisions and assignment changes', async () => {
@@ -76,6 +83,7 @@ test('historical source still uses immutable timestamp and audio channel; wrong 
   get(tree, (node) => node.type === 'audio').props.onLoadedMetadata(); await flush(); assert.equal(player.currentTime, 1.5); assert.equal(plays, 1);
   tree = results({ summary: { ...summary(), meeting_id: 'B' }, status: 'succeeded', tab: 'Задачи', onSource() {}, assignments: { meetingId: 'A', roster: [] } });
   assert.equal(walk(tree).some((node) => node.type === 'AssignmentReviewPanel'), false);
+  assert.equal(walk(tree).some((node) => node.type === 'TaskPublicationPanel'), false);
 });
 
 test('foreign or wrong-version source cannot preview or seek; late historical source is discarded after selection', async () => {

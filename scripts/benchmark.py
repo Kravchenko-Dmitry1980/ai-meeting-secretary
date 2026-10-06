@@ -7,10 +7,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -176,6 +178,48 @@ def unresolved_usage(usage: dict) -> bool:
         record.get("status") in {"unknown", "reserved"} for record in usage.get("records", []))
 
 
+def _valid_money(value) -> bool:
+    return (type(value) in {int, float} and 0 <= value <= 1_000_000_000
+            and math.isfinite(value))
+
+
+def _monthly_ready(value: dict) -> bool:
+    fields = ("approved_rub", "effective_limit_rub", "confirmed_rub", "reserved_rub", "remaining_rub")
+    return (isinstance(value, dict) and all(_valid_money(value.get(name)) for name in fields)
+            and isinstance(value.get("period"), str)
+            and re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value["period"]) is not None
+            and "paused_code" in value and value["paused_code"] is None
+            and 0 < value["effective_limit_rub"] <= value["approved_rub"] <= 3000
+            and value["reserved_rub"] == 0 and value["remaining_rub"] > 0
+            and value["remaining_rub"] <= max(0, value["effective_limit_rub"] - value["confirmed_rub"])
+            and type(value.get("uncertain_count", 0)) is int and value.get("uncertain_count", 0) == 0)
+
+
+def _scope_snapshot(client, scope_id: str, cap: float) -> dict:
+    value = client.get(f"/api/v1/cloud-budget/scopes/{scope_id}").raise_for_status().json()
+    fields = ("cap_rub", "confirmed_rub", "reserved_rub", "remaining_rub")
+    if (not isinstance(value, dict) or not all(_valid_money(value.get(name)) for name in fields)
+            or value["cap_rub"] != cap
+            or "paused_code" not in value
+            or value["paused_code"] not in {None, "monthly_budget_scope_exhausted"}
+            or type(value.get("uncertain_count", 0)) is not int or value.get("uncertain_count", 0) < 0
+            or value["remaining_rub"] > max(0, cap - value["confirmed_rub"] - value["reserved_rub"]) + 1e-6):
+        raise RuntimeError("Backend returned an invalid benchmark scope snapshot")
+    return value
+
+
+def _scope_unresolved(value: dict) -> bool:
+    return value["reserved_rub"] > 0 or value.get("uncertain_count", 0) > 0
+
+
+def _scope_cost_metrics(value: dict, duration_ms: int | None) -> dict:
+    known = not _scope_unresolved(value)
+    return {"cost_source": "cloud_budget_scope",
+            "cost": "confirmed" if known else "unknown or outstanding scoped cloud receipt",
+            "confirmed_rub_per_hour": value["confirmed_rub"] * 3_600_000 / duration_ms
+            if known and duration_ms and duration_ms > 0 else None}
+
+
 def _set_configuration(client, changes: dict) -> None:
     """Require the backend to acknowledge every guard before any upload or restore."""
     applied = client.patch("/api/v1/config", json=changes).raise_for_status().json()
@@ -186,9 +230,8 @@ def _set_configuration(client, changes: dict) -> None:
 
 
 def _abort(client, meeting_id: str, cap: float, *, wait_seconds: float = 30) -> bool:
-    """Block new cloud calls before cancelling own jobs. Never loosen a live benchmark cap."""
-    _set_configuration(client, {"meeting_budget_rub": cap, "allow_unknown_price": False,
-                                "cloud_enabled": False, "local_cost_limits_enabled": True})
+    """Freeze cloud before cancelling own jobs; the run cap stays in its scope."""
+    _set_configuration(client, {"cloud_enabled": False})
     deadline = time.monotonic() + wait_seconds
     while True:
         active = [job for job in _jobs(client, meeting_id) if job["status"] in ACTIVE_JOB_STATUSES]
@@ -244,35 +287,55 @@ def main(argv: list[str] | None = None) -> int:
             config = client.get("/api/v1/config").raise_for_status().json()
             if not config.get("key_configured"):
                 reject("Backend has no POLZA_API_KEY; no paid request was sent")
-            if type(config.get("local_cost_limits_enabled")) is not bool:
-                reject("Backend must expose local_cost_limits_enabled for a bounded benchmark; no request submitted")
-            prices = [config.get(name) for name in ("stt_price_rub_per_minute", "summary_input_rub_per_million", "summary_output_rub_per_million")]
-            if not config.get("stt_model") or not config.get("summary_model") or any(
-                    not isinstance(price, (float, int)) or isinstance(price, bool) or not math.isfinite(price) or price < 0 for price in prices):
-                reject("Selected models need verified configured prices for a bounded benchmark; no request submitted")
+            if type(config.get("cloud_enabled")) is not bool:
+                reject("Backend must expose a boolean cloud_enabled flag; no request submitted")
+            if any(not isinstance(config.get(name), str) or not config[name].strip()
+                   for name in ("stt_model", "summary_model")):
+                reject("Select STT and summary models before the benchmark; no request submitted")
             if not _idle(client):
-                reject("Secretary must be idle before changing benchmark limits; no paid request was sent")
+                reject("Secretary must be idle before a benchmark; no paid request was sent")
             if unresolved_usage(client.get("/api/v1/usage").raise_for_status().json()):
                 reject("Existing reserved/unknown cloud expense needs reconciliation before another benchmark; no request submitted")
             token = client.get("/api/v1/session").raise_for_status().json()["csrf_token"]
+            client.headers["X-Secretary-Token"] = token
+            monthly = client.post("/api/v1/cloud-budget/refresh").raise_for_status().json()
+            report["monthly_budget_preflight"] = monthly
+            if not _monthly_ready(monthly):
+                reject("Monthly cloud budget is not ready or has outstanding expense; no benchmark submitted")
         except Exception as exc:
             report["reason"] = f"Local API preflight failed: {type(exc).__name__}; no benchmark submitted"
             write_report(args.output, report)
             print(f"Report: {args.output}; preflight failed; no benchmark submitted")
             return 1
-        client.headers["X-Secretary-Token"] = token
-        patch = {"meeting_budget_rub": args.max_rub, "allow_unknown_price": False,
-                 "cloud_enabled": True, "local_cost_limits_enabled": True}
-        prior_config = {name: config[name] for name in patch}
+        prior_config = {"cloud_enabled": config["cloud_enabled"]}
         meeting_id, settled, started = None, False, None
+        scope_id, scope, cloud_change_attempted = None, None, False
+        scope_operation_id = str(uuid4())
+        report.update({"cloud_budget_scope_operation_id": scope_operation_id, "max_rub": args.max_rub})
         exit_code = 0
         try:
-            # The first PATCH may be applied even if its response is lost. Keep it
-            # inside the same finally boundary as all subsequent benchmark work.
-            _set_configuration(client, patch)
+            response = client.post("/api/v1/cloud-budget/scopes", json={
+                "operation_id": scope_operation_id, "cap_rub": args.max_rub}).raise_for_status()
+            if response.status_code != 201:
+                raise RuntimeError("Backend did not acknowledge creation of the benchmark scope")
+            accepted = response.json()
+            value = accepted.get("scope_id") if isinstance(accepted, dict) else None
+            if (not isinstance(value, str) or str(UUID(value)) != value
+                    or not _valid_money(accepted.get("cap_rub")) or accepted["cap_rub"] != args.max_rub):
+                raise RuntimeError("Backend did not confirm the requested benchmark scope")
+            scope_id = value
+            report["cloud_budget_scope_id"] = scope_id
+            if not _idle(client):
+                raise RuntimeError("Secretary became busy before benchmark activation")
+            if not config["cloud_enabled"]:
+                # An applied PATCH can lose its response; retain restoration ownership.
+                cloud_change_attempted = True
+                _set_configuration(client, {"cloud_enabled": True})
             if not _idle(client):
                 raise RuntimeError("Secretary became busy before benchmark import")
-            meeting = client.post("/api/v1/meetings", json={"title": f"Benchmark {datetime.now(timezone.utc).isoformat()}"}).raise_for_status().json()
+            meeting = client.post("/api/v1/meetings", json={
+                "title": f"Benchmark {datetime.now(timezone.utc).isoformat()}",
+                "cloud_budget_scope_id": scope_id}).raise_for_status().json()
             meeting_id = meeting["id"]
             report.update({"meeting_id": meeting_id, "audio_path": str(args.audio.resolve()),
                            "models": {"stt": config["stt_model"], "summary": config["summary_model"]}, "max_rub": args.max_rub})
@@ -288,6 +351,12 @@ def main(argv: list[str] | None = None) -> int:
                     first_text = time.monotonic() - started
                 peak_rss, cpu_end = _resources(process, peak_rss)
                 jobs = _jobs(client, meeting_id)
+                scope = _scope_snapshot(client, scope_id, args.max_rub)
+                report["cloud_budget_scope"] = scope
+                if scope.get("uncertain_count", 0) > 0:
+                    raise RuntimeError("Benchmark has an uncertain cloud outcome; no resubmit")
+                if scope["confirmed_rub"] > args.max_rub:
+                    raise RuntimeError("Confirmed benchmark cost exceeded its scope; inspect the retained meeting")
                 if jobs and not any(job["status"] in ACTIVE_JOB_STATUSES for job in jobs):
                     settled = True
                     break
@@ -309,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
                            "measurement_note": "First-text time is observed by polling; RSS is the maximum sampled backend RSS, without browser/FFmpeg/provider resources.",
                            "summary_http_status": summary_response.status_code, "summary": summary_response.json(),
                            "statistics_note": "One sample is not p50/p95 statistics. At least 20 independent runs are needed for descriptive percentiles; tail estimates require more."})
-            report.update(cost_metrics(usage, final_meeting.get("duration_ms")))
+            report.update(_scope_cost_metrics(scope, final_meeting.get("duration_ms")))
             if not complete:
                 report["confirmed_rub_per_hour"] = None
                 report["cost_hourly_note"] = "Full pipeline cost per hour is not qualified by partial processing"
@@ -323,31 +392,50 @@ def main(argv: list[str] | None = None) -> int:
                            "total_seconds": time.monotonic() - started if started is not None else None})
             exit_code = 1
         finally:
-            if meeting_id and (not settled or unresolved_usage(report.get("usage", {}))):
+            scope_confirmed = False
+            if meeting_id:
                 try:
+                    scope = _scope_snapshot(client, scope_id, args.max_rub)
+                    report["cloud_budget_scope"] = scope
+                    scope_confirmed = not _scope_unresolved(scope)
+                except Exception:
+                    scope_confirmed = False
+            if meeting_id and (not settled or not scope_confirmed):
+                try:
+                    cloud_change_attempted = True
                     settled = _abort(client, meeting_id, args.max_rub)
                     report["cloud_pause_confirmed"] = True
                     report["jobs"] = _jobs(client, meeting_id)
                     report["usage"] = client.get("/api/v1/usage", params={"meeting_id": meeting_id}).raise_for_status().json()
-                    report.update(cost_metrics(report["usage"], report.get("duration_ms")))
+                    scope = _scope_snapshot(client, scope_id, args.max_rub)
+                    report["cloud_budget_scope"] = scope
+                    scope_confirmed = not _scope_unresolved(scope)
                 except Exception:
                     settled = False
-                    report["cloud_pause_confirmed"] = None
+                    scope_confirmed = False
+                    report.setdefault("cloud_pause_confirmed", None)
+            if scope is not None:
+                report.update(_scope_cost_metrics(scope, report.get("duration_ms")))
+            if meeting_id is not None and not scope_confirmed:
+                report["cost"] = "unknown or outstanding scoped cloud receipt"
+            if (meeting_id is not None and not scope_confirmed) or report["cloud"] != "measured":
+                report["confirmed_rub_per_hour"] = None
             try:
-                if (settled and not unresolved_usage(report.get("usage", {}))) or meeting_id is None:
-                    _set_configuration(client, prior_config)
+                if (settled and scope_confirmed) or meeting_id is None:
+                    if cloud_change_attempted:
+                        _set_configuration(client, prior_config)
                     report["config_restored"] = True
                 else:
                     exit_code = 1
                     report["config_restored"] = False
-                    report["cleanup_note"] = ("Cloud disabled with benchmark cap; reconcile retained jobs/expenses before restoring config."
+                    report["cleanup_note"] = ("Cloud disabled; reconcile retained scoped jobs/expenses before restoring its original flag."
                                               if report.get("cloud_pause_confirmed") else
-                                              "Original larger cap was not restored; cloud pause could not be confirmed. Inspect backend configuration and retained jobs.")
+                                              "Cloud pause could not be confirmed. Inspect retained jobs and the benchmark scope.")
                     report["prior_config"] = prior_config
             except Exception:
                 exit_code = 1
                 report["config_restored"] = False
-                report["cleanup_note"] = "API unavailable while restoring configuration; inspect backend limits before another run."
+                report["cleanup_note"] = "API unavailable while restoring the cloud flag; inspect backend configuration before another run."
                 report["prior_config"] = prior_config
             write_report(args.output, report)
         print(f"Report: {args.output}; existing meeting retained: {meeting_id or 'not created'}; config_restored={report['config_restored']}")

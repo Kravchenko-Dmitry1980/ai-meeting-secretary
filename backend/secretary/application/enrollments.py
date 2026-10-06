@@ -10,6 +10,7 @@ from secretary.domain.enrollment import Enrollment, EnrollmentFailure
 from secretary.domain.voice import ModelStamp, PrivateMaterial, VoiceError, canonical_uuid, MAX_PAYLOAD
 from secretary.infrastructure.database import uid, now
 from secretary.infrastructure.enrollment_repository import EnrollmentRepository
+from secretary.infrastructure.maintenance_executor import MaintenanceExecutor
 from secretary.infrastructure.voice_audio import EnrollmentDecoder, wav_bytes
 from secretary.infrastructure.voice_engine import LocalVoiceEngine
 from secretary.infrastructure.voice_store import VoiceStore, _current_user_owned
@@ -31,7 +32,9 @@ class EnrollmentService:
         self._events = {}
         self._closed = False
         self._condition = threading.Condition(self._lock)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='SecretaryEnrollment')
+        self._executor = MaintenanceExecutor(
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix='SecretaryEnrollment'),
+            maintenance=getattr(db, 'maintenance', None), participant_id=getattr(db, 'participant_id', None))
 
     def lock(self, enrollment_id):
         with self._lock:

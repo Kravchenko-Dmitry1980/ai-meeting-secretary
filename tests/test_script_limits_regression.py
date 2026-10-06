@@ -5,6 +5,7 @@ import asyncio
 import importlib.util
 import json
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
@@ -19,49 +20,93 @@ def load_script(name):
 
 
 class LocalBackend:
-    def __init__(self, *, original_limits=False, failure=None):
-        self.config = {'key_configured': True, 'cloud_enabled': False,
+    scope_id = '35f5013a-705b-487f-9ab2-fbf583aa9b94'
+
+    def __init__(self, *, original_limits=False, original_cloud=False, failure=None, prices=None):
+        self.config = {'key_configured': True, 'cloud_enabled': original_cloud,
                        'local_cost_limits_enabled': original_limits,
                        'allow_unknown_price': True, 'meeting_budget_rub': 100,
                        'stt_model': 'mock/stt', 'summary_model': 'mock/summary',
-                       'stt_price_rub_per_minute': .1,
-                       'summary_input_rub_per_million': 1,
-                       'summary_output_rub_per_million': 2}
+                       'stt_price_rub_per_minute': prices,
+                       'summary_input_rub_per_million': prices,
+                       'summary_output_rub_per_million': prices}
         self.original = dict(self.config)
         self.failure = failure
         self.patches = []
         self.posts = []
+        self.events = []
         self.upload_config = None
+        self.meeting_body = None
+        self.scope_body = None
+        self.scope_created = False
+        self.scope_reads = 0
+        self.scope = {'cap_rub': 5, 'confirmed_rub': .5, 'reserved_rub': 0,
+                      'remaining_rub': 4.5, 'paused_code': None, 'uncertain_count': 0}
+        if failure in {'unknown', 'running'}:
+            self.scope.update(reserved_rub=1, remaining_rub=3.5)
+        if failure == 'uncertain':
+            self.scope['uncertain_count'] = 1
+        self.monthly = {'period': '2026-10', 'approved_rub': 3000,
+                        'effective_limit_rub': 3000, 'confirmed_rub': 4,
+                        'reserved_rub': 0, 'remaining_rub': 2996, 'paused_code': None}
 
     def __call__(self, request):
         assert request.url.host == '127.0.0.1'
         path = request.url.path
+        self.events.append((request.method, path))
+        if request.method in {'POST', 'PATCH'}:
+            assert request.headers.get('X-Secretary-Token') == 'mock-script-token'
+        if request.method == 'POST':
+            self.posts.append(path)
         if path == '/api/v1/config':
             if request.method == 'PATCH':
                 patch = json.loads(request.content)
                 self.patches.append(patch)
-                if self.failure == 'restore' and len(self.patches) > 1 and patch.get('meeting_budget_rub') == 100:
+                if self.failure == 'restore' and len(self.patches) > 1 and patch == {'cloud_enabled': False}:
                     raise httpx.ConnectError('mock restore unavailable', request=request)
                 self.config.update(patch)
                 if len(self.patches) == 1:
                     if self.failure == 'initial_patch_timeout':
                         raise httpx.ReadTimeout('mock response lost after applied PATCH', request=request)
-                    if self.failure == 'ignored_flag':
-                        self.config['local_cost_limits_enabled'] = False
-                    if self.failure == 'ignored_cap':
-                        self.config['meeting_budget_rub'] = 100
+                    if self.failure == 'ignored_cloud':
+                        self.config['cloud_enabled'] = False
             return httpx.Response(200, json=self.config)
         if path == '/api/v1/session':
             return httpx.Response(200, json={'csrf_token': 'mock-script-token'})
+        if path == '/api/v1/cloud-budget/refresh':
+            return httpx.Response(200, json=self.monthly)
+        if path == '/api/v1/cloud-budget/scopes' and request.method == 'POST':
+            self.scope_body = json.loads(request.content)
+            assert str(UUID(self.scope_body['operation_id'])) == self.scope_body['operation_id']
+            self.scope_created = True
+            if self.failure == 'scope_create_timeout':
+                raise httpx.ReadTimeout('mock scope response lost', request=request)
+            return httpx.Response(200 if self.failure == 'scope_wrong_status' else 201, json={
+                'scope_id': 'invalid-id' if self.failure == 'invalid_scope_id' else self.scope_id,
+                'cap_rub': 100 if self.failure == 'ignored_scope_cap' else 5})
+        if path == '/api/v1/cloud-budget/scopes/' + self.scope_id:
+            self.scope_reads += 1
+            if self.failure == 'scope_poll' or (self.failure == 'scope_final_timeout' and self.scope_reads > 1):
+                raise httpx.ReadTimeout('mock scope snapshot unavailable', request=request)
+            return httpx.Response(200, json=self.scope)
         if path == '/api/v1/usage':
             if request.url.params.get('meeting_id') and self.failure in {'unknown', 'running'}:
                 return httpx.Response(200, json={'records': [{'status': 'unknown'}], 'unknown_count': 1, 'confirmed_rub': 0})
+            if request.url.params.get('meeting_id'):
+                return httpx.Response(200, json={'records': [
+                    {'status': 'confirmed', 'confirmed_rub': 1},
+                    {'status': 'confirmed', 'confirmed_rub': 1}],
+                    'unknown_count': 0, 'confirmed_rub': 2})
             return httpx.Response(200, json={'records': [], 'unknown_count': 0, 'confirmed_rub': 0})
         if path == '/api/v1/meetings' and request.method == 'GET':
+            if self.failure == 'busy_after_scope' and self.scope_created:
+                return httpx.Response(200, json=[{'id': 'unrelated-meeting'}])
             return httpx.Response(200, json=[])
-        if request.method == 'POST':
-            self.posts.append(path)
+        if path == '/api/v1/meetings/unrelated-meeting/recording':
+            return httpx.Response(200, json={'recording': True, 'status': 'recording'})
         if path == '/api/v1/meetings':
+            self.meeting_body = json.loads(request.content)
+            assert self.scope_created
             if self.failure == 'create':
                 raise httpx.ReadTimeout('mock create response failed', request=request)
             return httpx.Response(201, json={'id': 'script-owned-meeting'})
@@ -107,63 +152,146 @@ def run_mock(tmp_path, monkeypatch, backend):
 
 
 @pytest.mark.parametrize('original_limits', [False, True])
-def test_benchmark_enforces_flag_and_cap_before_upload_and_restores(tmp_path, monkeypatch, original_limits):
-    backend = LocalBackend(original_limits=original_limits)
+@pytest.mark.parametrize('prices', [None, .1])
+def test_benchmark_scopes_spend_without_changing_regular_limits(tmp_path, monkeypatch, original_limits, prices):
+    backend = LocalBackend(original_limits=original_limits, prices=prices)
     result, report = run_mock(tmp_path, monkeypatch, backend)
     assert result == 0 and report['config_restored'] is True
-    assert backend.upload_config['local_cost_limits_enabled'] is True
-    assert backend.upload_config['meeting_budget_rub'] == 5
-    assert backend.upload_config['allow_unknown_price'] is False
+    assert backend.upload_config == {**backend.original, 'cloud_enabled': True}
+    assert all(set(patch) == {'cloud_enabled'} for patch in backend.patches)
+    assert backend.scope_body['cap_rub'] == 5
+    assert backend.meeting_body['cloud_budget_scope_id'] == backend.scope_id
+    assert report['cloud_budget_scope_id'] == backend.scope_id
+    assert report['cloud_budget_scope_operation_id'] == backend.scope_body['operation_id']
+    assert report['monthly_budget_preflight']['effective_limit_rub'] == 3000
+    assert backend.events.index(('POST', '/api/v1/cloud-budget/refresh')) < backend.events.index(('POST', '/api/v1/cloud-budget/scopes'))
+    assert backend.events.index(('POST', '/api/v1/cloud-budget/scopes')) < backend.events.index(('POST', '/api/v1/meetings'))
     assert backend.config == backend.original
 
 
+def test_scope_cost_is_authoritative_over_duplicate_legacy_receipts(tmp_path, monkeypatch):
+    result, report = run_mock(tmp_path, monkeypatch, LocalBackend())
+    assert result == 0
+    assert report['usage']['confirmed_rub'] == 2
+    assert report['cloud_budget_scope']['confirmed_rub'] == .5
+    assert report['confirmed_rub_per_hour'] == 1800
+    assert report['cost_source'] == 'cloud_budget_scope'
+
+
 @pytest.mark.parametrize('failure', ['initial_patch_timeout', 'create', 'upload', 'poll', 'interrupt'])
-def test_benchmark_failures_restore_prior_disabled_limits_when_settled(tmp_path, monkeypatch, failure):
+def test_benchmark_failures_restore_only_original_cloud_flag_when_settled(tmp_path, monkeypatch, failure):
     backend = LocalBackend(failure=failure)
     result, report = run_mock(tmp_path, monkeypatch, backend)
     assert result == 1 and report['config_restored'] is True
     assert backend.config == backend.original
     if failure == 'initial_patch_timeout':
-        assert backend.posts == []
+        assert '/api/v1/meetings' not in backend.posts
     if failure in {'upload', 'poll', 'interrupt'}:
-        assert any(patch.get('cloud_enabled') is False and patch.get('local_cost_limits_enabled') is True
-                   for patch in backend.patches)
+        assert {'cloud_enabled': False} in backend.patches
+    assert all(set(patch) == {'cloud_enabled'} for patch in backend.patches)
 
 
-@pytest.mark.parametrize('failure', ['ignored_flag', 'ignored_cap'])
-def test_unconfirmed_limits_prevent_create_and_upload(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize('failure', ['ignored_cloud', 'ignored_scope_cap', 'invalid_scope_id', 'scope_create_timeout', 'scope_wrong_status'])
+def test_unconfirmed_scope_or_cloud_activation_prevents_meeting_and_upload(tmp_path, monkeypatch, failure):
     backend = LocalBackend(failure=failure)
     result, report = run_mock(tmp_path, monkeypatch, backend)
     assert result == 1 and report['config_restored'] is True
-    assert backend.posts == []
+    assert '/api/v1/meetings' not in backend.posts
     assert backend.config == backend.original
+    if failure != 'ignored_cloud':
+        assert backend.patches == []
 
 
-@pytest.mark.parametrize('failure', ['running', 'unknown'])
-def test_unresolved_work_keeps_cloud_off_and_cap_enforced(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize('failure', ['running', 'unknown', 'scope_poll', 'uncertain'])
+def test_unresolved_scope_keeps_cloud_off_without_changing_regular_limits(tmp_path, monkeypatch, failure):
     backend = LocalBackend(failure=failure)
     result, report = run_mock(tmp_path, monkeypatch, backend)
     assert result == 1 and report['config_restored'] is False
     assert backend.config['cloud_enabled'] is False
-    assert backend.config['local_cost_limits_enabled'] is True
-    assert backend.config['meeting_budget_rub'] == 5
-    assert report['prior_config']['local_cost_limits_enabled'] is False
+    assert {k: v for k, v in backend.config.items() if k != 'cloud_enabled'} == {
+        k: v for k, v in backend.original.items() if k != 'cloud_enabled'}
+    assert report['prior_config'] == {'cloud_enabled': False}
+    assert report['cloud_budget_scope_id'] == backend.scope_id
+    assert report['confirmed_rub_per_hour'] is None
+
+
+def test_settled_exhausted_scope_restores_original_cloud_flag(tmp_path, monkeypatch):
+    backend = LocalBackend()
+    backend.scope.update(confirmed_rub=5, remaining_rub=0, paused_code='monthly_budget_scope_exhausted')
+    result, report = run_mock(tmp_path, monkeypatch, backend)
+    assert result == 0 and report['config_restored'] is True
+    assert backend.config == backend.original
+    assert report['cloud_budget_scope']['reserved_rub'] == 0
+    assert report['cloud_budget_scope']['uncertain_count'] == 0
+    assert report['confirmed_rub_per_hour'] == 18000
+
+
+def test_successful_run_preserves_already_enabled_cloud_without_patches(tmp_path, monkeypatch):
+    backend = LocalBackend(original_cloud=True)
+    result, report = run_mock(tmp_path, monkeypatch, backend)
+    assert result == 0 and report['config_restored'] is True
+    assert backend.config == backend.original and backend.patches == []
+    assert backend.upload_config == backend.original
+
+
+def test_uncertain_scope_keeps_originally_enabled_cloud_off(tmp_path, monkeypatch):
+    backend = LocalBackend(original_cloud=True, failure='uncertain')
+    result, report = run_mock(tmp_path, monkeypatch, backend)
+    assert result == 1 and report['config_restored'] is False
+    assert backend.config == {**backend.original, 'cloud_enabled': False}
+    assert report['prior_config'] == {'cloud_enabled': True}
+    assert backend.patches == [{'cloud_enabled': False}]
+
+
+def test_newly_busy_backend_is_rejected_before_cloud_flag_change(tmp_path, monkeypatch):
+    backend = LocalBackend(failure='busy_after_scope')
+    result, report = run_mock(tmp_path, monkeypatch, backend)
+    assert result == 1 and report['config_restored'] is True
+    assert backend.patches == [] and backend.config == backend.original
+    assert '/api/v1/meetings' not in backend.posts
+
+
+def test_failed_final_scope_read_does_not_claim_cached_cost_is_final(tmp_path, monkeypatch):
+    backend = LocalBackend(failure='scope_final_timeout')
+    result, report = run_mock(tmp_path, monkeypatch, backend)
+    assert result == 1 and report['config_restored'] is False
+    assert backend.config == {**backend.original, 'cloud_enabled': False}
+    assert report['cloud_pause_confirmed'] is True
+    assert report['cost'] == 'unknown or outstanding scoped cloud receipt'
+    assert report['confirmed_rub_per_hour'] is None
 
 
 def test_failed_restore_is_failure_even_after_successful_processing(tmp_path, monkeypatch):
     backend = LocalBackend(failure='restore')
     result, report = run_mock(tmp_path, monkeypatch, backend)
     assert result == 1 and report['config_restored'] is False
-    assert report['prior_config']['local_cost_limits_enabled'] is False
+    assert report['prior_config'] == {'cloud_enabled': False}
 
 
-@pytest.mark.parametrize('invalid_flag', [None, 0, 'false'])
-def test_missing_or_nonboolean_limit_contract_is_rejected_without_mutation(tmp_path, monkeypatch, invalid_flag):
+@pytest.mark.parametrize('invalid_snapshot', [
+    {'paused_code': 'monthly_budget_configuration'},
+    {'reserved_rub': 1},
+    {'remaining_rub': 0},
+    {'effective_limit_rub': 3001},
+    {'confirmed_rub': True},
+    {'approved_rub': None},
+    {'uncertain_count': 1},
+])
+def test_unready_monthly_budget_is_rejected_before_scope_or_configuration(tmp_path, monkeypatch, invalid_snapshot):
+    backend = LocalBackend(prices=.1)
+    backend.monthly.update(invalid_snapshot)
+    with pytest.raises(SystemExit) as caught:
+        run_mock(tmp_path, monkeypatch, backend)
+    assert caught.value.code == 2
+    assert backend.patches == []
+    assert '/api/v1/cloud-budget/scopes' not in backend.posts
+    assert '/api/v1/meetings' not in backend.posts
+
+
+@pytest.mark.parametrize('field', ['stt_model', 'summary_model'])
+def test_missing_selected_model_prevents_scope_or_cloud_change(tmp_path, monkeypatch, field):
     backend = LocalBackend()
-    if invalid_flag is None:
-        backend.config.pop('local_cost_limits_enabled')
-    else:
-        backend.config['local_cost_limits_enabled'] = invalid_flag
+    backend.config[field] = ''
     with pytest.raises(SystemExit) as caught:
         run_mock(tmp_path, monkeypatch, backend)
     assert caught.value.code == 2

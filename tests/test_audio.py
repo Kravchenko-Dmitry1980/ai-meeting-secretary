@@ -264,22 +264,38 @@ def test_three_hour_limit_stops_automatically_without_cloud(monkeypatch, tmp_pat
 
 
 def test_progressive_writer_does_not_buffer_the_whole_long_recording(tmp_path):
-    manifest = {"chunks": [], "in_progress": {}}
-    writer = _ChannelWriter(tmp_path, "microphone", {"sample_rate": 8000, "channels": 1,
-                            "initial_offset_ms": 0}, 20, manifest,
-                            lambda: _atomic_json(tmp_path / "manifest.json", manifest), lambda chunk: None)
-    one_second = b"\x00\x00" * 8000
-    tracemalloc.start()
-    try:
-        for _ in range(600):
-            writer.write(one_second)
-        writer.close()
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    assert len(manifest["chunks"]) == 30
-    assert sum(chunk["frames"] for chunk in manifest["chunks"]) == 600 * 8000
-    assert peak < 3 * 1024 * 1024  # 9.6 MB audio on disk; memory bounded by hash block/metadata.
+    import subprocess
+    import sys
+    # A fresh process excludes global intern-table growth from unrelated test
+    # collection. It inherits the offline guard and keeps the same 3 MiB bound.
+    probe = r'''
+import json, sys, tracemalloc
+from pathlib import Path
+from secretary.infrastructure.audio import _ChannelWriter, _atomic_json
+folder = Path(sys.argv[1])
+manifest = {"chunks": [], "in_progress": {}}
+writer = _ChannelWriter(folder, "microphone", {"sample_rate": 8000, "channels": 1,
+                        "initial_offset_ms": 0}, 20, manifest,
+                        lambda: _atomic_json(folder / "manifest.json", manifest), lambda chunk: None)
+one_second = b"\x00\x00" * 8000
+tracemalloc.start()
+try:
+    for _ in range(600):
+        writer.write(one_second)
+    writer.close()
+    _, peak = tracemalloc.get_traced_memory()
+finally:
+    tracemalloc.stop()
+print(json.dumps(dict(peak=peak, chunks=len(manifest["chunks"]),
+                     frames=sum(chunk["frames"] for chunk in manifest["chunks"]))))
+'''
+    result = subprocess.run([sys.executable, "-B", "-c", probe, str(tmp_path)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    measured = json.loads(result.stdout)
+    assert measured["chunks"] == 30
+    assert measured["frames"] == 600 * 8000
+    assert measured["peak"] < 3 * 1024 * 1024  # 9.6 MB audio stays on disk.
 
 
 def test_second_device_failure_preserves_first_device_pcm_and_closes_handles(tmp_path):

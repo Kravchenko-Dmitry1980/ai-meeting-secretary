@@ -6,6 +6,7 @@ audio/
 .env
 .env.*
 !.env.example
+!config/team/.env.team.example
 data/
 .runtime/
 frontend/node_modules/

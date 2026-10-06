@@ -1,0 +1,462 @@
+{
+  "format": "secretary.external-contract.v1",
+  "provider": "Polza.ai GET key + billing linkage",
+  "retrieved_at_utc": "2026-10-03T17:21:18Z",
+  "qualification": {
+    "status": "DOCUMENTED_CONTRACT_AND_PUBLIC_CATALOG_ONLY",
+    "authenticated_key_verified": false,
+    "live_paid_calls": false,
+    "real_provider_cap_verified": false,
+    "method": "Official public Markdown documentation plus unauthenticated public model catalog GETs. Account parser tests use synthetic MockTransport."
+  },
+  "sources": [
+    {
+      "id": "key",
+      "url": "https://polza.ai/docs/api-reference/other/key.md",
+      "human_url": "https://polza.ai/docs/api-reference/other/key",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "90b1a6a034ad6dd47a518733529076b1860880d3608ab700731cf915b39237cd",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "usage_guide",
+      "url": "https://polza.ai/docs/osobennosti/usage.md",
+      "human_url": "https://polza.ai/docs/osobennosti/usage",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "d18f4a576507b7f29c252f3d775a291eecf40288792ee8922b596fc170b897bb",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "transcriptions",
+      "url": "https://polza.ai/docs/api-reference/audio/transcriptions.md",
+      "human_url": "https://polza.ai/docs/api-reference/audio/transcriptions",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "3f7119e2a25ace25043ed5e6e518d38ade04378bb2799b9d4e6c41298f997bfe",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "aiesa",
+      "url": "https://polza.ai/docs/gaidy/aiesa-transcribe.md",
+      "human_url": "https://polza.ai/docs/gaidy/aiesa-transcribe",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "26733b118e286041c0441db71bacee5cdf5eab3d062cb07c67a95f404e0382d8",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "models",
+      "url": "https://polza.ai/docs/api-reference/models/list.md",
+      "human_url": "https://polza.ai/docs/api-reference/models/list",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "c49611a9e6bbf49006672da0f89f142ce2ab03aed9c538efa5f733bcec8a9538",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "catalog",
+      "url": "https://polza.ai/docs/api-reference/models/catalog.md",
+      "human_url": "https://polza.ai/docs/api-reference/models/catalog",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "6c8903b6c8b48fa9717d5dac8f51e7b8f7317ee3ab4d36239e38aaae782c56e8",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    },
+    {
+      "id": "history",
+      "url": "https://polza.ai/docs/api-reference/history/generations.md",
+      "human_url": "https://polza.ai/docs/api-reference/history/generations",
+      "authority": "official_Polza_documentation",
+      "revision_sha": null,
+      "content_sha256": "6469bfa1739eba46a03eecdc8ab2b27869aa5e709718b95ccb47850ccb84db69",
+      "retrieved_at_utc": "2026-10-03T17:06:55Z"
+    }
+  ],
+  "key_endpoint": {
+    "source_ids": [
+      "key"
+    ],
+    "method": "GET",
+    "url": "https://polza.ai/api/v1/key",
+    "authorization": {
+      "header": "Authorization",
+      "value_format": "Bearer <API_KEY>",
+      "api_key_required": true,
+      "cabinet_token_http_status": 400
+    },
+    "response_envelope": "Flat object; no data wrapper.",
+    "currency": "RUB",
+    "scope": "Usage and cap of the calling API key, not organization balance.",
+    "documented_required_fields": [
+      "creator_user_id",
+      "label",
+      "limit",
+      "limit_remaining",
+      "limit_reset",
+      "usage",
+      "usage_daily",
+      "usage_weekly",
+      "usage_monthly"
+    ],
+    "fields": {
+      "creator_user_id": {
+        "documented_semantics": "Creator user ID; string example, nullable.",
+        "openapi_type": "object",
+        "nullable": true,
+        "identity_warning": "Creator user ID is not stable API key identity."
+      },
+      "label": {
+        "documented_type": "string",
+        "semantics": "Masked token, not key name; do not use as reliable key identity."
+      },
+      "limit": {
+        "example_type": "number",
+        "openapi_type": "object",
+        "nullable": true,
+        "unit": "RUB",
+        "semantics": "Configured per-key spend cap; null means no cap."
+      },
+      "limit_remaining": {
+        "example_type": "number",
+        "openapi_type": "object",
+        "nullable": true,
+        "unit": "RUB",
+        "semantics": "Remaining cap in current configured period; null means no cap. Not organization balance."
+      },
+      "limit_reset": {
+        "documented_type": "string|null",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly",
+          "never",
+          null
+        ],
+        "semantics": "Reset period, not a date/timestamp. never is lifetime cap; null is no cap."
+      },
+      "usage": {
+        "documented_type": "number",
+        "nullable": false,
+        "unit": "RUB",
+        "semantics": "Lifetime spend of this key."
+      },
+      "usage_daily": {
+        "documented_type": "number",
+        "nullable": false,
+        "unit": "RUB",
+        "semantics": "Spend during current day."
+      },
+      "usage_weekly": {
+        "documented_type": "number",
+        "nullable": false,
+        "unit": "RUB",
+        "semantics": "Spend during current week starting Monday."
+      },
+      "usage_monthly": {
+        "documented_type": "number",
+        "nullable": false,
+        "unit": "RUB",
+        "semantics": "Spend during current month starting day 1."
+      }
+    },
+    "period": {
+      "timezone": "Europe/Moscow",
+      "reset_local_time": "01:00:00",
+      "monthly_start_day": 1,
+      "weekly_start_day": "Monday",
+      "current_documented_utc_offset": "+03:00",
+      "monthly_reset_utc_example": "2026-09-30T22:00:00Z starts October 2026",
+      "server_as_of_field": null,
+      "explicit_billing_period_field": null
+    },
+    "documented_exhausted_paid_request_status": 402,
+    "openapi_discrepancy": "PublicKeyPresenter emits type:object for limit/limit_remaining/creator_user_id although prose and examples use scalar amounts/ID. Do not accept a JSON object as money.",
+    "balance_note": "Organization balance uses separate GET /api/v2/balance; no authenticated balance call was performed."
+  },
+  "client_profile": {
+    "authority": "Local T2 parser policy; no provider consistency SLA implied.",
+    "interface": "PolzaAccountClient(settings, *, transport=None, clock=None).read_key_usage() -> AccountUsage",
+    "key_tag": "SHA256 of exact stripped key bytes; no key output or persistence.",
+    "required_account_fields": [
+      "limit",
+      "limit_remaining",
+      "limit_reset",
+      "usage_monthly"
+    ],
+    "extra_fields": "Allow future extra fields; reject data wrapper. Validate other usage counters when provided.",
+    "money": "Finite nonnegative JSON number or decimal string, never bool/object/array. Decimal parser; convert through domain to_micro. Numeric-string tolerance is local compatibility policy, not a verified GET/key string response.",
+    "money_rounding": "Current domain to_micro rounds upward to whole micro-RUB; confirmed money and reserve estimates avoid binary float.",
+    "nullable_fields": [
+      "limit",
+      "limit_remaining",
+      "limit_reset"
+    ],
+    "no_limit_is_not_zero": "Reader preserves null. MonthlyBudget decides that no monthly cap requires configuration.",
+    "transport": {
+      "trust_env": false,
+      "follow_redirects": false,
+      "tls_verification": true,
+      "accept_encoding": "identity",
+      "response_limit_bytes": 65536,
+      "connect_timeout_seconds": 5,
+      "read_timeout_seconds": 10,
+      "pool_timeout_seconds": 5,
+      "whole_call_deadline_seconds": 30,
+      "ordinary_failure_retries": 0
+    },
+    "json": "Reject malformed JSON, duplicate keys and non-finite bare JSON constants.",
+    "errors": [
+      "monthly_budget_configuration",
+      "monthly_budget_account_unavailable"
+    ],
+    "secret_safe_errors": true,
+    "snapshot_window": "Record local read start/end; if documented billing month differs, repeat GET at most once. Return end observation only when start/end month agrees. Repeated crossing or backwards clock is unavailable. This does not invent a provider billing timestamp.",
+    "refresh_max_age_seconds": 60,
+    "refresh_authority": "60 seconds is Secretary policy, not a documented Polza freshness/consistency guarantee."
+  },
+  "receipts": {
+    "source_ids": [
+      "usage_guide",
+      "transcriptions",
+      "aiesa",
+      "history"
+    ],
+    "cost_rub": {
+      "semantics": "Actual cost in RUB reported in usage; preferred over alias.",
+      "nullable_or_missing_in_practice": "Treat absent/invalid as unknown, never zero."
+    },
+    "cost": {
+      "semantics": "RUB alias of cost_rub, not USD. Use only when cost_rub absent; invalid present cost_rub does not become zero or use alias to hide failure."
+    },
+    "streaming": "Usage arrives in final SSE event; interrupted stream without receipt stays unknown.",
+    "sync_stt": {
+      "post": "/api/v1/audio/transcriptions",
+      "usage_optional_in_openapi": true,
+      "usage_fields": [
+        "durationSeconds",
+        "cost",
+        "cost_rub"
+      ]
+    },
+    "async_stt": {
+      "models": [
+        "aiesa/transcribe",
+        "aiesa/transcribe-fast"
+      ],
+      "post": "/api/v1/audio/transcriptions",
+      "submit_documented_fields": [
+        "id",
+        "object",
+        "status",
+        "model"
+      ],
+      "submit_usage_guaranteed": false,
+      "status_get": "/api/v1/audio/transcriptions/{id}",
+      "status_enum": [
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "completed_documented_fields": [
+        "id",
+        "object",
+        "status",
+        "text",
+        "duration",
+        "segments"
+      ],
+      "completed_usage_guaranteed": false,
+      "media_status_endpoint_valid_for_stt": false,
+      "poll_interval_doc_seconds": [
+        5,
+        10
+      ],
+      "same_organization_and_key_required": true,
+      "persist_id_before_polling": true,
+      "paid_operations": "One charge reservation for submit POST. Accepted job polling does not create another paid POST reservation.",
+      "failed_doc_semantics": "Guide says failed tasks do not charge; provider reserved funds are returned; approximately 13-minute timeout mentioned.",
+      "local_release_policy": "Release only on unambiguous bound terminal outcome/confirmed receipt. 404, timeout, stale totals or text/time similarity cannot prove no charge.",
+      "missing_usage_policy": "Retain reservation and obtain exact-ID authenticated history/receipt later; no inferred zero from text/duration success."
+    },
+    "aiesa_analysis": {
+      "post": "/api/v1/audio/transcriptions/{id}/analysis",
+      "paid_separately": true,
+      "current_secretary_uses_path": false,
+      "note": "If added later, mandatory shared per-POST guard also applies."
+    },
+    "history": {
+      "list_get": "/api/v1/history/generations",
+      "detail_get": "/api/v1/history/generations/{id}",
+      "authorization_scope": "API key sees only its own generations.",
+      "list_response": {
+        "items": "generation[]",
+        "meta": {
+          "page": "integer",
+          "limit": "integer",
+          "total": "integer",
+          "totalPages": "integer"
+        }
+      },
+      "pagination": {
+        "page_default": 1,
+        "limit_default": 20,
+        "limit_range": [
+          1,
+          100
+        ]
+      },
+      "list_cost_field": "cost: decimal string RUB",
+      "detail_cost_field": "clientCost: decimal string RUB",
+      "detail_identity_fields": [
+        "id",
+        "organizationId",
+        "apiKeyId"
+      ],
+      "time_fields": [
+        "createdAt",
+        "completedAt"
+      ],
+      "limitations": "createdAt/completedAt are generation lifecycle timestamps; docs do not explicitly specify which timestamp defines the monthly billing bucket. Exact provider IDs are required for reconciliation; missing detail/404 is not safe retry authorization."
+    }
+  },
+  "estimates": {
+    "source_ids": [
+      "models",
+      "catalog",
+      "aiesa"
+    ],
+    "catalog_get": "https://polza.ai/api/v1/models/catalog",
+    "public_models_authentication_required": false,
+    "price_location": "top_provider.pricing (and optional provider-specific pricing).",
+    "monetary_wire_type_observed": "Decimal strings for sampled catalog prices.",
+    "fields_and_units": {
+      "stt_per_minute": "RUB/minute",
+      "prompt_per_million": "RUB/1M input tokens",
+      "completion_per_million": "RUB/1M output tokens",
+      "internal_reasoning_per_million": "RUB/1M reasoning tokens",
+      "request_per_thousand": "RUB/1000 requests",
+      "per_request": "RUB/request",
+      "currency": "RUB"
+    },
+    "stt_estimate": "Actual media duration and selected route rate; Aiesa rounds up to whole minutes, minimum 1 minute.",
+    "llm_estimate": "Bounded serialized input/token estimate and max output tokens, using matching per-million rates and applicable reasoning/request/plugin fees. Cached tokens do not justify a guaranteed discount.",
+    "max_price_controls_reintroduced": false,
+    "hard_upper_bound": false,
+    "caveat": "A top-provider catalog price may differ from the provider selected at execution/fallback. Quotes are estimates; true configured provider cap is required for claimed monthly protection.",
+    "observed_unauthenticated_quotes": {
+      "retrieved_at_utc": "2026-10-03T17:21:18Z",
+      "source_urls": [
+        "https://polza.ai/api/v1/models/catalog?search=whisper&page=1&limit=50",
+        "https://polza.ai/api/v1/models/catalog?search=qwen3-30b-a3b-instruct-2507&page=1&limit=50",
+        "https://polza.ai/api/v1/models/catalog?search=aiesa&page=1&limit=50"
+      ],
+      "models": [
+        {
+          "model": "openai/whisper-large-v3-turbo",
+          "provider": "groq",
+          "stt_per_minute": "0.04800000",
+          "currency": "RUB"
+        },
+        {
+          "model": "openai/whisper-1",
+          "provider": "openai",
+          "stt_per_minute": "0.43200000",
+          "currency": "RUB"
+        },
+        {
+          "model": "qwen/qwen3-30b-a3b-instruct-2507",
+          "provider": "streamlake",
+          "prompt_per_million": "5.63682420",
+          "completion_per_million": "22.59997740",
+          "currency": "RUB"
+        },
+        {
+          "model": "aiesa/transcribe",
+          "provider": "aiesa",
+          "stt_per_minute": "0.12000000",
+          "currency": "RUB"
+        },
+        {
+          "model": "aiesa/transcribe-fast",
+          "provider": "aiesa",
+          "stt_per_minute": "0.40000000",
+          "currency": "RUB"
+        }
+      ],
+      "paid_model_execution_verified": false
+    },
+    "catalog_failure_rule": "Incomplete/truncated catalog JSON is unavailable, not permission to silently use an invented/default price. A full /models response read was incomplete during research; filtered catalog GETs succeeded."
+  },
+  "ledger_notes": {
+    "authority": "Interpretation/local design constraints, not facts about API consistency.",
+    "approved_budget": "3000 RUB minus approved monthly external costs (default 0).",
+    "effective_budget": "min(approved budget, valid monthly provider cap); null/high cap/other period pause new expenses; zero remaining is exhausted.",
+    "provider_confirmed_snapshot_scope": "Calling key only; preserve old-key records and opening through rotation.",
+    "opening": "Save one opening provider usage plus local-confirmed watermark per period/key before new dispatch. Re-reading snapshot is not a second opening expense.",
+    "confirmed_approximation": "Use max(provider monthly usage, opening + local confirmed after baseline) per established key, avoiding addition of the same spend twice. Keep unsettled reservations separate. This is an approximation backed by actual provider cap, not proof of exact receipt inclusion.",
+    "snapshot_watermark": "Preserve read windows and local dispatch/settlement watermarks. Newly dispatched costs after snapshot cannot already be in it; before/during snapshot overlap can require exact-ID reconciliation.",
+    "known_unknown_overlap": "Aggregate monthly growth alone cannot tell whether a particular receipt/reservation was included. External spend and lagging local receipts can be disjoint; do not erase uncertainty on aggregate similarity.",
+    "money_after_paid_invalid_response": "Settle valid reported cost even if generated text/schema is rejected; otherwise retain uncertain reserve.",
+    "late_known_cost_without_period": "Carry at least max(reserved, observed_cost) into availability until provider period is established; do not erase known cost across month rollover.",
+    "key_rotation": "GET/key has no stable key ID; masked label is not identity. Raw-key fingerprint changes do not establish whether a new key or regenerated token for same key was used. Preserve existing global spend; setup guard/owner evidence needed before enabling new key. Multiple keys each capped at3000 do not prove organization-wide3000.",
+    "callbacks": "Legacy meeting history, on_usage, result aggregates and error usage_records are views/hooks, not independent charges. Same per-HTTP operation/receipt settles once; map/reduce/repair attempts are distinct charge operations.",
+    "retries": "Timeout/unknown/ambiguous5xx retains reservation; no repeat paid POST. Free GET refresh/poll/history reconciliation is separate.",
+    "no_automatic_provider_configuration_changes": true
+  },
+  "synthetic_fixtures": {
+    "authority": "Synthetic, not a real account/receipt/key snapshot.",
+    "monthly_lower_cap": {
+      "creator_user_id": null,
+      "label": "SYNTHETIC_MASK",
+      "limit": 1000,
+      "limit_remaining": 900,
+      "limit_reset": "monthly",
+      "usage": 120,
+      "usage_daily": 10,
+      "usage_weekly": 40,
+      "usage_monthly": 100
+    },
+    "no_cap": {
+      "creator_user_id": null,
+      "label": "SYNTHETIC_MASK",
+      "limit": null,
+      "limit_remaining": null,
+      "limit_reset": null,
+      "usage": 0,
+      "usage_daily": 0,
+      "usage_weekly": 0,
+      "usage_monthly": 0
+    },
+    "no_double_count_scenario": {
+      "opening_micro": 100000000,
+      "local_confirmed_after_opening_micro": 10000000,
+      "provider_usage_micro": 110000000,
+      "expected_confirmed_micro": 110000000,
+      "incorrect_added_total_micro": 220000000
+    },
+    "reset_before": {
+      "observed_at": "2026-10-01T00:59:59+03:00",
+      "expected_period": "2026-09"
+    },
+    "reset_after": {
+      "observed_at": "2026-10-01T01:00:00+03:00",
+      "expected_period": "2026-10"
+    },
+    "async_submit_without_receipt": {
+      "id": "gen_SYNTHETIC_001",
+      "object": "transcription",
+      "status": "processing",
+      "model": "aiesa/transcribe"
+    },
+    "async_completed_without_receipt": {
+      "id": "gen_SYNTHETIC_001",
+      "object": "transcription",
+      "status": "completed",
+      "text": "Synthetic fixture only",
+      "duration": 15,
+      "segments": []
+    }
+  }
+}

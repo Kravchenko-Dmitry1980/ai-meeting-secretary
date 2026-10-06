@@ -29,7 +29,8 @@ def export_openapi(target: Path | None = None) -> Path:
             isolated = Path(folder)
             settings = Settings(_env_file=None, project_dir=isolated,
                                 data_dir=isolated / "data", polza_api_key="",
-                                cloud_enabled=False, local_cost_limits_enabled=False)
+                                cloud_enabled=False, local_cost_limits_enabled=False,
+                                approved_monthly_external_costs_rub=0)
             app = create_app(settings, provider_factory=_deny_provider,
                              capture=NoopCapture(), enrollment_capture=NoopCapture(), run_worker=False)
             schema = app.openapi()

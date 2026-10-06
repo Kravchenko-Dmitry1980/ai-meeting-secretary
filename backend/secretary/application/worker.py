@@ -15,6 +15,7 @@ from secretary.application.attribution import AttributionPipeline
 from secretary.domain.speakers import SpeakerConflict
 from secretary.infrastructure.assignment_repository import AssignmentRepository
 from secretary.domain.summary_context import FrozenSummaryContext
+from secretary.orchestration.team_worker import TeamWorker
 
 
 class Worker:
@@ -36,23 +37,32 @@ class Worker:
 
     async def close(self):
         self.stopping.set()
-        if self.local_task:
-            # Never abandon the thread/owned process while it holds the shared slot.
-            await asyncio.shield(self.local_task)
-        if self.task:
-            try:
-                await asyncio.wait_for(asyncio.shield(self.task), 3)
-            except asyncio.TimeoutError:
-                self.task.cancel()
+        cancelled = False
+        failure = None
+        for task in (self.local_task, self.task):
+            if task is not None:
                 try:
-                    await self.task
+                    await TeamWorker._drain(task, self.stopping)
                 except asyncio.CancelledError:
-                    pass
+                    cancelled = True
+                except Exception as exc:
+                    if failure is None:
+                        failure = exc
+        if failure is not None:
+            raise failure
+        if cancelled:
+            raise asyncio.CancelledError
 
     async def run(self):
         while not self.stopping.is_set():
             if self.sync_recordings:
-                await asyncio.to_thread(self.sync_recordings)
+                from secretary.infrastructure.maintenance_binding import admission
+                from secretary.infrastructure.team_maintenance import MaintenanceBlocked
+                try:
+                    with admission(getattr(self.db, 'maintenance', None), getattr(self.db, 'participant_id', None), 'job'):
+                        await TeamWorker._drain(asyncio.create_task(asyncio.to_thread(self.sync_recordings)), self.stopping)
+                except MaintenanceBlocked:
+                    pass
             if not await self.run_once():
                 try:
                     await asyncio.wait_for(self.stopping.wait(), 0.5)
@@ -103,6 +113,15 @@ class Worker:
                     conn.execute("UPDATE jobs SET status='succeeded',cancel_requested=0,error=NULL,updated_at=? WHERE id=?", (now(), current["id"]))
 
     async def run_once(self):
+        from secretary.infrastructure.maintenance_binding import async_admission
+        from secretary.infrastructure.team_maintenance import MaintenanceBlocked
+        try:
+            async with async_admission(getattr(self.db, 'maintenance', None), getattr(self.db, 'participant_id', None), 'job'):
+                return await TeamWorker._drain(asyncio.create_task(self._run_once()), self.stopping)
+        except MaintenanceBlocked:
+            return False
+
+    async def _run_once(self):
         job = self.db.claim()
         if job is None:
             self.reconcile_local_handoff()
@@ -159,15 +178,19 @@ class Worker:
                 self.db.finish_job(job["id"], "waiting_config", "Выберите модель обработки в настройках")
                 self.db.update_meeting(job["meeting_id"], status="waiting_config")
                 return True
+            provider = self.provider_factory(configuration)
+            meeting_limits_enabled = self.settings.local_cost_limits_enabled
+            if hasattr(provider, "set_charge_context"):
+                provider.set_charge_context(meeting_id=job["meeting_id"],
+                    category="meeting_stt" if job["stage"] == "transcribe" else "meeting_summary")
             if job["stage"] == "transcribe":
                 try:
                     previous = self.db.one("SELECT id FROM usage WHERE job_id=? AND status!='released' ORDER BY created_at DESC LIMIT 1", (job["id"],)) if job.get("provider_job_id") else None
-                    reservation = previous["id"] if previous else self.db.reserve(job, self.estimate(job, configuration), self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=self.settings.local_cost_limits_enabled)
+                    reservation = previous["id"] if previous else self.db.reserve(job, self.estimate(job, configuration), self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=meeting_limits_enabled)
                 except ValueError as exc:
                     self.db.finish_job(job["id"], "paused_budget", str(exc))
                     self.db.update_meeting(job["meeting_id"], status="paused_budget", error=str(exc))
                     return True
-            provider = self.provider_factory(configuration)
             try:
                 self.db.update_meeting(job["meeting_id"], status=job["stage"], error=None)
                 if job["stage"] == "transcribe":
@@ -220,7 +243,7 @@ class Worker:
                                 raise asyncio.CancelledError("Summary cancelled")
                             inp, out = configuration.summary_input_rub_per_million, configuration.summary_output_rub_per_million
                             estimate = None if inp is None or out is None else ((input_chars + 4096) * 4 * inp + max_output_tokens * out) / 1e6
-                            reservation = self.db.reserve(job, estimate, self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=self.settings.local_cost_limits_enabled)
+                            reservation = self.db.reserve(job, estimate, self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=meeting_limits_enabled)
                             cloud_request_started = True
                         async def on_usage(receipt):
                             nonlocal reservation, active_summary_receipt, cloud_request_started
@@ -243,7 +266,7 @@ class Worker:
                                 kwargs.update(checkpoint_get=checkpoint_get, checkpoint_put=checkpoint_put)
                             result = await provider.summarize(segments, **kwargs)
                         else:
-                            reservation = self.db.reserve(job, self.estimate(job, configuration), self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=self.settings.local_cost_limits_enabled)
+                            reservation = self.db.reserve(job, self.estimate(job, configuration), self.settings.meeting_budget_rub, self.settings.allow_unknown_price, self.settings.unknown_request_reservation_rub, enforce_limits=meeting_limits_enabled)
                             cloud_request_started = True
                             result = await provider.summarize(segments)
                             await on_usage(result.get("usage", {}))
@@ -311,8 +334,9 @@ class Worker:
                     if receipts:
                         self.db.settle(reservation, receipts[-1])
                     else:
-                        self.db.settle(reservation, rejected=(not uncertain and not accepted_id and (not cloud_request_started or code in {"401", "402", "413", "429", "unauthorized", "payment_required", "payload_too_large", "rate_limit", "authentication", "insufficient_funds", "access_denied", "invalid_request", "not_found", "rate_limited", "price_limit", "unsupported_response_format"})))
-            budget_error = isinstance(exc, ValueError) and ("budget" in str(exc).lower() or "Unknown model price" in str(exc) or "unknown cost" in str(exc))
+                        self.db.settle(reservation, rejected=(not uncertain and not accepted_id and (not cloud_request_started or code.startswith("monthly_budget_") or code in {"maintenance_blocked", "restore_reconciliation_required", "runtime_outbound_disabled", "401", "402", "413", "429", "unauthorized", "payment_required", "payload_too_large", "rate_limit", "authentication", "insufficient_funds", "access_denied", "invalid_request", "not_found", "rate_limited", "price_limit", "unsupported_response_format"})))
+            budget_error = (not code.startswith("monthly_budget_") and isinstance(exc, ValueError)
+                            and ("budget" in str(exc).lower() or "Unknown model price" in str(exc) or "unknown cost" in str(exc)))
             resumable = bool(provider_id or job.get("provider_job_id")) and bool(getattr(exc, "retryable", False))
             # Summary maps resume from paid checkpoints; only explicit rate rejections are retried.
             rate_retry = job["stage"] in {"transcribe", "summarize"} and not uncertain and code in {"429", "rate_limit", "rate_limited"} and bool(getattr(exc, "retryable", False))
@@ -321,7 +345,11 @@ class Worker:
                 baseline = 0
             attempts_in_run = job["attempts"] - baseline
             retryable = not uncertain and (resumable or rate_retry) and attempts_in_run < 3 and not self.cancelled(job)
-            status = "queued" if retryable else ("paused_budget" if budget_error or code in {"insufficient_funds", "price_limit"} else ("waiting_config" if code == "authentication" or configuration_rejected else ("uncertain" if uncertain or resumable else "failed")))
+            monthly_configuration = code in {"monthly_budget_configuration", "monthly_budget_required",
+                                           "monthly_budget_key_changed", "monthly_budget_policy_changed",
+                                           "maintenance_blocked", "restore_reconciliation_required", "runtime_outbound_disabled"}
+            monthly_pause = code.startswith("monthly_budget_") and not monthly_configuration
+            status = "queued" if retryable else ("paused_budget" if budget_error or monthly_pause or code in {"insufficient_funds", "price_limit"} else ("waiting_config" if monthly_configuration or code == "authentication" or configuration_rejected else ("uncertain" if uncertain or resumable else "failed")))
             if not cloud_request_started and not accepted_id and self.cancelled(job):
                 status, retryable = "cancelled", False
             # Provider exceptions are sanitized; never include key/request body in logs.

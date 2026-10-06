@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import httpx
 import pytest
@@ -44,6 +45,28 @@ def cloud_args(tmp_path):
     return ['--run-cloud', '--audio', str(audio), '--max-rub', '5', '--output', str(tmp_path / 'report.json')]
 
 
+SCOPE_ID = 'cc82d2d1-c7c2-48ef-8181-0c4f021d90b3'
+
+
+def budget_contract(request, scope):
+    """Synthetic budget responses; no provider or real account is consulted."""
+    path = request.url.path
+    if path == '/api/v1/cloud-budget/refresh':
+        assert request.method == 'POST' and request.headers['X-Secretary-Token'] == 'test-csrf'
+        return httpx.Response(200, json={'period': '2026-10', 'approved_rub': 3000,
+            'effective_limit_rub': 3000, 'confirmed_rub': 4, 'reserved_rub': 0,
+            'remaining_rub': 2996, 'paused_code': None, 'uncertain_count': 0})
+    if path == '/api/v1/cloud-budget/scopes':
+        assert request.method == 'POST' and request.headers['X-Secretary-Token'] == 'test-csrf'
+        body = json.loads(request.content)
+        assert str(UUID(body['operation_id'])) == body['operation_id'] and body['cap_rub'] == 5
+        return httpx.Response(201, json={'scope_id': SCOPE_ID, 'cap_rub': 5})
+    if path == f'/api/v1/cloud-budget/scopes/{SCOPE_ID}':
+        assert request.method == 'GET'
+        return httpx.Response(200, json=scope)
+    return None
+
+
 def test_default_benchmark_never_opens_network(tmp_path, monkeypatch):
     benchmark = load_benchmark()
     def forbidden(*args, **kwargs):
@@ -72,16 +95,33 @@ def test_no_key_reads_only_config_and_never_submits_or_changes_state(tmp_path, m
     assert report['sample_count'] == 0
 
 
-def test_unknown_price_rejected_before_any_mutation(tmp_path, monkeypatch):
+def test_unknown_configured_price_defers_to_unready_monthly_guard_before_scope(tmp_path, monkeypatch):
     benchmark = load_benchmark()
     calls = []
     def handler(request):
-        calls.append(request.method)
-        return httpx.Response(200, json={**config(), 'summary_input_rub_per_million': None})
+        calls.append((request.method, request.url.path))
+        if request.url.path == '/api/v1/config':
+            return httpx.Response(200, json={**config(), 'summary_input_rub_per_million': None})
+        if request.url.path == '/api/v1/meetings': return httpx.Response(200, json=[])
+        if request.url.path == '/api/v1/usage':
+            return httpx.Response(200, json={'records': [], 'unknown_count': 0, 'confirmed_rub': 0})
+        if request.url.path == '/api/v1/session': return httpx.Response(200, json={'csrf_token': 'test-csrf'})
+        response = budget_contract(request, {})
+        if response is not None:
+            assert request.url.path == '/api/v1/cloud-budget/refresh'
+            snapshot = response.json()
+            snapshot['paused_code'] = 'monthly_budget_configuration'
+            return httpx.Response(200, json=snapshot)
+        raise AssertionError('An unready monthly guard must prevent any scope or config change')
     fake_client(monkeypatch, benchmark, handler)
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as caught:
         benchmark.main(cloud_args(tmp_path))
-    assert calls == ['GET']
+    assert caught.value.code == 2
+    assert calls[-1] == ('POST', '/api/v1/cloud-budget/refresh')
+    assert all(method == 'GET' for method, path in calls[:-1])
+    report = json.loads((tmp_path / 'report.json').read_text(encoding='utf-8'))
+    assert report['monthly_budget_preflight']['paused_code'] == 'monthly_budget_configuration'
+    assert 'cloud_budget_scope_id' not in report
 
 
 @pytest.mark.parametrize('state', [{'recording': True, 'status': 'recording'},
@@ -114,8 +154,13 @@ def test_single_sample_is_not_percentiles_and_unknown_cost_stays_null(tmp_path, 
     benchmark = load_benchmark()
     patches, posts = [], []
     current_config = config()
+    original_config = dict(current_config)
+    scope = {'cap_rub': 5, 'confirmed_rub': .01, 'reserved_rub': 1,
+             'remaining_rub': 3.99, 'paused_code': None, 'uncertain_count': 0}
     def handler(request):
         path = request.url.path
+        response = budget_contract(request, scope)
+        if response is not None: return response
         if path == '/api/v1/config':
             if request.method == 'PATCH':
                 patch = json.loads(request.content)
@@ -125,11 +170,11 @@ def test_single_sample_is_not_percentiles_and_unknown_cost_stays_null(tmp_path, 
         if path == '/api/v1/session': return httpx.Response(200, json={'csrf_token': 'test-csrf'})
         if path == '/api/v1/meetings':
             if request.method == 'GET': return httpx.Response(200, json=[])
+            assert json.loads(request.content)['cloud_budget_scope_id'] == SCOPE_ID
             posts.append(path)
             return httpx.Response(201, json={'id': 'benchmark-only'})
         if path.endswith('/upload'):
-            assert current_config['local_cost_limits_enabled'] is True
-            assert current_config['meeting_budget_rub'] == 5
+            assert current_config == original_config
             posts.append(path)
             return httpx.Response(202, json={'job_id': 'prepare-job'})
         if path.endswith('/segments'):
@@ -152,17 +197,24 @@ def test_single_sample_is_not_percentiles_and_unknown_cost_stays_null(tmp_path, 
     assert report['confirmed_rub_per_hour'] is None
     assert report['summary_http_status'] == 202
     assert report['config_restored'] is False
-    assert all(patch['meeting_budget_rub'] == 5 for patch in patches)
-    assert patches[-1]['cloud_enabled'] is False
+    assert patches == [{'cloud_enabled': False}]
+    assert current_config == {**original_config, 'cloud_enabled': False}
+    assert report['cloud_budget_scope']['cap_rub'] == 5
+    assert report['cost_source'] == 'cloud_budget_scope'
     assert len(posts) == 2
 
 
-def test_failure_does_not_restore_larger_cap_while_own_job_is_running(tmp_path, monkeypatch):
+def test_failure_keeps_cloud_paused_while_own_scoped_job_is_running(tmp_path, monkeypatch):
     benchmark = load_benchmark()
     patches, cancels = [], []
     current_config = config()
+    original_config = dict(current_config)
+    scope = {'cap_rub': 5, 'confirmed_rub': 0, 'reserved_rub': 1,
+             'remaining_rub': 4, 'paused_code': None, 'uncertain_count': 1}
     def handler(request):
         path = request.url.path
+        response = budget_contract(request, scope)
+        if response is not None: return response
         if path == '/api/v1/config':
             if request.method == 'PATCH':
                 patch = json.loads(request.content)
@@ -170,10 +222,12 @@ def test_failure_does_not_restore_larger_cap_while_own_job_is_running(tmp_path, 
                 current_config.update(patch)
             return httpx.Response(200, json=current_config)
         if path == '/api/v1/session': return httpx.Response(200, json={'csrf_token': 'test-csrf'})
-        if path == '/api/v1/meetings': return httpx.Response(200, json=[] if request.method == 'GET' else {'id': 'benchmark-only'})
+        if path == '/api/v1/meetings':
+            if request.method == 'GET': return httpx.Response(200, json=[])
+            assert json.loads(request.content)['cloud_budget_scope_id'] == SCOPE_ID
+            return httpx.Response(201, json={'id': 'benchmark-only'})
         if path.endswith('/upload'):
-            assert current_config['local_cost_limits_enabled'] is True
-            assert current_config['meeting_budget_rub'] == 5
+            assert current_config == original_config
             return httpx.Response(202, json={'job_id': 'owned-job'})
         if path.endswith('/segments'): raise httpx.ReadTimeout('simulated local failure', request=request)
         if path.endswith('/jobs'): return httpx.Response(200, json=[{'id': 'owned-job', 'status': 'running'}])
@@ -190,10 +244,12 @@ def test_failure_does_not_restore_larger_cap_while_own_job_is_running(tmp_path, 
     assert benchmark.main(cloud_args(tmp_path)) == 1
     report = json.loads((tmp_path / 'report.json').read_text(encoding='utf-8'))
     assert report['config_restored'] is False
-    assert all(patch['meeting_budget_rub'] == 5 for patch in patches)
-    assert patches[-1]['cloud_enabled'] is False
+    assert patches == [{'cloud_enabled': False}]
+    assert current_config == {**original_config, 'cloud_enabled': False}
     assert cancels == ['/api/v1/jobs/owned-job/cancel']
-    assert report['prior_config']['meeting_budget_rub'] == 100
+    assert report['prior_config'] == {'cloud_enabled': True}
+    assert report['cloud_budget_scope_id'] == SCOPE_ID
+    assert report['cloud_budget_scope']['cap_rub'] == 5
 
 
 def test_pending_reservation_even_without_unknown_count_is_unknown_cost():

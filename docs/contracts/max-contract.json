@@ -1,0 +1,1739 @@
+{
+  "format": "secretary.external-contract.v1",
+  "provider": "MAX",
+  "schema_reference_base": "wire_schema",
+  "retrieved_at_utc": "2026-10-03T16:50:56Z",
+  "qualification": {
+    "status": "DOCUMENTED_CONTRACT_ONLY",
+    "live_bot_verified": false,
+    "native_voice_verified": false,
+    "methods": "Public official documentation and pinned official SDK reads; synthetic offline vectors only.",
+    "not_proven": [
+      "authenticated MAX API",
+      "real webhook delivery",
+      "real Android/iOS native voice",
+      "public HTTPS ingress",
+      "moderated bot/profile/token"
+    ]
+  },
+  "sdk": {
+    "repository": "https://github.com/max-messenger/max-bot-api-client-ts",
+    "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+    "commit_url": "https://github.com/max-messenger/max-bot-api-client-ts/commit/d6d330b5915236055856ca382380be7cbf9517c5",
+    "commit_date_utc": "2026-09-30T07:56:08Z"
+  },
+  "sources": [
+    {
+      "id": "updates",
+      "url": "https://dev.max.ru/docs-api/objects/Update",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "message",
+      "url": "https://dev.max.ru/docs-api/objects/Message",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "user",
+      "url": "https://dev.max.ru/docs-api/objects/User",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "subscribe",
+      "url": "https://dev.max.ru/docs-api/methods/POST/subscriptions",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "events",
+      "url": "https://dev.max.ru/help/events",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "polling",
+      "url": "https://dev.max.ru/docs-api/methods/GET/updates",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "initdata_validation",
+      "url": "https://dev.max.ru/docs/webapps/validation",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "bridge",
+      "url": "https://dev.max.ru/docs/webapps/bridge",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "bot_create",
+      "url": "https://dev.max.ru/docs/chatbots/bots-create/create",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "miniapp",
+      "url": "https://dev.max.ru/docs/webapps/introduction",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "callback_answer",
+      "url": "https://dev.max.ru/docs-api/methods/POST/answers",
+      "authority": "official_MAX_documentation",
+      "revision_sha": null,
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_updates",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/subcription.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_message",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/message.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_user",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/user.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_attachment",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/attachment.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_subscription",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/modules/subscriptions/types.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_keyboard",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/keyboard.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    },
+    {
+      "id": "sdk_chat",
+      "url": "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/types/chat.ts",
+      "authority": "official_MAX_SDK",
+      "revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+      "retrieved_at_utc": "2026-10-03T16:50:56Z"
+    }
+  ],
+  "transport": {
+    "source_ids": [
+      "subscribe",
+      "events",
+      "polling"
+    ],
+    "base_url": "https://platform-api2.max.ru",
+    "api_authorization": {
+      "header": "Authorization",
+      "value_format": "<access_token>",
+      "bearer_prefix": false,
+      "query_token_supported": false,
+      "token_storage": "Server-side only; never fixtures, browser, localStorage or logs."
+    },
+    "tls": {
+      "verify_required": true,
+      "http_supported": false,
+      "self_signed_webhook_supported": false,
+      "webhook_port": 443,
+      "explicit_port_in_webhook_url": false,
+      "certificate": "Trusted CA or supported Ministry of Digital Development CA; full chain and matching CN/SAN.",
+      "static_public_ip_required_by_help_docs": true,
+      "project_ca_bundle": "Only verified and explicitly approved project-local trust material if current OS trust fails; never disable verification."
+    },
+    "webhook": {
+      "method": "POST",
+      "request_schema": "#/$defs/Update",
+      "secret_header": "X-Max-Bot-Api-Secret",
+      "secret_optional_at_provider": true,
+      "success_http_status": 200,
+      "response_deadline_seconds": 30,
+      "retries": {
+        "additional_attempts_up_to": 10,
+        "first_delay_seconds": 60,
+        "multiplier": 2.5,
+        "documented_first_delays_seconds": [
+          60,
+          150,
+          375
+        ],
+        "auto_unsubscribe_after_unsuccessful_hours": 8
+      }
+    },
+    "subscription": {
+      "method": "POST",
+      "path": "/subscriptions",
+      "request_schema": "#/$defs/SubscribeRequest",
+      "response_schema": "#/$defs/ActionResponse",
+      "documented_statuses": [
+        200,
+        401,
+        500
+      ],
+      "successful_result_requires": "HTTP 200 and body.success == true"
+    },
+    "polling": {
+      "method": "GET",
+      "path": "/updates",
+      "production_supported": false,
+      "mutually_exclusive_with_webhook": true,
+      "query": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100,
+          "required": false
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 90,
+          "default": 30,
+          "required": false
+        },
+        "marker": {
+          "type": "int64|null",
+          "required": false
+        },
+        "types": {
+          "wire_encoding": "Comma-separated event types",
+          "required": false
+        }
+      },
+      "response": {
+        "required": [
+          "updates",
+          "marker"
+        ],
+        "updates": "Update[]",
+        "marker": "int64|null"
+      },
+      "cursor_semantics": "marker is a paging cursor, never a webhook event ID. Advancing marker marks preceding updates read; omission/null returns latest only."
+    },
+    "callback_answer": {
+      "method": "POST",
+      "path": "/answers",
+      "query_required": {
+        "callback_id": "nonblank string"
+      },
+      "query_optional": {
+        "disable_link_preview": "boolean"
+      },
+      "body_optional": {
+        "message": "NewMessageBody|null"
+      },
+      "response_schema": "#/$defs/ActionResponse",
+      "provider_max_answers_per_target_per_second": 2,
+      "source_ids": [
+        "callback_answer"
+      ]
+    },
+    "outbound_client_timeouts": {
+      "provider_documented_api_client_timeout_seconds": null,
+      "note": "30 seconds is webhook response deadline, not a promised API client timeout. Bounded connection/read/write deadlines and ambiguous-send handling are local policy."
+    }
+  },
+  "wire_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$ref": "#/$defs/Update",
+    "$defs": {
+      "Int64": {
+        "type": "integer",
+        "minimum": -9223372036854775808,
+        "maximum": 9223372036854775807,
+        "description": "Provider wire integer; preserve exact value. Never pass through JavaScript Number in local DTOs."
+      },
+      "User": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "first_name",
+          "username",
+          "is_bot"
+        ],
+        "properties": {
+          "user_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_bot": {
+            "type": "boolean"
+          },
+          "last_activity_time": {
+            "$ref": "#/$defs/Int64"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "description": "Reconciled inbound profile. Activity may be absent; deprecated name is optional locally to survive removal. See discrepancies."
+      },
+      "Recipient": {
+        "type": "object",
+        "required": [
+          "chat_id",
+          "chat_type",
+          "user_id",
+          "post_id"
+        ],
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chat_type": {
+            "enum": [
+              "dialog",
+              "chat",
+              "channel"
+            ]
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "post_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "MediaPayload": {
+        "type": "object",
+        "required": [
+          "url",
+          "token"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Wire URL is untrusted until HTTPS, DNS, address and redirect checks. No host allowlist inferred from docs."
+      },
+      "AudioAttachment": {
+        "type": "object",
+        "required": [
+          "type",
+          "payload"
+        ],
+        "properties": {
+          "type": {
+            "const": "audio"
+          },
+          "payload": {
+            "$ref": "#/$defs/MediaPayload"
+          }
+        },
+        "additionalProperties": true
+      },
+      "FileAttachment": {
+        "type": "object",
+        "required": [
+          "type",
+          "payload",
+          "filename",
+          "size"
+        ],
+        "properties": {
+          "type": {
+            "const": "file"
+          },
+          "payload": {
+            "$ref": "#/$defs/MediaPayload"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Attachment": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/AudioAttachment"
+          },
+          {
+            "$ref": "#/$defs/FileAttachment"
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "not": {
+                  "enum": [
+                    "audio",
+                    "file"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": true,
+            "description": "Other attachments retained but not accepted as voice commands by this profile."
+          }
+        ]
+      },
+      "MessageBody": {
+        "type": "object",
+        "required": [
+          "mid",
+          "seq",
+          "text"
+        ],
+        "properties": {
+          "mid": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attachments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/$defs/Attachment"
+            }
+          },
+          "markup": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "LinkedMessage": {
+        "type": "object",
+        "required": [
+          "type",
+          "message"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "forward",
+              "reply"
+            ]
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/User"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message": {
+            "$ref": "#/$defs/MessageBody"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Message": {
+        "type": "object",
+        "required": [
+          "recipient",
+          "timestamp",
+          "body"
+        ],
+        "properties": {
+          "sender": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/User"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recipient": {
+            "$ref": "#/$defs/Recipient"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LinkedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MessageBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stat": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "views"
+                ],
+                "properties": {
+                  "views": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "description": "Nullable body follows official docs; SDK body is stricter. sender can be absent for channel posts."
+      },
+      "Callback": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "callback_id",
+          "user"
+        ],
+        "properties": {
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "callback_id": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          }
+        },
+        "additionalProperties": true
+      },
+      "CallbackButton": {
+        "type": "object",
+        "required": [
+          "type",
+          "text",
+          "payload"
+        ],
+        "properties": {
+          "type": {
+            "const": "callback"
+          },
+          "text": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "OpenAppButton": {
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "properties": {
+          "type": {
+            "const": "open_app"
+          },
+          "text": {
+            "type": "string"
+          },
+          "web_app": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "SubscribeRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "pattern": "^https://"
+          },
+          "update_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secret": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{5,256}$",
+            "minLength": 5,
+            "maxLength": 256
+          }
+        },
+        "additionalProperties": true
+      },
+      "ActionResponse": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "HTTP 200 plus success:false is not successful subscription or callback acknowledgement."
+      },
+      "BaseUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp"
+        ],
+        "properties": {
+          "update_type": {
+            "type": "string"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Update timestamp uses Unix milliseconds. No universal update_id is defined."
+      },
+      "BotAddedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "is_channel"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "bot_added"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "is_channel": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "BotStartedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "bot_started"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "BotStoppedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "bot_stopped"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "BotRemovedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "is_channel"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "bot_removed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "is_channel": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ChatTitleChangedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "title"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "chat_title_changed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DialogClearedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "dialog_cleared"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DialogMutedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "muted_until"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "dialog_muted"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "muted_until": {
+            "type": "integer"
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DialogUnmutedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "dialog_unmuted"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DialogRemovedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "dialog_removed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "user_locale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "MessageCallbackUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "callback"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "message_callback"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "callback": {
+            "$ref": "#/$defs/Callback"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Message"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "MessageCreatedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "message_created"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message": {
+            "$ref": "#/$defs/Message"
+          },
+          "user_locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "MessageEditedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "message_edited"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "additionalProperties": true
+      },
+      "MessageRemovedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message_id",
+          "chat_id",
+          "user_id",
+          "post_id"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "message_removed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "post_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "CommentCreatedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "comment_created"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "additionalProperties": true
+      },
+      "CommentEditedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "comment_edited"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "additionalProperties": true
+      },
+      "CommentRemovedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "message_id",
+          "chat_id",
+          "user_id",
+          "post_id"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "comment_removed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "post_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "UserAddedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "is_channel"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "user_added"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "is_channel": {
+            "type": "boolean"
+          },
+          "inviter_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "UserRemovedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp",
+          "chat_id",
+          "user",
+          "is_channel"
+        ],
+        "properties": {
+          "update_type": {
+            "const": "user_removed"
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          },
+          "chat_id": {
+            "$ref": "#/$defs/Int64"
+          },
+          "user": {
+            "$ref": "#/$defs/User"
+          },
+          "is_channel": {
+            "type": "boolean"
+          },
+          "admin_id": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "UntypedUpdate": {
+        "type": "object",
+        "required": [
+          "update_type",
+          "timestamp"
+        ],
+        "properties": {
+          "update_type": {
+            "type": "string",
+            "not": {
+              "enum": [
+                "bot_added",
+                "bot_started",
+                "bot_stopped",
+                "bot_removed",
+                "chat_title_changed",
+                "dialog_cleared",
+                "dialog_muted",
+                "dialog_unmuted",
+                "dialog_removed",
+                "message_callback",
+                "message_created",
+                "message_edited",
+                "message_removed",
+                "comment_created",
+                "comment_edited",
+                "comment_removed",
+                "user_added",
+                "user_removed"
+              ]
+            }
+          },
+          "timestamp": {
+            "$ref": "#/$defs/Int64"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Unknown or docs-only type is retained in inbox/quarantine, never dispatched to paid processing or task mutations."
+      },
+      "Update": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/BotAddedUpdate"
+          },
+          {
+            "$ref": "#/$defs/BotStartedUpdate"
+          },
+          {
+            "$ref": "#/$defs/BotStoppedUpdate"
+          },
+          {
+            "$ref": "#/$defs/BotRemovedUpdate"
+          },
+          {
+            "$ref": "#/$defs/ChatTitleChangedUpdate"
+          },
+          {
+            "$ref": "#/$defs/DialogClearedUpdate"
+          },
+          {
+            "$ref": "#/$defs/DialogMutedUpdate"
+          },
+          {
+            "$ref": "#/$defs/DialogUnmutedUpdate"
+          },
+          {
+            "$ref": "#/$defs/DialogRemovedUpdate"
+          },
+          {
+            "$ref": "#/$defs/MessageCallbackUpdate"
+          },
+          {
+            "$ref": "#/$defs/MessageCreatedUpdate"
+          },
+          {
+            "$ref": "#/$defs/MessageEditedUpdate"
+          },
+          {
+            "$ref": "#/$defs/MessageRemovedUpdate"
+          },
+          {
+            "$ref": "#/$defs/CommentCreatedUpdate"
+          },
+          {
+            "$ref": "#/$defs/CommentEditedUpdate"
+          },
+          {
+            "$ref": "#/$defs/CommentRemovedUpdate"
+          },
+          {
+            "$ref": "#/$defs/UserAddedUpdate"
+          },
+          {
+            "$ref": "#/$defs/UserRemovedUpdate"
+          },
+          {
+            "$ref": "#/$defs/UntypedUpdate"
+          }
+        ]
+      }
+    }
+  },
+  "events": {
+    "source_ids": [
+      "updates",
+      "sdk_updates"
+    ],
+    "sdk_typed_events": {
+      "bot_added": "BotAddedUpdate",
+      "bot_started": "BotStartedUpdate",
+      "bot_stopped": "BotStoppedUpdate",
+      "bot_removed": "BotRemovedUpdate",
+      "chat_title_changed": "ChatTitleChangedUpdate",
+      "dialog_cleared": "DialogClearedUpdate",
+      "dialog_muted": "DialogMutedUpdate",
+      "dialog_unmuted": "DialogUnmutedUpdate",
+      "dialog_removed": "DialogRemovedUpdate",
+      "message_callback": "MessageCallbackUpdate",
+      "message_created": "MessageCreatedUpdate",
+      "message_edited": "MessageEditedUpdate",
+      "message_removed": "MessageRemovedUpdate",
+      "comment_created": "CommentCreatedUpdate",
+      "comment_edited": "CommentEditedUpdate",
+      "comment_removed": "CommentRemovedUpdate",
+      "user_added": "UserAddedUpdate",
+      "user_removed": "UserRemovedUpdate"
+    },
+    "docs_only_events": [
+      "bot_admin_permissions_changed"
+    ],
+    "universal_event_id": null,
+    "timestamp_unit": "Unix milliseconds",
+    "identity_fields": {
+      "message_created": "message.body.mid (when body is non-null)",
+      "message_callback": "callback.callback_id",
+      "message_removed": "message_id",
+      "comment_removed": "message_id"
+    },
+    "user_locale_note": "SDK UserLocale is an empty enum; do not invent a language whitelist."
+  },
+  "inbound_policy": {
+    "authority": "Secretary approved design; these are local policy, not MAX guarantees",
+    "source_path": "docs/superpowers/specs/2026-10-03-secretary-vikunja-max-design.md",
+    "path": "/hooks/max",
+    "max_body_bytes": 1048576,
+    "require_configured_secret": true,
+    "target_ack_seconds": 1,
+    "durable_inbox_before_200": true,
+    "db_unavailable_http_status": 503,
+    "work_after_ack": [
+      "media fetch",
+      "Polza ASR/LLM",
+      "task mutations",
+      "outbound notifications"
+    ],
+    "actor": "message.sender.user_id or callback.user.user_id must map to an active allowlisted member; never infer actor from recipient, forwarded sender, display name or voice.",
+    "unknown_member_can_start_paid_work": false,
+    "canonical_ids": "Backend exact int64; local UI DTO IDs are decimal strings.",
+    "deduplication": {
+      "scope": "Include configured bot identity.",
+      "message_created": "type + body.mid; forwarded-only/no-mid falls back to canonical composite hash.",
+      "message_callback": "type + callback.callback_id",
+      "message_edited": "type + mid + timestamp/seq/content identity; do not collide with creation.",
+      "other_events": "Canonical payload hash including type, timestamp and applicable actor/chat IDs when no stable event ID exists.",
+      "same_stable_id_different_payload": "Conflict/quarantine; never silently apply both.",
+      "unknown_events": "Persist/quarantine without side effects; no paid dispatch."
+    },
+    "sends": "HTTP acceptance is not human reading. Mark ambiguous transport outcomes uncertain; never blindly resend. Bounded backoff only for definitely-not-accepted outcomes (including documented rate limits)."
+  },
+  "init_data": {
+    "source_ids": [
+      "initdata_validation",
+      "bridge",
+      "miniapp"
+    ],
+    "input": "window.WebApp.initData encoded UTF-8 string; raw WebAppData URL-fragment value is an alternative with one additional outer decoding layer.",
+    "unsafe_object_can_authenticate": false,
+    "outer_platform_keys_unique": true,
+    "signed_keys_unique": true,
+    "required_for_signature": [
+      "hash"
+    ],
+    "documented_bridge_shape_required": [
+      "query_id",
+      "auth_date",
+      "hash",
+      "user",
+      "chat",
+      "start_param"
+    ],
+    "optional_bridge_fields": [
+      "ip"
+    ],
+    "local_authentication_required": [
+      "hash",
+      "auth_date",
+      "user.id"
+    ],
+    "unknown_signed_fields": "Preserve and include every field except hash; do not discard extras before calculating the signature.",
+    "decode": "Decode percent-encoding exactly once at each explicit layer. Preserve decoded raw values and JSON spelling. Follow decodeURIComponent semantics for inner values: a literal + remains +; never apply an additional unquote/JSON reserialization.",
+    "canonical_data": "Sort keys lexicographically, omit hash, join key=value with LF (0x0A), UTF-8.",
+    "secret_key": "HMAC-SHA256(key=UTF8('WebAppData'), message=UTF8(bot_token))",
+    "signature": "lowercase hex HMAC-SHA256(key=secret_key bytes, message=UTF8(canonical_data))",
+    "hash_comparison": "constant time (local hardening)",
+    "auth_date_unit": "Unix seconds",
+    "miniapp_user_id_field": "user.id",
+    "bot_api_user_id_field": "user.user_id",
+    "documented_miniapp_user_shape": {
+      "id": "number",
+      "first_name": "string",
+      "last_name": "string; official validation example allows null",
+      "username": "string; official validation example allows null",
+      "language_code": "string",
+      "photo_url": "string; official validation example allows null"
+    },
+    "miniapp_chat_type_enum": [
+      "DIALOG",
+      "CHAT",
+      "CHANNEL"
+    ],
+    "bridge_recommended_max_age_seconds": 3600,
+    "local_policy": {
+      "max_age_seconds": 300,
+      "future_clock_skew_seconds": 30,
+      "replay_key": "bot_id + verified user_id + auth_date + verified signature bytes (not raw query string hash)",
+      "reopen_after_expiry": true,
+      "server_only_token": true
+    },
+    "startapp_payload": {
+      "max_length": 512,
+      "allowed_characters": "A-Z a-z 0-9 _ -",
+      "url_template": "https://max.ru/<botName>?startapp=<payload>",
+      "source_ids": [
+        "miniapp"
+      ]
+    }
+  },
+  "audio": {
+    "source_ids": [
+      "sdk_attachment"
+    ],
+    "documented_attachment_type": "audio",
+    "required_fields": [
+      "type",
+      "payload.url",
+      "payload.token"
+    ],
+    "provider_embedded_transcript_field": null,
+    "provider_duration_field_in_audio_attachment": null,
+    "native_voice_status": "NOT_QUALIFIED",
+    "native_voice_guaranteed_in_every_client": false,
+    "known_unknowns": [
+      "Whether native voice reaches the bot as non-empty audio on each actual Android/iOS client",
+      "Current signed media CDN hosts, URL expiry and redirect chain",
+      "Actual duration and audio codec of each received file",
+      "Whether unavailable native voice needs audio-file or mini-app recording fallback"
+    ],
+    "issue_reference": {
+      "url": "https://github.com/max-messenger/max-bot-api-client-ts/issues/250",
+      "authority": "User report, not a current universal failure guarantee"
+    },
+    "local_limits": {
+      "authority": "Secretary approved design, not MAX provider limits",
+      "max_duration_seconds": 120,
+      "max_download_bytes": 10485760,
+      "duration_check": "FFprobe on actual downloaded bytes",
+      "decode": "CPU FFmpeg with deadline; no GPU ASR",
+      "download_policy": "Verified event only; HTTPS and observed CDN allowlist, public-address DNS and redirect checks; no signed URLs/tokens in logs."
+    },
+    "acceptance_gate": "Real file-audio and real native-voice tests are separate; SDK audio type and offline fixture success do not prove native voice."
+  },
+  "prerequisites": {
+    "source_ids": [
+      "bot_create",
+      "miniapp",
+      "events"
+    ],
+    "eligibility": "RF-resident legal entity, individual entrepreneur (IP), or self-employed account.",
+    "profile_verification_required": true,
+    "moderation_required": true,
+    "token_obtained_by": "Verified owner via business.max.ru or MAX for Business; no token included in this artifact.",
+    "bot_creation_slots": {
+      "organization_or_ip": 5,
+      "self_employed": 2
+    },
+    "bot_visibility": "Moderated bot is discoverable by MAX users; private task access is enforced by local allowlist, not display name.",
+    "miniapp_requires_bot": true,
+    "miniapp_requires_own_https_hosting": true,
+    "paid_subscription_required_by_reviewed_setup_instructions": false,
+    "permanent_free_api_price_guaranteed": false,
+    "pricing_note": "Reviewed official creation/setup pages do not specify a per-call fee or require a paid subscription. They do not guarantee permanently free API or free domain/static IP/hosting.",
+    "current_owner_readiness": "Owner reports IP exists. Verified business profile, moderation, token and stable public HTTPS route remain unverified."
+  },
+  "discrepancies": [
+    {
+      "id": "message_body_null",
+      "sources": [
+        "message",
+        "sdk_message"
+      ],
+      "difference": "Docs allow Message.body=null for forwarded-only messages; SDK declares MessageBody.",
+      "resolution": "Accept null inbound body; no text/audio command without a body."
+    },
+    {
+      "id": "user_nullability_and_activity",
+      "sources": [
+        "user",
+        "sdk_user"
+      ],
+      "difference": "Docs allow last_name/name null and last_activity_time omission when online is hidden; SDK uses last_name?:string, name:string, last_activity_time:number.",
+      "resolution": "Inbound schema follows documented nullable last_name and optional activity; deprecated name is optional local compatibility policy."
+    },
+    {
+      "id": "webhook_only_admin_event",
+      "sources": [
+        "updates",
+        "sdk_updates"
+      ],
+      "difference": "Docs list bot_admin_permissions_changed (Webhook only); SDK Update union does not.",
+      "resolution": "Retain as untyped/quarantined event until payload fields are verified; no guessed payload schema."
+    },
+    {
+      "id": "polling_marker",
+      "sources": [
+        "polling",
+        "sdk_subscription"
+      ],
+      "difference": "Docs allow nullable marker; SDK declares number.",
+      "resolution": "Use nullable cursor in test tooling; never use as webhook event ID."
+    },
+    {
+      "id": "miniapp_nullable_example",
+      "sources": [
+        "bridge",
+        "initdata_validation"
+      ],
+      "difference": "Bridge interface shows strings but official validation example has null username/photo_url.",
+      "resolution": "Do not require optional display/profile fields for identity; sign their raw spelling."
+    },
+    {
+      "id": "secret_pattern",
+      "sources": [
+        "subscribe"
+      ],
+      "difference": "Published regex includes underscore while prose list omits it.",
+      "resolution": "Pinned regex is ^[a-zA-Z0-9_-]{5,256}$; use a safe alphanumeric secret for live setup."
+    }
+  ],
+  "fixtures": {
+    "authority": "Synthetic local fixtures, no real users, files, tokens, domains or authenticated calls.",
+    "message_created_audio": {
+      "update_type": "message_created",
+      "timestamp": 1791045908000,
+      "message": {
+        "sender": {
+          "user_id": 9007199254740993,
+          "first_name": "Synthetic member",
+          "last_name": null,
+          "username": null,
+          "is_bot": false
+        },
+        "recipient": {
+          "chat_id": -9007199254740993,
+          "chat_type": "chat",
+          "user_id": null,
+          "post_id": null
+        },
+        "timestamp": 1791045908000,
+        "body": {
+          "mid": "synthetic-message-001",
+          "seq": 17,
+          "text": null,
+          "attachments": [
+            {
+              "type": "audio",
+              "payload": {
+                "url": "https://media.example.invalid/synthetic.ogg",
+                "token": "SYNTHETIC_MEDIA_TOKEN"
+              }
+            }
+          ]
+        }
+      },
+      "user_locale": null
+    },
+    "message_callback_without_message": {
+      "update_type": "message_callback",
+      "timestamp": 1791045908000,
+      "callback": {
+        "timestamp": 1791045907999,
+        "callback_id": "synthetic-callback-001",
+        "payload": "confirm:synthetic-operation",
+        "user": {
+          "user_id": 9007199254740993,
+          "first_name": "Synthetic member",
+          "last_name": null,
+          "username": null,
+          "is_bot": false
+        }
+      },
+      "message": null,
+      "user_locale": null
+    },
+    "forwarded_only_message": {
+      "update_type": "message_created",
+      "timestamp": 1791045908000,
+      "message": {
+        "recipient": {
+          "chat_id": 1,
+          "chat_type": "channel",
+          "user_id": null,
+          "post_id": 1
+        },
+        "timestamp": 1791045908000,
+        "body": null,
+        "link": {
+          "type": "forward",
+          "sender": {
+            "user_id": 9007199254740993,
+            "first_name": "Synthetic member",
+            "last_name": null,
+            "username": null,
+            "is_bot": false
+          },
+          "message": {
+            "mid": "synthetic-forward-001",
+            "seq": 1,
+            "text": "Forwarded text"
+          }
+        }
+      }
+    },
+    "native_voice_missing_attachment": {
+      "update_type": "message_created",
+      "timestamp": 1791045908000,
+      "message": {
+        "sender": {
+          "user_id": 9007199254740993,
+          "first_name": "Synthetic member",
+          "last_name": null,
+          "username": null,
+          "is_bot": false
+        },
+        "recipient": {
+          "chat_id": -9007199254740993,
+          "chat_type": "chat",
+          "user_id": null,
+          "post_id": null
+        },
+        "timestamp": 1791045908000,
+        "body": {
+          "mid": "synthetic-no-audio-001",
+          "seq": 18,
+          "text": null,
+          "attachments": []
+        }
+      }
+    },
+    "init_data_vector": {
+      "synthetic_token": "SYNTHETIC_MAX_TOKEN_NOT_A_CREDENTIAL",
+      "launch_params": "auth_date=1791045908\nchat={\"id\":-9007199254740993,\"type\":\"CHAT\"}\nquery_id=synthetic-fixture-session\nuser={\"id\":9007199254740993,\"first_name\":\"A+B %2F\",\"last_name\":null,\"username\":null}",
+      "signature_hex": "1a7ec09713a57bc3064d23c3ba5c67dd2bd5c7195d8d45a76c7638e9d0862ab0",
+      "init_data": "auth_date=1791045908&chat=%7B%22id%22%3A-9007199254740993%2C%22type%22%3A%22CHAT%22%7D&query_id=synthetic-fixture-session&user=%7B%22id%22%3A9007199254740993%2C%22first_name%22%3A%22A%2BB%20%252F%22%2C%22last_name%22%3Anull%2C%22username%22%3Anull%7D&hash=1a7ec09713a57bc3064d23c3ba5c67dd2bd5c7195d8d45a76c7638e9d0862ab0",
+      "source": "Algorithm from official MAX validation docs; expected digest computed offline using Python standard-library HMAC. Not an official supplied golden digest."
+    }
+  }
+}

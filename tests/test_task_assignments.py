@@ -404,7 +404,7 @@ def test_schema8_failure_rollback_and_immutable_context(tmp_path,monkeypatch):
         assert not conn.execute('SELECT 1 FROM schema_migrations WHERE version=8').fetchone()
         assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name='summary_input_contexts'").fetchone()
     monkeypatch.setattr(module,'ASSIGNMENT_MIGRATION',old)
-    db=Database(path); assert db.one('SELECT MAX(version) AS v FROM schema_migrations')['v']==8
+    db=Database(path); assert db.one('SELECT MAX(version) AS v FROM schema_migrations')['v']==9
     db,_,_,_,_,_,job=setup(tmp_path/'immutable')
     payload=json.loads(job['payload']); payload['summary_context']['roster_revision']+=1
     with pytest.raises(sqlite3.IntegrityError):db.execute('UPDATE jobs SET payload=? WHERE id=?',(json.dumps(payload),job['id']))

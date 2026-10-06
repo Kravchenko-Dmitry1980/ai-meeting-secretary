@@ -151,9 +151,13 @@ def test_duplicate_process_cancel_and_explicit_retry(ctx):
     assert first == second and len(ctx.db.jobs(ctx.mid)) == 1
     cancel = ctx.api.post(f"/api/v1/jobs/{first}/cancel", headers=ctx.auth)
     assert cancel.status_code == 200 and cancel.json()["status"] == "cancelled"
-    assert ctx.api.post(url, headers=ctx.auth, json={}).status_code == 409
+    resumed = ctx.api.post(url, headers=ctx.auth, json={})
+    assert resumed.status_code == 202 and resumed.json()["job_id"] == first
+    assert ctx.db.job(first)["status"] == "queued" and len(ctx.db.jobs(ctx.mid)) == 1
     retry = ctx.api.post(url, headers=ctx.auth, json={"retry": True})
-    assert retry.status_code == 202 and retry.json()["job_id"] != first
+    assert retry.status_code == 202 and retry.json()["job_id"] == first
+    assert len(ctx.db.jobs(ctx.mid)) == 1
+    assert ctx.api.get("/api/v1/usage", params={"meeting_id": ctx.mid}).json()["records"] == []
     assert ctx.api.post("/api/v1/jobs/missing/cancel", headers=ctx.auth).status_code == 404
 
 
@@ -277,7 +281,12 @@ def test_successful_summary_tasks_and_source_references(ctx):
     result = ctx.api.get(f"/api/v1/meetings/{ctx.mid}/summary")
     assert result.status_code == 200 and result.json()["overview"] == "Синтетический итог"
     tasks = ctx.api.get(f"/api/v1/meetings/{ctx.mid}/tasks")
-    assert tasks.status_code == 200 and tasks.json() == summary["action_items"]
+    assert tasks.status_code == 200 and len(tasks.json()) == 1
+    task = tasks.json()[0]
+    # The current task API adds reviewed-assignment metadata to source fields.
+    assert {key: task[key] for key in summary["action_items"][0]} == summary["action_items"][0]
+    assert task["assignment_status"] == "needs_review"
+    assert task["participant_id"] is None and "missing_evidence" in task["assignment_reason_codes"]
     located = ctx.api.get(f"/api/v1/meetings/{ctx.mid}/segments", params={"segment_id": source_id})
     assert located.json()["items"][0]["id"] == source_id
 

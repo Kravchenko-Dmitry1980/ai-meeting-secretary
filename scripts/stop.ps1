@@ -11,7 +11,12 @@ if (-not $Owned) { Remove-Item -LiteralPath $StatePath; Write-Output 'Secretary 
 if ($Owned.CommandLine -notlike "*$ExpectedLauncher*" -or $Owned.CreationDate.ToUniversalTime().ToString('o') -ne $StateCreatedStamp -or $State.project -ne $ProjectRoot) {
     throw 'Process identity differs from this Secretary instance. No process was stopped.'
 }
-Set-Content -LiteralPath (Join-Path $RuntimeDir 'stop.request') -Value 'stop' -Encoding ASCII
+$StopName = 'stop.request'
+if ($State.run_id) {
+    if ([string]$State.run_id -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') { throw 'Secretary launch identity is invalid. No stop marker was written.' }
+    $StopName = 'stop-' + [string]$State.run_id + '.request'
+}
+Set-Content -LiteralPath (Join-Path $RuntimeDir $StopName) -Value 'stop' -Encoding ASCII
 for ($Attempt = 0; $Attempt -lt 60; $Attempt++) {
     if (-not (Get-Process -Id $State.pid -ErrorAction SilentlyContinue)) {
         Remove-Item -LiteralPath $StatePath

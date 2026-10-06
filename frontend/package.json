@@ -13,6 +13,7 @@
     "typecheck": "tsc -b --pretty false",
     "test:processing": "node --experimental-strip-types --test tests/*.test.mjs",
     "api:types": "openapi-typescript ../docs/openapi.json -o src/generated/api.d.ts",
+    "api:team-types": "openapi-typescript ../docs/contracts/team.openapi.json -o src/generated/team-api.d.ts",
     "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort"
   },
   "dependencies": {

@@ -675,7 +675,7 @@ def test_schema5_receipt_compatibility_migration_is_idempotent_and_keeps_history
     migrated=Database(ctx.db.path)
     Database(ctx.db.path)
     assert historic==migrated.rows('SELECT operation_id,kind,request_hash,response,error FROM enrollment_commands ORDER BY operation_id')
-    assert [r['version'] for r in migrated.rows('SELECT version FROM schema_migrations ORDER BY version')]==[1,2,3,4,5,6,7,8]
+    assert [r['version'] for r in migrated.rows('SELECT version FROM schema_migrations ORDER BY version')]==[1,2,3,4,5,6,7,8,9]
     assert migrated.one('SELECT error_status FROM enrollment_commands WHERE operation_id=?',(old_error,))['error_status']==409
     assert ctx.api.post(base+'/confirm',headers=ctx.token,json=body).content==ready.content
     assert ctx.api.request('DELETE',base,headers=ctx.token,json=delete).content==removed.content

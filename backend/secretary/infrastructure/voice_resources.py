@@ -2,6 +2,7 @@
 import threading
 import inspect
 from contextlib import contextmanager
+from contextlib import nullcontext
 from secretary.domain.enrollment import EnrollmentFailure
 
 
@@ -75,28 +76,62 @@ class LeasedCapture:
     Native AudioCapture supplies native_closed receipts. Legacy injected fakes
     close synchronously; their successful terminal return is the test receipt.
     """
-    def __init__(self, capture, lease, namespace, *, legacy=False):
+    def __init__(self, capture, lease, namespace, *, legacy=False, maintenance=None, participant_id=None):
         self.capture, self.lease, self.namespace, self.legacy = capture, lease, namespace, legacy
         self._claimed = None
+        self.maintenance, self.participant_id = maintenance, participant_id
+        self._maintenance_ticket = None
+        self._completion_lock = threading.RLock()
+        self._finishing = {}
 
     def claim(self, identifier):
         owner = (self.namespace, identifier)
-        self.lease.acquire(owner)
-        self._claimed = identifier
+        ticket = (self.maintenance.enter(self.participant_id, f'capture_{self.namespace}')
+                  if self.maintenance is not None else None)
+        try:
+            self.lease.acquire(owner)
+        except BaseException:
+            if ticket is not None:
+                self.maintenance.leave(ticket)
+            raise
+        with self._completion_lock:
+            self._maintenance_ticket = ticket
+            self._claimed = identifier
 
     def _release(self, identifier, result):
         closed = result.get('native_closed', self.legacy and not result.get('recording', False))
         self.lease.release((self.namespace, identifier), native_closed=closed)
-        if closed and self._claimed == identifier:
-            self._claimed = None
+        with self._completion_lock:
+            if closed and self._claimed == identifier and identifier not in self._finishing:
+                self._claimed = None
+                if self._maintenance_ticket is not None:
+                    self.maintenance.leave(self._maintenance_ticket)
+                    self._maintenance_ticket = None
 
     def start(self, identifier, microphone_id=None, system_id=None, on_chunk=None, on_error=None, on_finish=None):
         if self._claimed != identifier:
             self.claim(identifier)
         def finished(snapshot):
-            self._release(identifier, snapshot)
-            if on_finish:
-                on_finish(snapshot)
+            closed = snapshot.get('native_closed', self.legacy and not snapshot.get('recording', False))
+            with self._completion_lock:
+                ticket = self._maintenance_ticket if self._claimed == identifier else None
+                self._finishing[identifier] = ticket
+                # Device ownership ends on its native receipt. Admission lasts
+                # through callback commits and transfer to an owned executor.
+                self.lease.release((self.namespace, identifier), native_closed=closed)
+            try:
+                with self.maintenance.ticket_context(ticket) if ticket is not None else nullcontext():
+                    if on_finish:
+                        on_finish(snapshot)
+            finally:
+                with self._completion_lock:
+                    self._finishing.pop(identifier, None)
+                    if closed:
+                        if ticket is not None:
+                            self.maintenance.leave(ticket)
+                        if self._claimed == identifier and self._maintenance_ticket == ticket:
+                            self._claimed = None
+                            self._maintenance_ticket = None
         kwargs = {'on_finish': finished} if 'on_finish' in inspect.signature(self.capture.start).parameters else {}
         try:
             result = self.capture.start(identifier, microphone_id, system_id, on_chunk, on_error, **kwargs)

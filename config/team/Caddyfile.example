@@ -1,0 +1,130 @@
+# Disabled deployment example. Validate before owner-approved activation.
+# All four variables are explicit trusted local configuration, never HTTP input.
+{
+    admin off
+    persist_config off
+    auto_https disable_redirects
+    storage file_system {
+        root "{$TEAM_CADDY_DATA}"
+    }
+    log default {
+        # HTTP error records can contain request metadata; do not persist them.
+        exclude http.log.access http.log.error
+    }
+    servers {
+        protocols h1 h2
+        strict_sni_host on
+        max_header_size 32KB
+        timeouts {
+            read_header 5s
+            read_body 10s
+            write 20s
+            idle 30s
+        }
+    }
+}
+
+(team_gateway) {
+    reverse_proxy 127.0.0.1:8766 {
+        header_up -Forwarded
+        header_up -X-Forwarded-*
+        header_up -X-Real-IP
+        header_up X-Team-Client-IP {remote_host}
+        lb_retries 0
+        transport http {
+            dial_timeout 2s
+            response_header_timeout 10s
+            read_timeout 10s
+            write_timeout 10s
+        }
+    }
+}
+
+https://{$TEAM_PUBLIC_HOST}:443 {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+    root * "{$TEAM_PUBLIC_ROOT}"
+    import "{$TEAM_ASSET_ROUTES}"
+    @noncanonical vars_regexp {http.request.orig_uri} `^[^?]*(%|\\|//|/\.\.?(/|\?|$))`
+    @hook {
+        method POST
+        path_regexp hook ^/hooks/max$
+    }
+    @api_read {
+        method GET
+        path_regexp api_read ^/api/team/v1/(me|members|status|dashboard|tasks(/[1-9][0-9]{0,127}(/history|/due-resolution)?)?|commands/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$
+    }
+    @api_write {
+        method POST
+        path_regexp api_write ^/api/team/v1/(session/(max|code)|commands|tasks/[1-9][0-9]{0,127}/due-resolution/previews|due-resolutions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/confirm)$
+    }
+    @api_logout {
+        method DELETE
+        path_regexp api_logout ^/api/team/v1/session$
+    }
+    @team_redirect {
+        method GET HEAD
+        path_regexp team_redirect ^/team$
+    }
+    @team_index {
+        method GET HEAD
+        path_regexp team_index ^/team/$
+    }
+    route {
+        header -Server
+        header {
+            Cache-Control "no-store"
+            X-Content-Type-Options "nosniff"
+            Referrer-Policy "no-referrer"
+            Permissions-Policy "camera=(), microphone=(), geolocation=()"
+            # Frame restrictions await actual MAX web-embedding qualification.
+            Content-Security-Policy "default-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'"
+        }
+        respond @noncanonical 404
+        handle @hook {
+            request_body {
+                max_size 1048576
+            }
+            import team_gateway
+        }
+        handle @api_read {
+            request_body {
+                max_size 262144
+            }
+            import team_gateway
+        }
+        handle @api_write {
+            request_body {
+                max_size 262144
+            }
+            import team_gateway
+        }
+        handle @api_logout {
+            request_body {
+                max_size 262144
+            }
+            import team_gateway
+        }
+        handle @team_redirect {
+            redir * /team/ 308
+        }
+        handle @team_index {
+            header Content-Security-Policy "default-src 'none'; script-src 'self' https://st.max.ru/js/max-web-app.js; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'"
+            rewrite * /team.html
+            file_server
+        }
+        handle @team_assets {
+            uri strip_prefix /team
+            file_server
+        }
+        respond 404
+    }
+}
+
+# Unknown Host has an explicit denial even before a TLS-enabled live probe.
+https://:443 {
+    respond 404
+}

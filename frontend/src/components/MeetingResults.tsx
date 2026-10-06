@@ -4,6 +4,7 @@ import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { AssignmentReviewPanel } from './AssignmentReviewPanel';
 import type { AssignmentReviewPanelProps } from './AssignmentReviewPanel';
+import { TaskPublicationPanel } from './TaskPublicationPanel';
 
 interface Props { summary: Summary | null; status: string; tab: string; onSource: (id: string, version?: number) => void; assignments?: Pick<AssignmentReviewPanelProps, 'meetingId' | 'roster' | 'refreshKey' | 'onChanged'> }
 export function MeetingResults({ summary, status, tab, onSource, assignments }: Props) {
@@ -16,6 +17,7 @@ export function MeetingResults({ summary, status, tab, onSource, assignments }: 
   if (tab === 'Задачи') return (
     <div className="space-y-4">
       {assignments && summary.meeting_id === assignments.meetingId && <AssignmentReviewPanel key={`${assignments.meetingId}:${summary.transcript_version}:${summary.summary_version}:current`} {...assignments} transcriptVersion={summary.transcript_version} summaryVersion={summary.summary_version} dueDates={Object.fromEntries(summary.action_items.map((item) => [item.id, item.due_date]))} onSource={onSource} />}
+      {assignments && summary.meeting_id === assignments.meetingId && <TaskPublicationPanel key={`publication:${summary.meeting_id}:${summary.transcript_version}:${summary.summary_version}`} meetingId={summary.meeting_id} transcriptVersion={summary.transcript_version} summaryVersion={summary.summary_version} refreshKey={assignments.refreshKey} onSource={onSource} />}
       <details open={!assignments} className="space-y-4"><summary className="cursor-pointer text-sm text-slate-300">Задачи и сроки из сохранённых итогов</summary>
       <p className="text-sm leading-6 text-slate-400">Ответственный и срок указаны, если они названы в записи. Каждая задача опирается на источник.</p>
       {summary.action_items.length === 0 ? <Card className="empty-results"><ListChecks size={26} className="text-mint" /><h3>{(summary.excluded_items_count ?? 0) > 0 ? 'Подтверждённых задач нет' : 'Задачи не обнаружены'}</h3><p>{(summary.excluded_items_count ?? 0) > 0 ? 'Часть пунктов из черновиков не прошла проверку. Сверьте поручения с исходной расшифровкой.' : 'Анализ завершён. В этой версии расшифровки не найдены подтверждённые поручения.'}</p></Card> : summary.action_items.map((item, index) => <Card key={item.id} className="task-card">

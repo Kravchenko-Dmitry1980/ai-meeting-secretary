@@ -11,6 +11,7 @@ from pydantic_settings.sources import DotEnvSettingsSource
 
 from secretary.application.worker import Worker
 from secretary.infrastructure.audio import AudioCapture
+from sqlite_test_paths import sqlite_path
 
 
 def test_export_isolates_database_env_devices_network_and_worker(tmp_path, monkeypatch):
@@ -34,7 +35,7 @@ def test_export_isolates_database_env_devices_network_and_worker(tmp_path, monke
     connections = []
 
     def guarded_connect(database, *args, **kwargs):
-        path = Path(database).resolve()
+        path = sqlite_path(database, uri=kwargs.get('uri', False))
         assert path.is_relative_to((root / ".runtime/openapi-export").resolve())
         connections.append(path)
         return original_connect(database, *args, **kwargs)
@@ -56,6 +57,10 @@ def test_export_isolates_database_env_devices_network_and_worker(tmp_path, monke
     assert connections and all(not path.parent.exists() for path in connections)
     assert not (tmp_path / "forbidden-production").exists()
     assert tempfile.tempdir == previous_tempdir
+    forbidden = tmp_path / 'forbidden-production.sqlite3'
+    with pytest.raises(AssertionError):
+        sqlite3.connect(forbidden.as_uri() + '?mode=ro', uri=True)
+    assert not forbidden.exists()
 
 
 def test_failed_export_restores_temp_directory_and_removes_scratch(tmp_path, monkeypatch):

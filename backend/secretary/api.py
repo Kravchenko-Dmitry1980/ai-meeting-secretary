@@ -10,6 +10,8 @@ import tempfile
 import wave
 import ipaddress
 import re
+from decimal import Decimal
+from uuid import UUID
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -41,6 +43,11 @@ from secretary.domain.enrollment import (Enrollment, EnrollmentFailure, EnrollCo
 from secretary.infrastructure.voice_resources import CaptureLease, InferenceCoordinator, LeasedCapture
 from secretary.domain.voice import MAX_PAYLOAD, VoiceError
 from secretary.domain.models import Meeting, AudioChunk, TranscriptSegment, Speaker, Summary, ActionItem, ProcessingJob, UsageRecord
+from secretary.domain.cloud_budget import BudgetError, to_micro
+from secretary.domain.task_delivery import (DeliveryReceipt, PublicationContext, PublicationPreviewResult,
+    PreviewPublications, PublishCommand)
+from secretary.domain.team import TeamConflict, TeamForbidden
+from secretary.application.publication_evidence import PublicationEvidenceError
 
 
 class BodyTooLarge(HTTPException):
@@ -130,6 +137,13 @@ class CreateMeeting(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(default="Новая встреча", min_length=1, max_length=250)
     processing_mode: Literal['ordinary','voice_identification'] = 'ordinary'
+    cloud_budget_scope_id: UUID | None = None
+
+
+class CreateBudgetScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation_id: UUID
+    cap_rub: Decimal = Field(gt=0, le=3000, allow_inf_nan=False)
 
 
 class ProcessRequest(DTO):
@@ -174,32 +188,48 @@ def local_url(value):
 
 
 def create_app(settings: Settings | None = None, *, provider_factory=None, capture=None, run_worker=True,
-               enrollment_capture=None, voice_store=None, enrollment_decoder=None, voice_engine=None, voice_model=None) -> FastAPI:
+               enrollment_capture=None, voice_store=None, enrollment_decoder=None, voice_engine=None, voice_model=None,
+               task_publications_factory=None, team_auth_factory=None, publication_worker_factory=None,
+               database_path=None, billing_path=None, maintenance=None, participant_id=None,
+               outbound_enabled=True) -> FastAPI:
     settings = settings or Settings()
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
+    from secretary.team_settings import RuntimeConfigurationError
+    secretary_path = database_path or settings.data_dir / "secretary.sqlite3"
+    effective_billing_path = billing_path if billing_path is not None else settings.data_dir / 'billing.sqlite3'
+    if restore_guard_present((secretary_path, effective_billing_path)):
+        raise RuntimeConfigurationError('team_restore_reconciliation_required')
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     project_tmp = settings.data_dir / "tmp"
     project_tmp.mkdir(exist_ok=True)
     tempfile.tempdir = str(project_tmp)  # only Secretary's own process; no Windows setting
-    db = Database(settings.data_dir / "secretary.sqlite3")
+    db = Database(secretary_path, maintenance=maintenance, participant_id=participant_id)
     speaker_service = SpeakerService(SpeakerRepository(db))
     stored = db.configuration()
     settings = Settings(**{**settings.model_dump(), **stored}, _env_file=None)
+    if not outbound_enabled:
+        settings = settings.model_copy(update={'cloud_enabled': False})
     csrf_token = secrets.token_urlsafe(32)
     if provider_factory is None:
-        from secretary.infrastructure.polza import PolzaClient
-        provider_factory = PolzaClient
+        from secretary.infrastructure.polza import build_polza_client
+        provider_factory = lambda configuration: build_polza_client(configuration.model_copy(update={'cloud_enabled': False}) if not outbound_enabled else configuration, billing_path=billing_path,
+            maintenance=maintenance, participant_id=participant_id)
+    from secretary.infrastructure.cloud_budget_factory import build_monthly_budget
+    cloud_budget = build_monthly_budget(settings, billing_path=billing_path, maintenance=maintenance, participant_id=participant_id)
     from secretary.infrastructure.audio import AudioCapture
     legacy_capture = capture is not None and not isinstance(capture, AudioCapture)
     if capture is None:
         capture = AudioCapture(settings)
     capture_lease, inference = CaptureLease(), InferenceCoordinator()
-    capture = LeasedCapture(capture, capture_lease, 'meeting', legacy=legacy_capture)
+    capture = LeasedCapture(capture, capture_lease, 'meeting', legacy=legacy_capture,
+        maintenance=maintenance, participant_id=participant_id)
     legacy_enrollment = enrollment_capture is not None and not isinstance(enrollment_capture, AudioCapture)
     if enrollment_capture is None:
         # Factory is called at explicit start only; native module remains lazy.
         enrollment_capture = AudioCapture(settings, folder_factory=lambda identifier: enrollment_service.staging(identifier, create=True),
                                            max_seconds=30, max_channels=2, chunk_seconds=30)
-    enrollment_capture = LeasedCapture(enrollment_capture, capture_lease, 'enrollment', legacy=legacy_enrollment)
+    enrollment_capture = LeasedCapture(enrollment_capture, capture_lease, 'enrollment', legacy=legacy_enrollment,
+        maintenance=maintenance, participant_id=participant_id)
     enrollment_service = EnrollmentService(settings, db, enrollment_capture, inference,
         store=voice_store, decoder=enrollment_decoder, engine=voice_engine, model=voice_model)
     recovery = getattr(capture, "recover", None)
@@ -216,11 +246,15 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @asynccontextmanager
     async def lifespan(app):
-        await asyncio.to_thread(enrollment_service.recover)
-        if run_worker:
-            await asyncio.to_thread(recover_storage)
-            await worker.start()
+        publication_worker, publication_task = None, None
         try:
+            await asyncio.to_thread(enrollment_service.recover)
+            if run_worker:
+                await asyncio.to_thread(recover_storage)
+                await worker.start()
+            publication_worker = publication_worker_factory(app.state.task_publications) if publication_worker_factory and outbound_enabled else None
+            publication_task = asyncio.create_task(publication_worker.run(), name='secretary-publications') if publication_worker else None
+            app.state.publication_worker, app.state.publication_task = publication_worker, publication_task
             yield
         finally:
             # All close paths execute even if one driver fails; no lease release on timeout.
@@ -233,14 +267,33 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                     try:
                         await asyncio.to_thread(enrollment_service.close)
                     finally:
-                        await worker.close()
+                        try:
+                            await worker.close()
+                        finally:
+                            if publication_worker is not None:
+                                publication_worker.stop()
+                                await asyncio.shield(publication_task)
 
     app = FastAPI(title="Secretary", version="0.1.0", lifespan=lifespan)
     app.add_middleware(BodyLimitMiddleware, max_upload_bytes=settings.max_upload_bytes)
+    if maintenance is not None:
+        from secretary.interface.maintenance_middleware import MaintenanceMiddleware
+        app.add_middleware(MaintenanceMiddleware, maintenance=maintenance, participant_id=participant_id)
     app.state.db, app.state.worker, app.state.settings, app.state.capture = db, worker, settings, capture
     app.state.speakers = speaker_service
     assignment_service = AssignmentRepository(db)
     app.state.assignments = assignment_service
+    app.state.task_publications = task_publications_factory(db) if task_publications_factory else None
+    from secretary.interface.local_team_routes import create_local_team_router
+    team_auth = team_auth_factory(db) if team_auth_factory else None
+    app.include_router(create_local_team_router(
+        team_auth[0] if team_auth is not None else None,
+        actor_id=team_auth[1] if team_auth is not None else ''))
+    app.state.cloud_budget = cloud_budget
+    app.state.maintenance, app.state.maintenance_participant = maintenance, participant_id
+    app.state.publication_worker, app.state.publication_task = None, None
+    from secretary.infrastructure.polza_history import PolzaHistoryClient
+    app.state.cloud_budget_history = PolzaHistoryClient(settings)
     app.state.enrollments, app.state.voice_inference, app.state.capture_lease = enrollment_service, inference, capture_lease
     app.state.enrollment_capture = enrollment_capture
     audio_locks: dict[str, asyncio.Lock] = {}
@@ -284,6 +337,57 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def private_voice_failure(request, exc):
         return JSONResponse({'detail': exc.reason, 'reason_codes': [exc.reason]}, status_code=409)
 
+    @app.exception_handler(BudgetError)
+    async def budget_failure(request, exc):
+        status = 404 if exc.code == "unknown_budget_scope" else 409
+        return JSONResponse({"detail": exc.code, "reason_codes": [exc.code]}, status_code=status)
+
+    from secretary.infrastructure.team_maintenance import MaintenanceBlocked
+
+    @app.exception_handler(MaintenanceBlocked)
+    async def maintenance_failure(request, exc):
+        return JSONResponse({'detail': 'maintenance_blocked'}, status_code=503,
+            headers={'Cache-Control': 'no-store', 'Retry-After': '5'})
+
+    @app.get("/api/v1/cloud-budget")
+    async def monthly_budget_snapshot():
+        return cloud_budget.snapshot().public()
+
+    @app.post("/api/v1/cloud-budget/refresh")
+    async def refresh_monthly_budget():
+        # An explicit owner action also authorizes switching the active key identity.
+        usage = await cloud_budget.account_reader.read_key_usage()
+        cloud_budget.refresh_account(usage)
+        return cloud_budget.snapshot().public()
+
+    @app.post("/api/v1/cloud-budget/scopes", status_code=201)
+    async def create_budget_scope(body: CreateBudgetScope):
+        return cloud_budget.create_scope(str(body.operation_id), to_micro(body.cap_rub))
+
+    @app.get("/api/v1/cloud-budget/scopes/{scope_id}")
+    async def budget_scope_snapshot(scope_id: UUID):
+        return cloud_budget.scope_snapshot(str(scope_id))
+
+    @app.post("/api/v1/cloud-budget/operations/{operation_id}/reconcile")
+    async def reconcile_cloud_operation(operation_id: UUID):
+        reservation = cloud_budget.reservation(str(operation_id))
+        if reservation.status in {"confirmed", "released"}:
+            return {"operation_id": str(operation_id), "status": reservation.status,
+                    "budget": cloud_budget.snapshot().public()}
+        history = app.state.cloud_budget_history
+        if history.key_tag != reservation.key_tag:
+            raise BudgetError("monthly_budget_key_changed")
+        identifier = reservation.provider_request_id or reservation.provider_job_id
+        if not identifier:
+            raise BudgetError("monthly_budget_receipt_identity_unavailable")
+        receipt = await history.read_receipt(identifier)
+        if receipt["provider_request_id"] != identifier:
+            raise BudgetError("budget_receipt_identity_conflict")
+        if receipt["status"] in {"completed", "failed"}:
+            cloud_budget.settle(str(operation_id), receipt)
+        return {"operation_id": str(operation_id), "status": cloud_budget.reservation(str(operation_id)).status,
+                "budget": cloud_budget.snapshot().public()}
+
     @app.exception_handler(AssignmentEvidenceError)
     async def assignment_evidence_error(request, exc):
         reason = str(exc)
@@ -297,6 +401,57 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     @app.patch('/api/v1/meetings/{meeting_id}/task-assignments',response_model=AssignmentReviewResult)
     async def review_task_assignments(meeting_id: str, body: ReviewTaskAssignments):
         return assignment_service.review(meeting_id,body)
+
+    @app.exception_handler(TeamConflict)
+    async def team_conflict(request, exc):
+        return JSONResponse({'detail': str(exc)}, status_code=409)
+
+    @app.exception_handler(TeamForbidden)
+    async def team_forbidden(request, exc):
+        return JSONResponse({'detail': str(exc)}, status_code=403)
+
+    @app.exception_handler(PublicationEvidenceError)
+    async def publication_evidence_error(request, exc):
+        return JSONResponse({'detail': exc.code, 'reason_codes': [exc.code]}, status_code=422)
+
+    def publications():
+        service = app.state.task_publications
+        if service is None:
+            raise HTTPException(503, 'team_publication_not_configured')
+        return service
+
+    publication_errors = {403: {'model': ErrorResponse}, 404: {'model': ErrorResponse},
+                          409: {'model': ErrorResponse}, 503: {'model': ErrorResponse}}
+
+    @app.get('/api/v1/meetings/{meeting_id}/task-publications/context', response_model=PublicationContext,
+             responses=publication_errors)
+    async def task_publication_context(meeting_id: str):
+        return await asyncio.to_thread(publications().context, meeting_id)
+
+    @app.post('/api/v1/meetings/{meeting_id}/task-publications/preview', response_model=PublicationPreviewResult,
+              responses=publication_errors)
+    async def preview_task_publications(meeting_id: str, body: PreviewPublications):
+        return await asyncio.to_thread(publications().preview, meeting_id, body)
+
+    @app.post('/api/v1/meetings/{meeting_id}/task-publications', response_model=DeliveryReceipt, status_code=202,
+              responses=publication_errors)
+    async def confirm_task_publications(meeting_id: str, body: PublishCommand):
+        return await asyncio.to_thread(publications().confirm, meeting_id, body)
+
+    @app.get('/api/v1/meetings/{meeting_id}/task-publications', response_model=list[DeliveryReceipt],
+             responses=publication_errors)
+    async def list_task_publications(meeting_id: str):
+        return await asyncio.to_thread(publications().list, meeting_id)
+
+    @app.get('/api/v1/meetings/{meeting_id}/task-publications/{operation_id}', response_model=DeliveryReceipt,
+             responses=publication_errors)
+    async def read_task_publication(meeting_id: str, operation_id: UUID):
+        try:
+            return await asyncio.to_thread(publications().read, meeting_id, str(operation_id))
+        except TeamForbidden as exc:
+            if str(exc) == 'publication_command_unavailable':
+                raise HTTPException(404, 'publication_command_unavailable') from None
+            raise
 
     @app.get('/api/v1/participants/{person_id}/enrollments', response_model=list[Enrollment])
     async def enrollments(person_id: str):
@@ -432,6 +587,17 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.get("/health")
     async def health():
+        if maintenance is not None:
+            processing = ('not_configured' if not run_worker else
+                'healthy' if worker.task is not None and not worker.task.done() else 'degraded')
+            publication = ('not_configured' if app.state.task_publications is None or not outbound_enabled else
+                'healthy' if app.state.publication_task is not None and not app.state.publication_task.done() else 'degraded')
+            return {'status': 'ok', 'components': {
+                'processing': {'state': processing}, 'publication': {'state': publication},
+                'capture': {'state': 'healthy', 'recording': capture_lease.owner is not None, 'device_qualified': False},
+                'cloud': {'state': 'not_configured' if not settings.key_configured or not outbound_enabled else 'healthy', 'live_qualified': False},
+                'maintenance': {'state': 'healthy' if maintenance.status()['mode'] == 'open' else 'degraded'},
+            }}
         return {"status": "ok"}
 
     @app.get("/api/v1/session")
@@ -444,7 +610,12 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.post("/api/v1/meetings", status_code=201, response_model=Meeting)
     async def create_meeting(body: CreateMeeting):
-        return db.create_meeting(body.title.strip() or "Новая встреча",body.processing_mode)
+        if body.cloud_budget_scope_id:
+            cloud_budget.scope_snapshot(str(body.cloud_budget_scope_id))
+        meeting = db.create_meeting(body.title.strip() or "Новая встреча",body.processing_mode)
+        if body.cloud_budget_scope_id:
+            cloud_budget.bind_meeting_scope(meeting["id"], str(body.cloud_budget_scope_id))
+        return meeting
 
     @app.get("/api/v1/meetings/{meeting_id}", response_model=Meeting)
     async def meeting(meeting_id: str):
@@ -660,6 +831,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         async def stream():
             previous = None
             while not await request.is_disconnected():
+                if maintenance is not None and maintenance.status()['mode'] != 'open':
+                    break
                 snapshot = json.dumps({"meeting": db.meeting(meeting_id), "jobs": db.jobs(meeting_id), "segment_count": db.segments(meeting_id, limit=1)["total"]}, ensure_ascii=False)
                 if snapshot != previous:
                     yield "event: status\ndata: " + snapshot + "\n\n"
