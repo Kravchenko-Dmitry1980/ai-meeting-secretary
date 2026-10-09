@@ -1,9 +1,23 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
+import { createSecretaryReleaseManifest } from './scripts/releaseManifest';
+
+const projectRoot = fileURLToPath(new URL('..', import.meta.url));
+const releaseManifest = createSecretaryReleaseManifest(projectRoot);
+const releaseManifestPlugin: Plugin = {
+  name: 'secretary-release-manifest',
+  generateBundle() {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'secretary-release.json',
+      source: `${JSON.stringify(releaseManifest, null, 2)}\n`,
+    });
+  },
+};
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), releaseManifestPlugin],
   base: './',
   build: {
     manifest: true,

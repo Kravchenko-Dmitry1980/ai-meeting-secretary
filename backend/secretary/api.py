@@ -241,7 +241,7 @@ class LocalReadinessComponent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     state: Literal["healthy", "degraded", "not_configured", "disabled", "waiting_config",
                    "configured_unqualified", "available", "missing", "not_qualified", "not_checked",
-                   "unavailable"]
+                   "unavailable", "mismatch"]
     code: str | None = None
     integrity: Literal["ok"] | None = None
     directory_writable: bool | None = None
@@ -250,6 +250,9 @@ class LocalReadinessComponent(BaseModel):
     heartbeat_age_seconds: int | None = None
     heartbeat_stale_after_seconds: int | None = None
     live_qualified: bool | None = None
+    backend_version: str | None = None
+    manifest_backend_version: str | None = None
+    frontend_version: str | None = None
 
 
 class LocalReadinessJobs(BaseModel):
@@ -849,6 +852,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
             worker_heartbeat_age_seconds=heartbeat_age, outbound_enabled=outbound_enabled,
             publication_configured=app.state.task_publications is not None and outbound_enabled,
             publication_task=app.state.publication_task, maintenance=maintenance,
+            backend_version=app.version,
         )
 
     @app.post("/ready/storage-probe", response_model=StorageWriteProbeReport,

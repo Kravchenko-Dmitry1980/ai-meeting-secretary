@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 
@@ -15,6 +17,7 @@ MINIMUM_STALE_JOB_AGE_SECONDS = 300
 STALE_JOB_GRACE_SECONDS = 300
 _JOB_STATES = {"queued", "running", "waiting_config", "paused_budget", "uncertain",
                "failed", "cancelled", "succeeded"}
+_RELEASE_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,63}\Z")
 
 
 def _database_status(path: Path) -> dict:
@@ -100,10 +103,42 @@ def _job_status(db, now: datetime, stale_after_seconds: int) -> dict:
             "stale_after_seconds": stale_after_seconds}
 
 
+def _release_parity_status(frontend_dist: Path, backend_version: str) -> dict:
+    if not isinstance(backend_version, str) or not _RELEASE_VERSION.fullmatch(backend_version):
+        return {"state": "unavailable", "code": "backend_version_invalid"}
+    manifest_path = Path(frontend_dist) / "secretary-release.json"
+    if not manifest_path.is_file():
+        return {"state": "not_configured", "code": "release_manifest_missing",
+                "backend_version": backend_version}
+    try:
+        if manifest_path.stat().st_size > 4096:
+            raise ValueError
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if (not isinstance(manifest, dict)
+                or set(manifest) != {"schema_version", "backend_version", "frontend_version"}
+                or type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1
+                or not isinstance(manifest["backend_version"], str)
+                or not isinstance(manifest["frontend_version"], str)
+                or not _RELEASE_VERSION.fullmatch(manifest["backend_version"])
+                or not _RELEASE_VERSION.fullmatch(manifest["frontend_version"])):
+            raise ValueError
+    except (OSError, UnicodeError, ValueError):
+        return {"state": "unavailable", "code": "release_manifest_invalid",
+                "backend_version": backend_version}
+
+    versions = {"backend_version": backend_version,
+                "manifest_backend_version": manifest["backend_version"],
+                "frontend_version": manifest["frontend_version"]}
+    if manifest["backend_version"] != backend_version or manifest["frontend_version"] != backend_version:
+        return {"state": "mismatch", "code": "release_version_mismatch", **versions}
+    return {"state": "healthy", **versions}
+
+
 def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
                            worker_heartbeat_age_seconds: float | None,
                            outbound_enabled: bool, publication_configured: bool,
-                           publication_task, maintenance, now: datetime | None = None) -> dict:
+                           publication_task, maintenance, backend_version: str,
+                           now: datetime | None = None) -> dict:
     """Return coarse local-operability signals; never claim cloud/device qualification."""
     current = now or datetime.now(timezone.utc)
     db_status = _database_status(db.path)
@@ -129,7 +164,9 @@ def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
         ffprobe = "available" if shutil.which(settings.ffprobe_path) else "missing"
     except (OSError, TypeError, ValueError):
         ffprobe = "missing"
-    frontend = "available" if (Path(settings.project_dir) / "frontend" / "dist" / "index.html").is_file() else "missing"
+    frontend_dist = Path(settings.project_dir) / "frontend" / "dist"
+    frontend = "available" if (frontend_dist / "index.html").is_file() else "missing"
+    release_parity = _release_parity_status(frontend_dist, backend_version)
 
     if not outbound_enabled or not settings.cloud_enabled:
         cloud_state = "disabled"
@@ -159,6 +196,7 @@ def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
         "ffmpeg": {"state": ffmpeg},
         "ffprobe": {"state": ffprobe},
         "frontend_build": {"state": frontend},
+        "release_parity": release_parity,
         "processing_worker": processing,
         "publication_worker": {"state": publication_state},
         "cloud": {"state": cloud_state, "live_qualified": False},
@@ -178,6 +216,13 @@ def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
         blockers.append("ffprobe_missing")
     if frontend != "available":
         blockers.append("frontend_build_missing")
+    release_state = release_parity["state"]
+    if release_state == "not_configured":
+        blockers.append("release_manifest_missing")
+    elif release_state == "unavailable":
+        blockers.append("release_manifest_invalid")
+    elif release_state == "mismatch":
+        blockers.append("release_version_mismatch")
     if processing_state != "healthy":
         blockers.append("processing_worker_degraded")
     if publication_state == "degraded":

@@ -5320,7 +5320,8 @@
               "missing",
               "not_qualified",
               "not_checked",
-              "unavailable"
+              "unavailable",
+              "mismatch"
             ],
             "title": "State"
           },
@@ -5412,6 +5413,39 @@
               }
             ],
             "title": "Live Qualified"
+          },
+          "backend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend Version"
+          },
+          "manifest_backend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Backend Version"
+          },
+          "frontend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frontend Version"
           }
         },
         "additionalProperties": false,

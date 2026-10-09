@@ -1634,7 +1634,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "healthy" | "degraded" | "not_configured" | "disabled" | "waiting_config" | "configured_unqualified" | "available" | "missing" | "not_qualified" | "not_checked" | "unavailable";
+            state: "healthy" | "degraded" | "not_configured" | "disabled" | "waiting_config" | "configured_unqualified" | "available" | "missing" | "not_qualified" | "not_checked" | "unavailable" | "mismatch";
             /** Code */
             code?: string | null;
             /** Integrity */
@@ -1651,6 +1651,12 @@ export interface components {
             heartbeat_stale_after_seconds?: number | null;
             /** Live Qualified */
             live_qualified?: boolean | null;
+            /** Backend Version */
+            backend_version?: string | null;
+            /** Manifest Backend Version */
+            manifest_backend_version?: string | null;
+            /** Frontend Version */
+            frontend_version?: string | null;
         };
         /** LocalReadinessJobs */
         LocalReadinessJobs: {

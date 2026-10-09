@@ -159,6 +159,7 @@ def _local_readiness_is_safe(client: httpx.Client) -> bool:
             and components.get("storage", {}).get("state") == "healthy"
             and components.get("processing_worker", {}).get("state") == "healthy"
             and components.get("frontend_build", {}).get("state") == "available"
+            and components.get("release_parity", {}).get("state") == "healthy"
             and components.get("cloud", {}).get("state") == "disabled"
             and components.get("device_capture", {}).get("state") == "not_qualified"
             and components.get("backup", {}).get("state") == "not_checked"

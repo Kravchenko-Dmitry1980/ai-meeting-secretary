@@ -69,6 +69,7 @@ if (Test-Path -LiteralPath $StatePath) {
                 @{Key='database';Label='SQLite'}, @{Key='storage';Label='Data storage'},
                 @{Key='ffmpeg';Label='FFmpeg'}, @{Key='ffprobe';Label='FFprobe'},
                 @{Key='frontend_build';Label='Frontend build'},
+                @{Key='release_parity';Label='Release versions'},
                 @{Key='processing_worker';Label='Processing worker'},
                 @{Key='publication_worker';Label='Publication worker'},
                 @{Key='cloud';Label='Cloud'}, @{Key='device_capture';Label='Audio device'},
@@ -84,6 +85,11 @@ if (Test-Path -LiteralPath $StatePath) {
                         $Detail = "; writable=$($Component.directory_writable); free=${FreeGiB} GiB"
                     } elseif ($Check.Key -eq 'processing_worker') {
                         $Detail = "; heartbeat_age_seconds=$($Component.heartbeat_age_seconds)"
+                    } elseif ($Check.Key -eq 'release_parity') {
+                        if ($Component.backend_version -or $Component.frontend_version) {
+                            $Detail = "; backend=$($Component.backend_version); frontend=$($Component.frontend_version)"
+                        }
+                        if ($Component.code) { $Detail += "; code=$($Component.code)" }
                     }
                     Write-Output "$($Check.Label): $($Component.state)$Detail"
                 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,8 +22,12 @@ class StoppedTask:
 
 def context(tmp_path):
     project = tmp_path / "project"
-    (project / "frontend" / "dist").mkdir(parents=True)
-    (project / "frontend" / "dist" / "index.html").write_text("synthetic", encoding="utf-8")
+    dist = project / "frontend" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "index.html").write_text("synthetic", encoding="utf-8")
+    (dist / "secretary-release.json").write_text(
+        json.dumps({"schema_version": 1, "backend_version": "0.1.0", "frontend_version": "0.1.0"}),
+        encoding="utf-8")
     settings = Settings(_env_file=None, project_dir=project, data_dir=tmp_path / "data",
                         polza_api_key="secret-never-return", request_timeout_seconds=10)
     db = Database(settings.data_dir / "secretary.sqlite3")
@@ -38,6 +43,7 @@ def make_report(settings, db, **overrides):
         "publication_configured": False,
         "publication_task": None,
         "maintenance": None,
+        "backend_version": "0.1.0",
     }
     arguments.update(overrides)
     return diagnostics.build_readiness_report(settings, db, **arguments)
@@ -109,3 +115,55 @@ def test_readiness_detects_corrupt_database_and_does_not_return_raw_path(tmp_pat
     assert report["components"]["database"]["state"] == "degraded"
     assert report["components"]["database"]["code"] == "database_integrity_failed"
     assert str(db.path) not in str(report)
+
+
+def test_readiness_requires_backend_and_frontend_release_versions_to_match(tmp_path, monkeypatch):
+    settings, db = context(tmp_path)
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda command: f"C:/tools/{command}.exe")
+    manifest = Path(settings.project_dir) / "frontend" / "dist" / "secretary-release.json"
+    manifest.write_text(json.dumps({"schema_version": 1, "backend_version": "0.1.0",
+                                    "frontend_version": "0.1.0"}), encoding="utf-8")
+
+    report = make_report(settings, db)
+
+    assert report["components"]["release_parity"] == {
+        "state": "healthy", "backend_version": "0.1.0",
+        "manifest_backend_version": "0.1.0", "frontend_version": "0.1.0"}
+    assert report["status"] == "local_ok"
+
+    manifest.write_text(json.dumps({"schema_version": 1, "backend_version": "0.1.0",
+                                    "frontend_version": "0.2.0"}), encoding="utf-8")
+    mismatched = make_report(settings, db)
+
+    assert mismatched["components"]["release_parity"]["state"] == "mismatch"
+    assert "release_version_mismatch" in mismatched["blockers"]
+    assert mismatched["status"] == "degraded"
+
+    manifest.write_text(json.dumps({"schema_version": 1, "backend_version": "0.2.0",
+                                    "frontend_version": "0.1.0"}), encoding="utf-8")
+    backend_mismatched = make_report(settings, db)
+
+    assert backend_mismatched["components"]["release_parity"]["state"] == "mismatch"
+    assert backend_mismatched["components"]["release_parity"]["code"] == "release_version_mismatch"
+    assert "release_version_mismatch" in backend_mismatched["blockers"]
+
+
+def test_readiness_marks_missing_or_invalid_release_manifest_without_leaking_data(tmp_path, monkeypatch):
+    settings, db = context(tmp_path)
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda command: f"C:/tools/{command}.exe")
+    manifest = Path(settings.project_dir) / "frontend" / "dist" / "secretary-release.json"
+    manifest.unlink()
+
+    missing = make_report(settings, db)
+
+    assert missing["components"]["release_parity"]["state"] == "not_configured"
+    assert "release_manifest_missing" in missing["blockers"]
+    assert missing["status"] == "degraded"
+
+    manifest.write_text("synthetic private path and version must not leak", encoding="utf-8")
+    invalid = make_report(settings, db)
+
+    assert invalid["components"]["release_parity"]["state"] == "unavailable"
+    assert invalid["components"]["release_parity"]["code"] == "release_manifest_invalid"
+    assert "synthetic private path" not in str(invalid)
+    assert str(settings.project_dir) not in str(invalid)
