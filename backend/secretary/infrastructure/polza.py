@@ -36,9 +36,11 @@ MAX_INTENT_CONTEXT_BYTES = 32 * 1024
 MAX_INTENT_REQUEST_BYTES = 128 * 1024
 MAX_SUMMARY_REQUEST_BYTES = 60_000
 ASYNC_MODELS = {"aiesa/transcribe", "aiesa/transcribe-fast"}
-# Polza's current Turbo route rejects verbose_json despite its model table.
-# Use the supported JSON response and retain chunk timing when no segments arrive.
-VERBOSE_MODELS = {"openai/whisper-large-v3", "openai/whisper-1"}
+# Polza's transcription page conflicts: its model table lists verbose_json for
+# Large V3/Turbo, while the allowed-format section limits it and timestamps to
+# whisper-1. The real Turbo route also rejected verbose_json, so use JSON for
+# other models until each route is qualified.
+VERBOSE_MODELS = {"openai/whisper-1"}
 SAFE_ERROR_CODES = frozenset({
     "BAD_REQUEST", "INVALID_REQUEST", "INVALID_REQUEST_ERROR", "UNAUTHORIZED", "AUTHENTICATION_ERROR",
     "FORBIDDEN", "ACCESS_DENIED", "INSUFFICIENT_FUNDS", "PAYMENT_REQUIRED", "NOT_FOUND",

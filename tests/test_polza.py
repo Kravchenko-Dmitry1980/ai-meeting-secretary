@@ -116,6 +116,12 @@ def test_whisper_one_retains_documented_verbose_timestamps(tmp_path):
     assert payload["timestamp_granularities"] == ["segment"]
 
 
+def test_whisper_large_v3_uses_documented_json_without_unavailable_timestamps(tmp_path):
+    payload = PolzaClient(settings(tmp_path, stt_model="openai/whisper-large-v3"))._stt_payload(wav_file(tmp_path))
+    assert payload["response_format"] == "json"
+    assert "timestamp_granularities" not in payload
+
+
 def test_successful_empty_transcript_is_empty_list(tmp_path):
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"text": "", "duration": 1}))
     assert run(PolzaClient(settings(tmp_path), transport).transcribe(wav_file(tmp_path)))["segments"] == []

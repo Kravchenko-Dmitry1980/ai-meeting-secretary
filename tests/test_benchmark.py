@@ -77,6 +77,8 @@ def test_default_benchmark_never_opens_network(tmp_path, monkeypatch):
     report = json.loads(output.read_text(encoding='utf-8'))
     assert report['cloud'] == 'не измерено' and report['sample_count'] == 0
     assert report['p50'] is report['p95'] is report['confirmed_rub_per_hour'] is None
+    assert report['reason'] == ('Эталонный benchmark не запускался: проверенная расшифровка и '
+                                'полный набор подтверждённых расходов отсутствуют.')
 
 
 def test_no_key_reads_only_config_and_never_submits_or_changes_state(tmp_path, monkeypatch):

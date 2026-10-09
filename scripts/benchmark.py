@@ -256,7 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     report = {"generated_at": datetime.now(timezone.utc).isoformat(), "cloud": "не измерено",
               "quality": "не измерено", "cost": "не измерено", "p50": None, "p95": None,
-              "reason": "API-ключ и разрешённый запуск на проверенной записи ещё не предоставлены",
+              "reason": "Эталонный benchmark не запускался: проверенная расшифровка и "
+                        "полный набор подтверждённых расходов отсутствуют.",
               "decision_task_fidelity": "manual review of each evidence reference required", "sample_count": 0,
               "confirmed_rub_per_hour": None, "config_restored": None}
 

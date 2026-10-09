@@ -1,5 +1,14 @@
 # Проверки Secretary V1
 
+## Продолжение QA — 2026-10-10, 02:04 МСК
+
+- В `backend/secretary/infrastructure/polza.py` исправлена отправка `verbose_json` для `openai/whisper-large-v3`: Polza docs противоречат сами себе по этому формату, а timestamp granularities документированы только для `whisper-1`; адаптер теперь использует консервативный JSON без неподтверждённых таймкодов. Добавлен regression test с формой запроса.
+- Устранено вводящее в заблуждение сообщение dry-run benchmark, будто API-ключ отсутствует. `.venv\Scripts\python.exe -B scripts\benchmark.py` выполнен без `--run-cloud`: «Cloud benchmark: not measured», 0 samples, качество/цена/latency остались `не измерено`; сетевой запрос не запускался, обновлён `docs/benchmark/report.json`.
+- Временная синтетическая Team fixture доступна по HTTP без TLS-предупреждения: `/fixture/status` вернул `simulation=true`, а UI `/team/` загрузил задачи. Проверены Today/Kanban/Matrix, переключение проекта на большой numeric ID и обратно, карточка задачи, закрытие формы и валидация пустого названия. Новая задача не создавалась, обработка/Polza не запускались. Это автоматизированный UI smoke в синтетическом стенде, не ручная приёмка в Chrome владельца.
+- Свежий публичный GET `/api/v1/models` без Authorization вернул 417 моделей; exact ID `gpt-4o-transcribe-diarize` не найден. Никаких Polza POST, оплаты, реального аудио, MAX или device capture не было.
+- Затронутый набор `.venv\Scripts\python.exe -B -m pytest tests/test_polza.py tests/test_benchmark.py tests/test_stt_cap_resume.py tests/test_polza_prices.py -q --tb=short` завершился: **153 passed, 0 failed**, одно известное предупреждение Starlette/httpx, 7,33 с. `py_compile` и `git diff --check` — PASS. Предыдущие 5 229 guarded tests прошли до этого изменения; полный 28-минутный набор после малой поправки не повторялся.
+- Основной Secretary не перезапускался: предыдущая проверка `/health=ok`, `/ready=local_ok`, `production_qualified=false` не менялась. `frontend/dist` и пользовательская БД не затрагивались.
+
 ## Результат продолженного QA — 2026-10-10, 01:50 МСК
 
 - Guarded полный набор `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершился с exit 0: **5 229 passed, 0 failed**, одно известное предупреждение Starlette о связке `httpx`/`starlette.testclient`, 1 706,84 с (28:26). Runner запрещает сеть и доступ к рабочим данным/устройствам, удаляет Polza/MAX credentials из окружения тестов.

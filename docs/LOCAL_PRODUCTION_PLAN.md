@@ -1,5 +1,13 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-10, 02:04 МСК
+
+Проверка Polza выявила несовпадение между документацией и реальным Turbo-маршрутом: код отправлял `verbose_json` для `whisper-large-v3`, хотя таймкоды документированы только для `whisper-1`, а контракт Polza противоречит сам себе по Large V3/Turbo. Адаптер переведён на JSON для Large V3 и покрыт регрессионным тестом. Dry-run benchmark теперь прямо говорит, что эталонный benchmark не проводился; результат остаётся `не измерено`.
+
+Team UI повторно открыт в синтетической HTTP fixture без обхода TLS: проверены три представления, фильтр проекта, карточка и обязательность названия. Затронутый backend-набор — **153 passed, 0 failed**; benchmark dry-run не выполнял запросов и оставил качество/расходы/latency не измеренными. Никаких реальных задач или платных вызовов не создавалось. Временная ссылка: [синтетическая Team-доска](http://secretary-t9.localhost:54567/team/); статус fixture: `simulation=true`.
+
+Публичный каталог Polza на 10 октября не вернул exact ID `gpt-4o-transcribe-diarize`, поэтому diarization-модель не включена. Не отправлять эталонные голоса без отдельного решения о передаче биометрических данных. Production gates без изменений: live-процесс не сообщает `release_parity`, рабочий D: не зашифрован, защищённый backup/restore drill не подготовлен; `frontend/dist` и рабочая БД не заменять.
+
 ## Progress checkpoint — 2026-10-10, 01:50 МСК
 
 Release manifest schema v2 завершена и прошла focused проверки. Guarded полный backend/audit набор: **5 229 passed, 0 failed**, одно известное предупреждение Starlette/httpx, 1 706,84 с. Frontend: **293 теста** и release-manifest integration прошли, typecheck/lint/build в scratch — PASS. Новая сборка не копировалась в `frontend/dist` и рабочий процесс не перезапускался.
