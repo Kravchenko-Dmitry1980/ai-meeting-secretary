@@ -6,7 +6,7 @@
 
 Frontend после обновления API types: `npm run test:processing` — **289 passed**; `typecheck`, `lint`, `build` — exit 0. Пересобранный Secretary запущен на `127.0.0.1:8765` в `--offline` на отдельной пустой БД `.runtime/manual-acceptance-5ec0fd39c9f44596be9e24782b5d1728`; `/health` и `/` отвечают 200, `POLZA_API_KEY` пуст. Для ручной приёмки Team открыт отдельный loopback `HTTP_SYNTHETIC_UI_ONLY` на порту 49192: [fixture с синтетическими участниками](http://secretary-t9.localhost:49192/fixture), [Team UI](http://secretary-t9.localhost:49192/team/); оба маршрута и `/fixture/status` отвечают 200. Только disposable данные и mock Vikunja; TLS и Secure-cookie поведение на HTTP, MAX/WebView, телефон и рабочие записи не проверяются. Ручная приёмка владельца ещё ожидается.
 
-`git diff --check`, финальная проверка runtime после текущего документа и завершение GitHub handoff ещё впереди. Реальный backup/restore, политика хранения исходников, native mic/loopback, реальный Polza/Vikunja, внешний HTTPS/MAX и 24-часовой запуск остаются отдельными открытыми этапами; сейчас пользователь может вручную проверить только локальный offline UI и synthetic Team UI.
+`git diff --check` прошёл; код, OpenAPI/types, тесты и отчёты закоммичены и отправлены в `origin/codex/publish-secretary`. Основной offline app и synthetic Team fixture доступны для ручной проверки. Реальный backup/restore, политика хранения исходников, native mic/loopback, реальный Polza/Vikunja, внешний HTTPS/MAX и 24-часовой запуск остаются отдельными открытыми этапами.
 
 ## Progress checkpoint — 2026-10-09, 13:22 МСК
 
