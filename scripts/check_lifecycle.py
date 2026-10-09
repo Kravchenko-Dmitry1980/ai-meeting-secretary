@@ -1,84 +1,238 @@
-"""Verify real Windows start/stop, foreign-port preservation, and restart persistence.
+"""Run an isolated, offline Secretary start/stop/restart check.
 
-Only this project's tracked server and this check's own helper are controlled.
-Leaves Secretary running. No cloud or recording action is performed.
+This check never uses start.ps1/stop.ps1, the tracked production state file,
+the configured data directory, or project credentials. It owns one disposable
+data directory and only the child processes started from this script.
 """
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
+from uuid import UUID, uuid4
 
 import httpx
 
 
-def main() -> None:
-    root = Path(__file__).resolve().parents[1]
-    work = root / '.runtime' / 'cwd with spaces'
-    work.mkdir(parents=True, exist_ok=True)
-    state = root / '.runtime' / 'processes.json'
-    results = []
+SAFE_PARENT_ENV = {
+    "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATHEXT", "COMSPEC",
+    "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+}
 
-    def run_script(name, *args, expect=0):
-        # Windows PowerShell 5 Start-Process can pass unrelated inheritable PIPE
-        # handles to a detached server. File-backed logs avoid waiting for an EOF
-        # from a long-lived descendant after the script itself has already exited.
-        out_path = work / f'{len(results)}-{name}.stdout.log'
-        err_path = work / f'{len(results)}-{name}.stderr.log'
-        with out_path.open('w', encoding='utf-8') as out, err_path.open('w', encoding='utf-8') as err:
-            result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'scripts' / name), *args], cwd=work, stdout=out, stderr=err, text=True, timeout=60)
-        result.stdout = out_path.read_text(encoding='utf-8', errors='replace')
-        result.stderr = err_path.read_text(encoding='utf-8', errors='replace')
-        if expect == 0:
-            assert result.returncode == 0, (name, result.stdout, result.stderr)
-        else:
-            assert result.returncode != 0, (name, result.stdout, result.stderr)
-        results.append({'script': name, 'exit_code': result.returncode, 'scope': 'own Secretary process'})
-        return result
 
-    run_script('stop.ps1')
-    run_script('stop.ps1')
-    # Bind an ephemeral test port before handing the socket to our helper.
-    with socket.socket() as probe:
-        probe.bind(('127.0.0.1', 0))
-        test_port = probe.getsockname()[1]
-    # This stdlib-only socket helper uses the already installed base interpreter
-    # directly: the Windows venv redirector would otherwise leave its child alive
-    # when its own wrapper is terminated. The Secretary server uses .venv.
-    helper_python = getattr(sys, '_base_executable', sys.executable)
-    helper = subprocess.Popen([helper_python, '-c', f'import socket,time;s=socket.socket();s.bind(("127.0.0.1",{test_port}));s.listen();print("READY",flush=True);time.sleep(60)'], cwd=work, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def _canonical_run_id(value: str) -> str:
     try:
-        assert helper.stdout.readline().strip() == 'READY'
-        result = run_script('start.ps1', '-NoBrowser', '-Port', str(test_port), expect=1)
-        assert helper.poll() is None, 'Occupied-port helper was terminated by Secretary'
-        assert 'occupied' in (result.stdout + result.stderr).lower()
-        results.append({'occupied_port': test_port, 'helper_preserved': True})
+        canonical = str(UUID(value))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("invalid_lifecycle_run_id") from None
+    if canonical != value:
+        raise ValueError("invalid_lifecycle_run_id")
+    return canonical
+
+
+def build_server_command(root: Path, *, data_dir: Path, port: int, run_id: str,
+                         python_executable: Path | None = None,
+                         parent_env: dict[str, str] | None = None) -> tuple[list[str], dict[str, str]]:
+    """Build a child launch that cannot inherit provider credentials or data paths."""
+    if type(port) is not int or not 1024 <= port <= 65535:
+        raise ValueError("invalid_lifecycle_port")
+    run_id = _canonical_run_id(run_id)
+    root = Path(root).resolve()
+    data_dir = Path(data_dir).resolve()
+    python = str(python_executable or sys.executable)
+    source_env = os.environ if parent_env is None else parent_env
+    child_env = {key: value for key, value in source_env.items()
+                 if key.upper() in SAFE_PARENT_ENV}
+    child_env.update({
+        "DATA_DIR": str(data_dir),
+        "POLZA_BASE_URL": "https://polza.invalid/api/v1",
+        "CLOUD_ENABLED": "false",
+        "PYTHONUTF8": "1",
+        "PYTHONNOUSERSITE": "1",
+    })
+    command = [python, "-B", str(root / "scripts" / "run_server.py"),
+               "--port", str(port), "--run-id", run_id,
+               "--offline", "--isolated-offline"]
+    return command, child_env
+
+
+def stop_marker_path(root: Path, run_id: str) -> Path:
+    run_id = _canonical_run_id(run_id)
+    return Path(root).resolve() / ".runtime" / f"stop-{run_id}.request"
+
+
+def _free_port(excluded: set[int]) -> int:
+    for _ in range(20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = int(probe.getsockname()[1])
+        if port not in excluded:
+            return port
+    raise RuntimeError("no_distinct_loopback_port")
+
+
+def _wait_ready(process: subprocess.Popen, port: int) -> None:
+    deadline = time.monotonic() + 30
+    with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=1,
+                      trust_env=False) as client:
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError("isolated_server_exited_before_ready")
+            try:
+                response = client.get("/health")
+                if response.status_code == 200 and response.json().get("status") == "ok":
+                    return
+            except (httpx.HTTPError, ValueError):
+                pass
+            time.sleep(0.2)
+    raise RuntimeError("isolated_server_readiness_timeout")
+
+
+def _stop_server(root: Path, handle: dict) -> None:
+    process = handle["process"]
+    if process.poll() is None:
+        marker = stop_marker_path(root, handle["run_id"])
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with marker.open("x", encoding="ascii") as stream:
+                stream.write(handle["run_id"])
+        except FileExistsError:
+            raise RuntimeError("isolated_stop_marker_collision") from None
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            raise RuntimeError("isolated_server_graceful_stop_timeout") from None
+        finally:
+            marker.unlink(missing_ok=True)
+    if process.returncode != 0:
+        raise RuntimeError("isolated_server_exit_nonzero")
+
+
+def _start_server(root: Path, run_root: Path, data_dir: Path, port: int) -> dict:
+    run_id = str(uuid4())
+    command, child_env = build_server_command(root, data_dir=data_dir, port=port,
+        run_id=run_id, python_executable=root / ".venv" / "Scripts" / "python.exe")
+    stdout_path = run_root / f"server-{run_id}.stdout.log"
+    stderr_path = run_root / f"server-{run_id}.stderr.log"
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    with stdout_path.open("xb") as stdout, stderr_path.open("xb") as stderr:
+        process = subprocess.Popen(command, cwd=root, env=child_env,
+            stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+            creationflags=flags)
+    handle = {"process": process, "port": port, "run_id": run_id}
+    try:
+        _wait_ready(process, port)
+    except Exception:
+        try:
+            _stop_server(root, handle)
+        except Exception:
+            pass
+        raise
+    return handle
+
+
+def _configuration_is_offline(client: httpx.Client) -> bool:
+    response = client.get("/api/v1/config")
+    return response.status_code == 200 and response.json().get("cloud_enabled") is False
+
+
+def _remove_owned_run(root: Path, run_root: Path) -> None:
+    expected_parent = (root / ".runtime" / "lifecycle-isolated").resolve()
+    target = run_root.resolve()
+    if target.parent != expected_parent or not target.name.startswith("run-"):
+        raise RuntimeError("lifecycle_cleanup_scope_invalid")
+    shutil.rmtree(target)
+
+
+def run_check(root: Path) -> dict:
+    root = Path(root).resolve()
+    runtime_root = root / ".runtime" / "lifecycle-isolated"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    run_root = runtime_root / f"run-{uuid4().hex}"
+    run_root.mkdir()
+    data_dir = run_root / "data"
+    active: list[dict] = []
+    used_ports: set[int] = set()
+    success = False
+    try:
+        first = _start_server(root, run_root, data_dir, _free_port(used_ports))
+        used_ports.add(first["port"])
+        active.append(first)
+        with httpx.Client(base_url=f"http://127.0.0.1:{first['port']}",
+                          timeout=5, trust_env=False) as client:
+            if not _configuration_is_offline(client):
+                raise RuntimeError("isolated_server_cloud_not_disabled")
+            session = client.get("/api/v1/session")
+            if session.status_code != 200 or not session.json().get("csrf_token"):
+                raise RuntimeError("isolated_session_token_unavailable")
+            created = client.post("/api/v1/meetings", json={
+                "title": f"Lifecycle synthetic {uuid4().hex[:8]}"
+            }, headers={"X-Secretary-Token": session.json()["csrf_token"]})
+            if created.status_code != 201:
+                raise RuntimeError("isolated_meeting_create_failed")
+            meeting_id = created.json()["id"]
+        _stop_server(root, first)
+        active.remove(first)
+
+        second = _start_server(root, run_root, data_dir, _free_port(used_ports))
+        used_ports.add(second["port"])
+        active.append(second)
+        with httpx.Client(base_url=f"http://127.0.0.1:{second['port']}",
+                          timeout=5, trust_env=False) as client:
+            if not _configuration_is_offline(client):
+                raise RuntimeError("isolated_restart_cloud_not_disabled")
+            meetings = client.get("/api/v1/meetings")
+            if meetings.status_code != 200:
+                raise RuntimeError("isolated_meetings_read_failed")
+            if not any(item.get("id") == meeting_id for item in meetings.json()):
+                raise RuntimeError("isolated_meeting_not_persisted")
+        _stop_server(root, second)
+        active.remove(second)
+        if any(item["process"].poll() is None for item in (first, second)):
+            raise RuntimeError("isolated_server_left_running")
+        success = True
+        return {
+            "status": "PASS",
+            "offline": True,
+            "project_env_file_loaded": False,
+            "credentials_inherited": False,
+            "scratch_data_only": True,
+            "unique_loopback_ports": len(used_ports) == 2,
+            "meeting_persisted_after_restart": True,
+            "test_meetings": 1,
+            "test_servers_stopped": True,
+        }
     finally:
-        # Popen handle belongs to this check only; no PID enumeration or foreign process stop.
-        helper.terminate()
-        helper.wait(timeout=10)
-    run_script('start.ps1', '-NoBrowser')
-    first = json.loads(state.read_text(encoding='utf-8-sig'))
-    with httpx.Client(base_url='http://127.0.0.1:8765', timeout=5) as client:
-        before = client.get('/api/v1/meetings').raise_for_status().json()
-        assert client.get('/health').raise_for_status().json()['status'] == 'ok'
-    run_script('start.ps1', '-NoBrowser')
-    assert json.loads(state.read_text(encoding='utf-8-sig'))['pid'] == first['pid'], 'Repeated start created a duplicate'
-    run_script('doctor.ps1')
-    run_script('stop.ps1')
-    run_script('start.ps1', '-NoBrowser')
-    with httpx.Client(base_url='http://127.0.0.1:8765', timeout=5) as client:
-        after = client.get('/api/v1/meetings').raise_for_status().json()
-    assert {item['id'] for item in before} == {item['id'] for item in after}
-    results.append({'working_directory_contains_spaces': True, 'repeat_start_same_pid': True, 'meetings_preserved_after_restart': len(after), 'server_left_running': True})
-    report = {'status': 'PASS', 'checks': results}
-    target = root / '.runtime' / 'lifecycle-check.json'
-    target.write_text(json.dumps(report, indent=2), encoding='utf-8')
-    print(json.dumps(report, indent=2))
+        for handle in reversed(active):
+            try:
+                _stop_server(root, handle)
+            except Exception:
+                pass
+        if success and not active:
+            _remove_owned_run(root, run_root)
 
 
-if __name__ == '__main__':
-    main()
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    try:
+        result = run_check(root)
+    except Exception as error:
+        print(json.dumps({"status": "FAIL", "error_code": str(error)[:120]}, ensure_ascii=True))
+        return 1
+    print(json.dumps(result, ensure_ascii=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

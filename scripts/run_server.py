@@ -20,11 +20,12 @@ def stop_marker(root: Path, run_id: str | None = None) -> Path:
 
 
 async def run(port: int, team_runtime_config: Path | None = None, run_id: str | None = None,
-              offline: bool = False) -> None:
+              offline: bool = False, isolated_offline: bool = False) -> None:
     # Uvicorn otherwise binds after lifespan startup, which can claim jobs.
     # Own the literal loopback listener before loading settings or any DB.
     with owned_listener(port) as listener:
-        await run_owned(port, listener, team_runtime_config, run_id, offline=offline)
+        await run_owned(port, listener, team_runtime_config, run_id, offline=offline,
+                        isolated_offline=isolated_offline)
 
 
 @contextmanager
@@ -43,15 +44,23 @@ def owned_listener(port):
         listener.close()
 
 
-async def run_owned(port, listener, team_runtime_config=None, run_id=None, offline=False):
+async def run_owned(port, listener, team_runtime_config=None, run_id=None, offline=False,
+                    isolated_offline=False):
     root = Path(__file__).resolve().parents[1]
     marker = stop_marker(root, run_id)
     application, factory = 'secretary.api:create_app', True
+    if isolated_offline and not offline:
+        raise ValueError('isolated_mode_requires_offline')
     if offline and team_runtime_config is not None:
         raise ValueError('offline_mode_not_supported_with_team_runtime')
     if offline:
         from secretary.api import create_app
-        application, factory = create_app(outbound_enabled=False), False
+        if isolated_offline:
+            from secretary.settings import Settings
+            application = create_app(settings=Settings(_env_file=None), outbound_enabled=False)
+        else:
+            application = create_app(outbound_enabled=False)
+        factory = False
     elif team_runtime_config is not None:
         from secretary.infrastructure.team_process_job import install_process_job
         # The module retains the non-inheritable HANDLE until process exit.
@@ -86,6 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('--team-runtime-config', type=Path)
     parser.add_argument('--run-id')
     parser.add_argument('--offline', action='store_true', help='Disable outbound integrations for this Secretary process')
+    parser.add_argument('--isolated-offline', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('port must be between 1024 and 65535')
@@ -93,9 +103,12 @@ if __name__ == '__main__':
         parser.error('team runtime config must be an absolute path')
     if args.offline and args.team_runtime_config is not None:
         parser.error('--offline cannot be combined with --team-runtime-config')
+    if args.isolated_offline and not args.offline:
+        parser.error('--isolated-offline requires --offline')
     if args.run_id is not None:
         try:
             stop_marker(Path(__file__).resolve().parents[1], args.run_id)
         except ValueError:
             parser.error('run id must be a canonical UUID')
-    asyncio.run(run(args.port, args.team_runtime_config, args.run_id, offline=args.offline))
+    asyncio.run(run(args.port, args.team_runtime_config, args.run_id, offline=args.offline,
+                    isolated_offline=args.isolated_offline))
