@@ -147,6 +147,34 @@ def _configuration_is_offline(client: httpx.Client) -> bool:
     return response.status_code == 200 and response.json().get("cloud_enabled") is False
 
 
+def _local_readiness_is_safe(client: httpx.Client) -> bool:
+    response = client.get("/ready")
+    if response.status_code != 200:
+        return False
+    report = response.json()
+    components = report.get("components", {})
+    return (report.get("status") == "local_ok"
+            and report.get("production_qualified") is False
+            and components.get("database", {}).get("state") == "healthy"
+            and components.get("storage", {}).get("state") == "healthy"
+            and components.get("processing_worker", {}).get("state") == "healthy"
+            and components.get("frontend_build", {}).get("state") == "available"
+            and components.get("cloud", {}).get("state") == "disabled"
+            and components.get("device_capture", {}).get("state") == "not_qualified"
+            and components.get("backup", {}).get("state") == "not_checked"
+            and report.get("jobs", {}).get("state") == "healthy")
+
+
+def _storage_probe_is_safe(client: httpx.Client, data_dir: Path) -> bool:
+    session = client.get("/api/v1/session")
+    if session.status_code != 200:
+        return False
+    response = client.post("/ready/storage-probe", headers={
+        "X-Secretary-Token": session.json().get("csrf_token", "")})
+    return (response.status_code == 200 and response.json() == {"state": "healthy"}
+            and not any(Path(data_dir).glob(".secretary-readiness-*")))
+
+
 def _remove_owned_run(root: Path, run_root: Path) -> None:
     expected_parent = (root / ".runtime" / "lifecycle-isolated").resolve()
     target = run_root.resolve()
@@ -173,6 +201,10 @@ def run_check(root: Path) -> dict:
                           timeout=5, trust_env=False) as client:
             if not _configuration_is_offline(client):
                 raise RuntimeError("isolated_server_cloud_not_disabled")
+            if not _local_readiness_is_safe(client):
+                raise RuntimeError("isolated_server_readiness_failed")
+            if not _storage_probe_is_safe(client, data_dir):
+                raise RuntimeError("isolated_server_storage_probe_failed")
             session = client.get("/api/v1/session")
             if session.status_code != 200 or not session.json().get("csrf_token"):
                 raise RuntimeError("isolated_session_token_unavailable")
@@ -192,6 +224,10 @@ def run_check(root: Path) -> dict:
                           timeout=5, trust_env=False) as client:
             if not _configuration_is_offline(client):
                 raise RuntimeError("isolated_restart_cloud_not_disabled")
+            if not _local_readiness_is_safe(client):
+                raise RuntimeError("isolated_restart_readiness_failed")
+            if not _storage_probe_is_safe(client, data_dir):
+                raise RuntimeError("isolated_restart_storage_probe_failed")
             meetings = client.get("/api/v1/meetings")
             if meetings.status_code != 200:
                 raise RuntimeError("isolated_meetings_read_failed")
@@ -210,6 +246,8 @@ def run_check(root: Path) -> dict:
             "scratch_data_only": True,
             "unique_loopback_ports": len(used_ports) == 2,
             "meeting_persisted_after_restart": True,
+            "readiness_report_verified_after_start_and_restart": True,
+            "storage_write_probe_cleaned_after_start_and_restart": True,
             "test_meetings": 1,
             "test_servers_stopped": True,
         }

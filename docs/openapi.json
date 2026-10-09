@@ -2115,6 +2115,42 @@
         }
       }
     },
+    "/ready": {
+      "get": {
+        "summary": "Sanitized local readiness diagnostics; not production qualification",
+        "operationId": "readiness_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalReadinessReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready/storage-probe": {
+      "post": {
+        "summary": "Create and remove a one-byte file in the configured data directory",
+        "operationId": "readiness_storage_probe_ready_storage_probe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageWriteProbeReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/session": {
       "get": {
         "summary": "Session",
@@ -5269,6 +5305,209 @@
         ],
         "title": "JobAccepted"
       },
+      "LocalReadinessComponent": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded",
+              "not_configured",
+              "disabled",
+              "waiting_config",
+              "configured_unqualified",
+              "available",
+              "missing",
+              "not_qualified",
+              "not_checked",
+              "unavailable"
+            ],
+            "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "ok"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
+          },
+          "directory_writable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Writable"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "minimum_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Free Bytes"
+          },
+          "heartbeat_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat Age Seconds"
+          },
+          "heartbeat_stale_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat Stale After Seconds"
+          },
+          "live_qualified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Qualified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "LocalReadinessComponent"
+      },
+      "LocalReadinessJobs": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "unavailable"
+            ],
+            "title": "State"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "stale_running_candidate_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Running Candidate Count"
+          },
+          "stale_after_seconds": {
+            "type": "integer",
+            "title": "Stale After Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "counts",
+          "stale_running_candidate_count",
+          "stale_after_seconds"
+        ],
+        "title": "LocalReadinessJobs"
+      },
+      "LocalReadinessReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "local_ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "production_qualified": {
+            "type": "boolean",
+            "const": false,
+            "title": "Production Qualified"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LocalReadinessComponent"
+            },
+            "type": "object",
+            "title": "Components"
+          },
+          "jobs": {
+            "$ref": "#/components/schemas/LocalReadinessJobs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "production_qualified",
+          "blockers",
+          "components",
+          "jobs"
+        ],
+        "title": "LocalReadinessReport"
+      },
       "LocalTeamError": {
         "properties": {
           "detail": {
@@ -7279,6 +7518,36 @@
           "operation_id"
         ],
         "title": "StopEnrollmentRecording"
+      },
+      "StorageWriteProbeReport": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded"
+            ],
+            "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "storage_write_probe_failed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "StorageWriteProbeReport"
       },
       "Summary": {
         "properties": {

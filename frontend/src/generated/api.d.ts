@@ -521,6 +521,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sanitized local readiness diagnostics; not production qualification */
+        get: operations["readiness_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ready/storage-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create and remove a one-byte file in the configured data directory */
+        post: operations["readiness_storage_probe_ready_storage_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -1594,6 +1628,66 @@ export interface components {
             /** Job Id */
             job_id: string;
         };
+        /** LocalReadinessComponent */
+        LocalReadinessComponent: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "degraded" | "not_configured" | "disabled" | "waiting_config" | "configured_unqualified" | "available" | "missing" | "not_qualified" | "not_checked" | "unavailable";
+            /** Code */
+            code?: string | null;
+            /** Integrity */
+            integrity?: "ok" | null;
+            /** Directory Writable */
+            directory_writable?: boolean | null;
+            /** Free Bytes */
+            free_bytes?: number | null;
+            /** Minimum Free Bytes */
+            minimum_free_bytes?: number | null;
+            /** Heartbeat Age Seconds */
+            heartbeat_age_seconds?: number | null;
+            /** Heartbeat Stale After Seconds */
+            heartbeat_stale_after_seconds?: number | null;
+            /** Live Qualified */
+            live_qualified?: boolean | null;
+        };
+        /** LocalReadinessJobs */
+        LocalReadinessJobs: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "unavailable";
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Stale Running Candidate Count */
+            stale_running_candidate_count: number | null;
+            /** Stale After Seconds */
+            stale_after_seconds: number;
+        };
+        /** LocalReadinessReport */
+        LocalReadinessReport: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "local_ok" | "degraded";
+            /**
+             * Production Qualified
+             * @constant
+             */
+            production_qualified: false;
+            /** Blockers */
+            blockers: string[];
+            /** Components */
+            components: {
+                [key: string]: components["schemas"]["LocalReadinessComponent"];
+            };
+            jobs: components["schemas"]["LocalReadinessJobs"];
+        };
         /** LocalTeamError */
         LocalTeamError: {
             /** Detail */
@@ -2201,6 +2295,16 @@ export interface components {
             disposition: "review" | "cancel";
             /** Operation Id */
             operation_id: string;
+        };
+        /** StorageWriteProbeReport */
+        StorageWriteProbeReport: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "degraded";
+            /** Code */
+            code?: "storage_write_probe_failed" | null;
         };
         /** Summary */
         Summary: {
@@ -4060,6 +4164,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    readiness_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalReadinessReport"];
+                };
+            };
+        };
+    };
+    readiness_storage_probe_ready_storage_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageWriteProbeReport"];
                 };
             };
         };

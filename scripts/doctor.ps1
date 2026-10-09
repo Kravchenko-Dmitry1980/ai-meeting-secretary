@@ -56,7 +56,53 @@ if (Test-Path -LiteralPath $StatePath) {
         } else {
             Write-Output 'Team runtime: configured (path hidden)'
         }
-        try { $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$($State.port)/health" -TimeoutSec 2; Write-Output "Health: $($Health.status)" } catch { Write-Output 'Health: unreachable' }
+        $BaseUri = "http://127.0.0.1:$($State.port)"
+        try {
+            $Health = Invoke-RestMethod -Uri "$BaseUri/health" -TimeoutSec 2
+            Write-Output "Health (liveness): $($Health.status)"
+        } catch { Write-Output 'Health (liveness): unreachable' }
+        try {
+            $Readiness = Invoke-RestMethod -Uri "$BaseUri/ready" -TimeoutSec 8
+            Write-Output "Local readiness: $($Readiness.status)"
+            Write-Output "Production qualification: $($Readiness.production_qualified)"
+            foreach ($Check in @(
+                @{Key='database';Label='SQLite'}, @{Key='storage';Label='Data storage'},
+                @{Key='ffmpeg';Label='FFmpeg'}, @{Key='ffprobe';Label='FFprobe'},
+                @{Key='frontend_build';Label='Frontend build'},
+                @{Key='processing_worker';Label='Processing worker'},
+                @{Key='publication_worker';Label='Publication worker'},
+                @{Key='cloud';Label='Cloud'}, @{Key='device_capture';Label='Audio device'},
+                @{Key='maintenance';Label='Maintenance'}, @{Key='backup';Label='Backup age'},
+                @{Key='logging';Label='Log rotation'}
+            )) {
+                $ComponentProperty = $Readiness.components.PSObject.Properties[$Check.Key]
+                if ($ComponentProperty) {
+                    $Component = $ComponentProperty.Value
+                    $Detail = ''
+                    if ($Check.Key -eq 'storage' -and $null -ne $Component.free_bytes) {
+                        $FreeGiB = [math]::Round(([double]$Component.free_bytes / 1GB), 2)
+                        $Detail = "; writable=$($Component.directory_writable); free=${FreeGiB} GiB"
+                    } elseif ($Check.Key -eq 'processing_worker') {
+                        $Detail = "; heartbeat_age_seconds=$($Component.heartbeat_age_seconds)"
+                    }
+                    Write-Output "$($Check.Label): $($Component.state)$Detail"
+                }
+            }
+            $Counts = $Readiness.jobs.counts | ConvertTo-Json -Compress
+            Write-Output "Jobs by status (no meeting identifiers): $Counts; stale running candidates=$($Readiness.jobs.stale_running_candidate_count)"
+            if ($Readiness.blockers.Count -gt 0) { Write-Output "Readiness blockers: $($Readiness.blockers -join ', ')" }
+            try {
+                $Session = Invoke-RestMethod -Uri "$BaseUri/api/v1/session" -TimeoutSec 3
+                $StorageProbe = Invoke-RestMethod -Uri "$BaseUri/ready/storage-probe" -Method Post `
+                    -Headers @{ 'X-Secretary-Token' = [string]$Session.csrf_token } -TimeoutSec 8
+                Write-Output "Data write probe: $($StorageProbe.state)"
+                if ($StorageProbe.code) { Write-Output "Data write probe code: $($StorageProbe.code)" }
+            } catch {
+                Write-Output 'Data write probe: unavailable or failed (no raw error details recorded)'
+            }
+        } catch {
+            Write-Output 'Local readiness: unavailable (this running process may need a planned restart to load the new diagnostics endpoint)'
+        }
     } else {
         if (-not $TrackedProcess) {
             Write-Output 'Tracked process: stale (recorded PID is not running)'

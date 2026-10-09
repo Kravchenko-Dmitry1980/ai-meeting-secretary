@@ -7,6 +7,7 @@ import hashlib
 import os
 import secrets
 import tempfile
+import time
 import wave
 import ipaddress
 import re
@@ -28,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from secretary.domain.identification import IdentifySpeakers, BypassIdentification, IdentificationState
 
 from secretary.application.exporting import export_meeting
+from secretary.application.diagnostics import build_readiness_report
 from secretary.application.worker import Worker
 from secretary.application.speakers import SpeakerService
 from secretary.infrastructure.speaker_repository import SpeakerRepository
@@ -235,6 +237,44 @@ class CloudBudgetOperationDetails(BaseModel):
     events: list[CloudBudgetReconciliationEventView]
 
 
+class LocalReadinessComponent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["healthy", "degraded", "not_configured", "disabled", "waiting_config",
+                   "configured_unqualified", "available", "missing", "not_qualified", "not_checked",
+                   "unavailable"]
+    code: str | None = None
+    integrity: Literal["ok"] | None = None
+    directory_writable: bool | None = None
+    free_bytes: int | None = None
+    minimum_free_bytes: int | None = None
+    heartbeat_age_seconds: int | None = None
+    heartbeat_stale_after_seconds: int | None = None
+    live_qualified: bool | None = None
+
+
+class LocalReadinessJobs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["healthy", "unavailable"]
+    counts: dict[str, int]
+    stale_running_candidate_count: int | None
+    stale_after_seconds: int
+
+
+class LocalReadinessReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["local_ok", "degraded"]
+    production_qualified: Literal[False]
+    blockers: list[str]
+    components: dict[str, LocalReadinessComponent]
+    jobs: LocalReadinessJobs
+
+
+class StorageWriteProbeReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["healthy", "degraded"]
+    code: Literal["storage_write_probe_failed"] | None = None
+
+
 class ProcessRequest(DTO):
     model_config = ConfigDict(extra="forbid")
     stage: Literal["prepare", "transcribe", "identify_speakers", "summarize"] = "transcribe"
@@ -342,17 +382,31 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @asynccontextmanager
     async def lifespan(app):
-        publication_worker, publication_task = None, None
+        publication_worker, publication_task, heartbeat_task = None, None, None
         try:
             await asyncio.to_thread(enrollment_service.recover)
             if run_worker:
                 await asyncio.to_thread(recover_storage)
                 await worker.start()
+
+                async def record_worker_heartbeat():
+                    while worker.task is not None and not worker.task.done():
+                        app.state.worker_heartbeat_at = time.monotonic()
+                        await asyncio.sleep(2)
+
+                app.state.worker_heartbeat_at = time.monotonic()
+                heartbeat_task = asyncio.create_task(record_worker_heartbeat(), name='secretary-worker-heartbeat')
             publication_worker = publication_worker_factory(app.state.task_publications) if publication_worker_factory and outbound_enabled else None
             publication_task = asyncio.create_task(publication_worker.run(), name='secretary-publications') if publication_worker else None
             app.state.publication_worker, app.state.publication_task = publication_worker, publication_task
             yield
         finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
             # All close paths execute even if one driver fails; no lease release on timeout.
             try:
                 await asyncio.to_thread(capture.close)
@@ -395,6 +449,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     app.state.cloud_budget = cloud_budget
     app.state.maintenance, app.state.maintenance_participant = maintenance, participant_id
     app.state.publication_worker, app.state.publication_task = None, None
+    app.state.worker_heartbeat_at = None
     from secretary.infrastructure.polza_history import PolzaHistoryClient
     app.state.cloud_budget_history = PolzaHistoryClient(settings)
     app.state.enrollments, app.state.voice_inference, app.state.capture_lease = enrollment_service, inference, capture_lease
@@ -783,6 +838,32 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                 'maintenance': {'state': 'healthy' if maintenance.status()['mode'] == 'open' else 'degraded'},
             }}
         return {"status": "ok"}
+
+    @app.get("/ready", response_model=LocalReadinessReport, response_model_exclude_none=True,
+             summary="Sanitized local readiness diagnostics; not production qualification")
+    async def readiness():
+        heartbeat_at = app.state.worker_heartbeat_at
+        heartbeat_age = None if heartbeat_at is None else max(0.0, time.monotonic() - heartbeat_at)
+        return build_readiness_report(
+            settings, db, worker_task=worker.task, run_worker=run_worker,
+            worker_heartbeat_age_seconds=heartbeat_age, outbound_enabled=outbound_enabled,
+            publication_configured=app.state.task_publications is not None and outbound_enabled,
+            publication_task=app.state.publication_task, maintenance=maintenance,
+        )
+
+    @app.post("/ready/storage-probe", response_model=StorageWriteProbeReport,
+              response_model_exclude_none=True,
+              summary="Create and remove a one-byte file in the configured data directory")
+    async def readiness_storage_probe():
+        try:
+            with tempfile.NamedTemporaryFile(prefix=".secretary-readiness-", mode="w+b",
+                                             dir=settings.data_dir, delete=True) as probe:
+                probe.write(b"\0")
+                probe.flush()
+                os.fsync(probe.fileno())
+        except OSError:
+            return {"state": "degraded", "code": "storage_write_probe_failed"}
+        return {"state": "healthy"}
 
     @app.get("/api/v1/session")
     async def session():

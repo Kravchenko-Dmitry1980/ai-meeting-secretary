@@ -109,6 +109,59 @@ def test_local_api_security_and_no_secret(settings):
         assert api.patch("/api/v1/config", headers=auth(api), json={"polza_api_key": "new-secret"}).status_code == 422
 
 
+def test_local_readiness_reports_safe_component_states_without_qualifying_production(settings):
+    with client(settings) as api:
+        response = api.get("/ready")
+        assert response.status_code == 200
+        report = response.json()
+        assert report["status"] == "degraded"
+        assert report["production_qualified"] is False
+        assert report["components"]["database"]["state"] == "healthy"
+        assert report["components"]["processing_worker"]["state"] == "not_configured"
+        assert report["components"]["device_capture"]["state"] == "not_qualified"
+        assert report["components"]["cloud"]["live_qualified"] is False
+        assert report["jobs"]["state"] == "healthy"
+        assert "test-key-never-real" not in response.text
+        assert str(settings.data_dir) not in response.text
+        assert api.get("/ready", headers={"Host": "evil.example"}).status_code == 403
+
+
+def test_local_readiness_worker_heartbeat_tracks_lifespan_task(settings):
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(),
+                     run_worker=True, enforce_single_instance=False)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as api:
+        processing = api.get("/ready").json()["components"]["processing_worker"]
+        assert processing["state"] == "healthy"
+        assert processing["heartbeat_age_seconds"] is not None
+        assert processing["heartbeat_age_seconds"] <= 10
+        assert app.state.worker.task is not None and not app.state.worker.task.done()
+
+
+def test_storage_readiness_probe_requires_csrf_and_leaves_no_file(settings):
+    with client(settings) as api:
+        before = set(settings.data_dir.iterdir())
+        assert api.post("/ready/storage-probe").status_code == 403
+        response = api.post("/ready/storage-probe", headers=auth(api))
+        assert response.status_code == 200
+        assert response.json() == {"state": "healthy"}
+        assert set(settings.data_dir.iterdir()) == before
+
+
+def test_storage_readiness_probe_returns_stable_error_without_path_or_os_detail(settings, monkeypatch):
+    import secretary.api as api_module
+
+    def fail_write(**kwargs):
+        raise PermissionError("synthetic denied path secret")
+
+    monkeypatch.setattr(api_module.tempfile, "NamedTemporaryFile", fail_write)
+    with client(settings) as api:
+        response = api.post("/ready/storage-probe", headers=auth(api))
+        assert response.status_code == 200
+        assert response.json() == {"state": "degraded", "code": "storage_write_probe_failed"}
+        assert "synthetic denied path secret" not in response.text
+        assert str(settings.data_dir) not in response.text
+
+
 def test_offline_launch_cannot_reenable_saved_cloud_config(settings):
     Database(settings.data_dir / "secretary.sqlite3").set_configuration({"cloud_enabled": True})
     app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(),
