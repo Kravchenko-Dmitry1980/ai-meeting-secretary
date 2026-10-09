@@ -1,5 +1,12 @@
 # Проверки Secretary V1
 
+## Передача на ручную проверку — 2026-10-10, 02:11 МСК
+
+- Повторный `npm.cmd run test:processing` завершился: **293 passed, 0 failed**; `npm.cmd run typecheck` и `npm.cmd run lint` завершились с exit 0.
+- В профиль Chrome `Dmitry` открыты две вкладки свежей loopback fixture: [синтетический стенд](http://secretary-t9.localhost:59979/fixture) и [Team-доска](http://secretary-t9.localhost:59979/team/). `/fixture/status` подтверждает `simulation=true`, `HTTP_SYNTHETIC_UI_ONLY`, `httpx.MockTransport`; TLS предупреждение не обходилось и реальный сервис не подключён.
+- Вход оставлен пользователю: код в fixture одноразовый и действует 5 минут; если срок истёк, нажмите «Новый синтетический код» в блоке «Анна · синтетический владелец». Код не включён в репозиторий или отчёты. После входа можно проверить Today/Kanban/Matrix, фильтры, карточки, предпросмотр и команды; все данные стенда синтетические.
+- Это handoff для ручной приёмки, а не её результат. MAX, TLS, Polza, записи встреч и микрофон не проверялись.
+
 ## Продолжение QA — 2026-10-10, 02:04 МСК
 
 - В `backend/secretary/infrastructure/polza.py` исправлена отправка `verbose_json` для `openai/whisper-large-v3`: Polza docs противоречат сами себе по этому формату, а timestamp granularities документированы только для `whisper-1`; адаптер теперь использует консервативный JSON без неподтверждённых таймкодов. Добавлен regression test с формой запроса.
