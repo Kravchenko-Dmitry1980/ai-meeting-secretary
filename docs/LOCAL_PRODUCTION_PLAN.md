@@ -1,5 +1,17 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-10, 02:58 МСК
+
+Продвинут локальный сквозной acceptance: synthetic WAV сохранён через реальный multipart API, затем отображён в production UI; после запуска обработки без ключа стадия честно осталась `waiting_config`, аудио доступно локально, текст не подменён. Кнопка отмены в UI перевела ожидающую STT-стадию в `cancelled`, сохранив успешную подготовку аудио. API export для Markdown/TXT/JSON/DOCX вернул 200 с соответствующими MIME-типами. Scratch UI для ручной загрузки открыт по [HTTP](http://127.0.0.1:51329/), sample лежит в `.runtime/lifecycle-release-62663672d70149d49148aaea1afc503a/.runtime/synthetic-inputs/synthetic-silence-2s.wav`. В файловом диалоге нужно вручную выбрать его и нажать «Импортировать запись»; рабочая БД и Polza не задействованы.
+
+Свежая Team fixture без TLS доступна примерно до 03:12 МСК: [участники](http://secretary-t9.localhost:64904/fixture), [доска](http://secretary-t9.localhost:64904/team/). Это синтетический HTTP стенд с MockTransport. BrowserSkill в текущем хосте не создаёт Agent Window, поэтому реальные файловые диалоги и ручная приёмка остаются за владельцем. Полный guarded offline suite завершён: **5 230 passed, 0 failed**, один deprecation warning Starlette/httpx (27:28).
+
+## Progress checkpoint — 2026-10-10, 02:23 МСК
+
+Проверены реальные PowerShell `start.ps1`, `doctor.ps1` и `stop.ps1` в одноразовом scratch-контуре: старт на свободном localhost-порту, проверка процесса/readiness/release manifest/lock-файлов, штатная остановка. Отдельная lifecycle-проверка подтвердила сохранение синтетической встречи после перезапуска. Основной экземпляр `127.0.0.1:8765`, `frontend/dist` и рабочая БД не затронуты; рабочий `doctor.ps1` также подтвердил живой процесс, `/health=ok`, `/ready=local_ok`.
+
+Ручной HTTPS переход не требуется: актуальная fixture доступна по [HTTP-ссылке](http://secretary-t9.localhost:59979/fixture), доска — по [Team UI](http://secretary-t9.localhost:59979/team/). Оба маршрута отвечают 200 и используют только синтетические данные. Ручная приёмка владельца остаётся незакрытой. `/ready=local_ok` не означает production qualification; `production_qualified=false`.
+
 ## Progress checkpoint — 2026-10-10, 02:11 МСК
 
 После исправления Polza повторно пройдены **153 backend-теста** по STT/benchmark/ценам и **293 frontend-теста**; `typecheck`, `lint`, `py_compile`, `git diff --check` — PASS. Полный guarded набор 5 229 тестов прошёл до этой узкой поправки.

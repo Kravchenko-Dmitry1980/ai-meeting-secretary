@@ -1,5 +1,22 @@
 # Проверки Secretary V1
 
+## Продолжение QA — 2026-10-10, 02:58 МСК
+
+- На отдельном scratch-сервере `127.0.0.1:51329` выполнен сквозной локальный тест сохранения: через настоящий API созданы synthetic meeting и WAV 2 s, `POST /api/v1/meetings/{id}/upload` вернул `job_id`. После перезагрузки production UI показал запись и локальный аудиоплеер.
+- Кнопка «Запустить обработку» проверена в UI при `cloud_enabled=false` и пустом ключе. Итоговый контракт: meeting=`waiting_config`, подготовка аудио=`succeeded`, STT=`waiting_config`; UI явно сообщил, что нужен API-ключ, текстовых фрагментов 0 из 1. Внешний Polza endpoint не вызывался. Это подтверждает отсутствие фиктивного успеха и работу UI со статусом backend, но загрузка через файловый диалог браузера пока не пройдена.
+- Кнопка «Отменить этап: Расшифровка» на той же тестовой встрече перевела meeting/job в `cancelled`; подготовка аудио осталась `succeeded`, облако выключено. UI показал «Обработка отменена», повторных запросов провайдеру не было.
+- Экспорт текущей тестовой встречи проверен по локальному API: `md`, `txt`, `json`, `docx` — все HTTP 200, ожидаемые MIME-типы, размеры ответов 206 / 201 / 475 / 36 770 bytes соответственно. Экспортировалась только synthetic встреча без расшифровки.
+- Для ручного импорта оставлен scratch UI [на HTTP без TLS](http://127.0.0.1:51329/); готовый синтетический WAV: `.runtime/lifecycle-release-62663672d70149d49148aaea1afc503a/.runtime/synthetic-inputs/synthetic-silence-2s.wav`. Выберите «Новая встреча» → «Выбрать файл» → «Импортировать запись». Эта база изолирована, `.env` отсутствует, облако отключено.
+- BrowserSkill не смог создать Agent Window на этом браузерном хосте; поэтому file chooser нельзя было автоматизировать. Отдельно поднята свежая ручная Team fixture: [синтетические коды](http://secretary-t9.localhost:64904/fixture), [Team UI](http://secretary-t9.localhost:64904/team/), TTL около 30 минут (примерно до 03:12 МСК). Проверены HTTP 200 и `HTTP_SYNTHETIC_UI_ONLY`; TLS, MAX, Polza и реальные задачи не затрагиваются.
+- Полный guarded offline backend/audit набор после последней правки Polza завершён: `scripts/run_offline_tests.py tests audit/tests -q --tb=short` — **5 230 passed, 0 failed**, 1 известное предупреждение Starlette/httpx о deprecation `TestClient`, 27:28.
+
+## Дополнение — 2026-10-10, 02:23 МСК
+
+- `scripts/doctor.ps1` проверил работающий экземпляр: идентификатор процесса подтверждён, `/health=ok`, `/ready=local_ok`, worker и локальная БД здоровы; `production_qualified=false` сохранён как честный результат.
+- Изолированный `scripts/check_lifecycle.py` сначала вернул `isolated_server_readiness_failed`: текущий `frontend/dist/secretary-release.json` — manifest schema 1, тогда как текущая проверка требует production manifest schema 2. Проверенная production-сборка уже есть в `.runtime/final-release-build-20261010/dist`; её manifest и SHA-256 обоих lock-файлов совпали с текущими исходниками.
+- На отдельном scratch-root с этой production-сборкой lifecycle прошёл: сервер запущен и остановлен, синтетическая встреча сохранилась после перезапуска, readiness и storage probe проверены повторно. Затем отдельно прошли реальные PowerShell `start.ps1` → `doctor.ps1` → `stop.ps1` на свободном loopback-порту: процесс идентифицирован и штатно остановлен, `/health=ok`, `/ready=local_ok`, release manifest и lock-файлы подтверждены. Использованы пустые scratch-данные, `.env` не загружался; основной процесс, `frontend/dist` и рабочая БД не менялись.
+- Прямой HTTPS переход не нужен для ручного UI smoke. Текущие [HTTP fixture](http://secretary-t9.localhost:59979/fixture) и [Team UI](http://secretary-t9.localhost:59979/team/) отвечают HTTP 200; статус — `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, `httpx.MockTransport`. Ручной вход владельца всё ещё не подтверждён; TLS, MAX, Polza и реальные задачи не проверялись.
+
 ## Передача на ручную проверку — 2026-10-10, 02:11 МСК
 
 - Повторный `npm.cmd run test:processing` завершился: **293 passed, 0 failed**; `npm.cmd run typecheck` и `npm.cmd run lint` завершились с exit 0.
