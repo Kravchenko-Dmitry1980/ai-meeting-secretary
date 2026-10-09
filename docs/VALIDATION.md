@@ -1,5 +1,19 @@
 # Проверки Secretary V1
 
+## Повторная проверка 2026-10-09, 12:37 МСК
+
+- Полный offline backend/audit набор `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершился с exit 0: **5 190 passed, 0 failed**, одно предупреждение `StarletteDeprecationWarning` о связке `httpx`/`starlette.testclient`, **1 926,35 с (32:06)**.
+- Frontend: `npm.cmd run test:processing` — **289 passed**; `npm.cmd run typecheck`, `npm.cmd run lint` — exit 0. Production build завершился успешно: 1 776 модулей, 11,23 с, выход в `.runtime/qa-build-20261009-current`, без перезаписи `frontend/dist`.
+- Runtime/API: основной `http://127.0.0.1:8765/health` — HTTP 200. Живой `/openapi.json` — OpenAPI 3.1.0, **52 пути, из них 50 `/api/v1/*`**. Team browser runtime остаётся отдельным synthetic fixture; HTTP `/fixture/status` и `/team/` на origin `http://secretary-t9.localhost:54710` — 200.
+- В Chrome без записи или изменения настроек проверены главная страница, переключатели «Готовая запись»/«Живая встреча», загрузка пустого списка участников, чтение настроек и обновление состояния. Cloud выключен; запись не загружалась, микрофон не запускался, Polza не вызывалась. `git diff --check` — exit 0; Git вывел только предупреждения о возможной нормализации LF→CRLF.
+- Границы: ручной вход и сценарий Team за владельцем; этот прогон не подтверждает TLS, MAX WebView/Bridge, безопасную cookie в тестовом HTTP-режиме, реальный Polza, микрофон/WASAPI, внешний Vikunja, телефонные уведомления или 24-часовой запуск. См. текущую ссылку и короткий сценарий в [TEAM_TESTING_CURRENT.md](TEAM_TESTING_CURRENT.md).
+
+## Дополнение 2026-10-07: повторный API/UI sweep и единственный экземпляр
+
+После добавления data-directory lease первый полный backend/audit прогон показал 5 176 PASS и 3 регрессии: OpenAPI export удерживал lock-файл при удалении временной папки Windows, а recovery-тест строил фиктивную замену процесса в том же pytest process. Исправлено по причине: schema-only exporter получает внутренний `enforce_single_instance=False`, а test-only embedded recovery fixture явно выбирает тот же режим. Целевой повтор `test_openapi_export.py`, `test_instance_lock.py`, `test_team_secretary_maintenance.py` → **33 passed**. Новый полный прогон `scripts/run_offline_tests.py tests audit/tests -q --tb=short` → **5 179 passed, 0 failed, 1 Starlette/httpx deprecation warning, 1 303,48 s**.
+
+Frontend `npm.cmd run test:processing` → **289 passed**; `typecheck` и `lint` → exit 0. Vite production build 08.10.2026 прошёл в `.runtime/qa-build-20261007` (1 776 модулей, 9,69 s), без перезаписи рабочего `frontend/dist`. AIPex Browser: синтетический вход успешен, «Сегодня»/«Канбан»/«Матрица» переключаются; кнопки создания задачи и обновления отключены при отсутствующем MAX Bridge. Для пользователя открыт временный loopback стенд [fixture](http://secretary-t9.localhost:56508/fixture) и [Team UI](http://secretary-t9.localhost:56508/team/) до примерно 00:24 МСК 08.10.2026. Внешние вызовы, реальные аккаунты/записи, MAX, Polza и платежи не запускались. Ручная acceptance владельца и production qualification не закрыты.
+
 Дата: 2026-10-01. Область: локальная первая версия в `D:\AI\Projects\Active\Secretary`, без платных запросов и личного аудио. Основная приёмка выполнялась без API-ключа; позднее появившийся локальный ключ защищён, облачная обработка оставлена отключённой. **Локальная реализация и offline-проверки выполнены. Облачное качество и аппаратная запись не квалифицированы.**
 
 ## Окружение и границы
@@ -136,3 +150,26 @@ Reducer теперь сначала сохраняет старую группи
 Проверки: `tests/test_polza_merge.py tests/test_summary_context_contracts.py` — 19 passed. Полный `pytest -q` дал 5 103 passed и 2 ошибки импорта в Windows-only тестах `restore_runtime_evidence`: запуск не включил каталог `scripts` в `PYTHONPATH`. Оба теста прошли отдельно с `PYTHONPATH=backend;scripts`; полному повторному запуску набора с этим путём не заявляется PASS. Итоговый live retry использовал уже сохранённые STT и merge checkpoint’ы; Polza приняла только завершающий merge-запрос, итог сохранён. Текст расшифровки и итогов в этот отчёт не копировался.
 
 После исправления основной процесс Secretary штатно перезапущен, `/health` и `/` возвращают HTTP 200. Результат смысловой полноты и корректности назначения задач должен вручную проверить владелец; это не заменяет ручную приёмку.
+
+## Дополнение 2026-10-06, 22:44 МСК: текущий lifecycle и ресурсы
+
+- `scripts/doctor.ps1` → exit 0: `.venv` Python 3.12.13, FastAPI 0.142.2, PyAudioWPatch 0.2.12.8, frontend build, Python/frontend lock-файлы и локальный `/health` доступны. Скрипт не выводил секреты.
+- `scripts/check_lifecycle.py` → **PASS** после изменений launch-скриптов от 6 октября. Повторный stop идемпотентен; занятый чужой тестовый порт сохранён; повторный start не создал второй процесс; четыре встречи сохранились после restart; Secretary оставлен работающим. Полный отчёт: `.runtime/lifecycle-check.json`. Старый отчёт и журналы до запуска сохранены в `.runtime/team-rollout/lifecycle-check-prior-20261001/`.
+- `scripts/resource_check.py` → **PASS**, только synthetic silence и локальный FFmpeg: 5 минут — 3 чанка, рост sampled Python RSS 458 752 байта; 3 часа — 90 чанков, рост 40 960 байт. Смещения непрерывны, размер каждого чанка в лимите, облачных запросов 0. Это проверка файловой подготовки, не микрофона/WASAPI и не STT. Измерения: `.runtime/resource-check/run-4f59727d0ddf4a5290154534b34e3816/report.json`.
+- `scripts/benchmark.py` без `--run-cloud` → exit 0, 0 samples, качество/стоимость/p50/p95 остаются «не измерено»; облачный benchmark не запускался. Отчёт: `.runtime/benchmark/no-cloud-20261006-1942z.json`.
+- Team-маршруты по-прежнему отсутствуют в основном сервисе (`/team/`, `/api/team/v1/health` → 404); Team UI остаётся отдельной синтетической фикстурой. Физический захват звука требует ручного явного действия пользователя и этим прогоном не проверялся.
+
+## Дополнение 2026-10-06, 23:48 МСК: полный повтор после исправления offline runner
+
+- `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` → **5 174 passed, 0 failed, 0 errors, exit 0**, 1 предупреждение за 1 351,69 с. Это полный guarded offline backend+audit набор после разрешения точного read-only preflight в stdout-only режиме. Отчёт-квитанция: [receipt.json](../.runtime/team-rollout/full-offline-suite-revalidation-20261006-204600Z/receipt.json). Предупреждение — существующий `StarletteDeprecationWarning` о `httpx` с `starlette.testclient`.
+- Дополнительно в managed worktree C `tests/test_team_preflight.py tests/test_script_limits_regression.py` → **42 passed за 10,69 с**, exit 0.
+- Основной Secretary `/health` → 200. Свежая одноразовая `HTTP_SYNTHETIC_UI_ONLY` fixture: `/fixture` и `/team/` → 200, TTL 30 минут, без реальных MAX/Vikunja/Polza. Team UI открыт в отдельной вкладке Codex IAB и показывает экран входа по синтетическому коду; MAX Bridge недоступен, что ожидаемо в этом стенде. В основном приложении `/team/` и `/api/team/v1/health` → 404; Team runtime туда ещё не смонтирован.
+- Ручная приёмка владельцем не выполнена. TLS/MAX WebView, реальный сервис Vikunja, телефон/уведомления и R4 activation не квалифицированы; restore остаётся fail-closed.
+
+## Дополнение 2026-10-06, 23:15 МСК: API/UI-контракты и offline-suite
+
+- `frontend`: `test:processing` — 289/289 passed; `api:types` завершился без изменений сгенерированного контракта; `typecheck`, `lint` и production `build` завершились с exit 0.
+- Полный изолированный backend suite: 5 104 passed, 1 failed за 24:29. Единственная ошибка была в offline-runner: он не разрешал уже предусмотренный read-only preflight в режиме JSON только в захваченный stdout. Runner суженно разрешает только точный `scripts/team/check_prerequisites.ps1` без аргументов после пути либо с `-OutputPath` внутри `.runtime/team-rollout`; остальные PowerShell-вызовы по-прежнему запрещены.
+- После исправления `tests/test_team_preflight.py tests/test_script_limits_regression.py` — 42 passed за 11,76 с. Полный backend suite после этого изменения целиком не повторялся, поэтому постфиксный полный запуск не объявляется PASS.
+- Основной локальный сервер: `/health` → 200; `/api/v1/audio/devices` → `available=true`, четыре устройства (два microphone и два system/loopback), запись не запускалась. `/team/` и `/api/team/v1/health` в основном сервере → 404.
+- Для ручной браузерной проверки восстановлен краткоживущий стенд `HTTP_SYNTHETIC_UI_ONLY`: fixture и Team UI → 200. Используются синтетические участники и локальный Vikunja-симулятор; реальные MAX, Polza, TLS и пользовательские записи не задействованы. Владелец ещё не выполнил ручную приёмку.

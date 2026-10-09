@@ -1,5 +1,11 @@
 # Secretary Team: сквозная приёмка T13
 
+## Checkpoint 2026-10-08 00:36 МСК: T9 handoff and R4 diagnostic
+
+Свежая локальная fixture `HTTP_SYNTHETIC_UI_ONLY`, run `t9-http-ui-646d3fcae28448058e141daa7942f740`, готова на порту53230 до примерно01:03:32 МСК; `/fixture` и `/team/` возвращают200 и открыты в Chrome. Коды не вводились, ручная приёмка остаётся у владельца. Веб-сборка взята из `.runtime/qa-build-20261007`, локальные assets проверены, один MAX SDK tag удалён только в disposable copy.
+
+R4 follow-up: четыре frozen AST hash/read режима для последнего partial-trace файла прошли, полный point diagnostic 76,17 мс; [report](../.runtime/team-rollout/r4-inputs-point-dxva2api-20261008/point-file-report.json), SHA256 `152098976b4b8cd4ca486e5a12515c3da55febdbb0c5d904d962dd64759d1428`. Cause прежнего timeout неизвестна; acquisition/native/fullR4 и production gates не квалифицированы, прежняя card не повторялась.
+
 ## Checkpoint 2026-10-06 00:35 МСК: HUMA_SINGLE_TRANSFER_PASS_WITH_LIMITS
 
 Корневая причина Huma output_invalid найдена в post-publication guard 180 с при штатном worker budget 1500 с. В новой приватной карточке исправлен только этот guard. AST-only regression suite: 10/10. Независимая closure-проверка подтвердила ровно один Huma v2.39.1 transfer, Go exit 0, точные archive/go.mod sums, SHA-256 локальных zip/mod/info, worker exit 0/stderr 0 B, unchanged source/control pins и закрытые custody handles. Parent и worker завершили SINGLE_MODULE_DIAGNOSTIC_ONLY_PASS. [Final receipt](../.runtime/team-rollout/r4-single-huma-budget-align-closure-20261006-94c2f2bfbd42/final-receipt.json).

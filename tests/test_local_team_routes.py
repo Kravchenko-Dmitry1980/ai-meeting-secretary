@@ -84,11 +84,12 @@ def settings(tmp_path):
                     cloud_enabled=False, polza_api_key='', local_cost_limits_enabled=False)
 
 
-def make_app(settings, factory=None, *, omitted=False):
+def make_app(settings, factory=None, *, omitted=False, enforce_single_instance=True):
     assert 'team_auth_factory' in inspect.signature(create_app).parameters, 'owner factory integration missing'
     kwargs = {} if omitted else {'team_auth_factory': factory}
     return create_app(settings, capture=FakeCapture(), enrollment_capture=FakeCapture(), run_worker=False,
-        provider_factory=lambda *_: pytest.fail('No provider is allowed'), **kwargs)
+        provider_factory=lambda *_: pytest.fail('No provider is allowed'),
+        enforce_single_instance=enforce_single_instance, **kwargs)
 
 
 @pytest.fixture
@@ -444,7 +445,8 @@ def test_real_http_another_configured_owner_cannot_read_or_confirm_foreign_invit
     other = TeamMember(id=uid(), display_name='Synthetic other owner', role='owner', max_user_id='103',
         vikunja_user_id='203', project_ids=('7',))
     c.team.upsert_member(other, expected_revision=None)
-    other_app = make_app(c.settings, lambda source_db: (c.repository, other.id))
+    other_app = make_app(c.settings, lambda source_db: (c.repository, other.id),
+                         enforce_single_instance=False)
     before = auth_state(c)
     with TestClient(other_app, base_url='http://127.0.0.1:8765', client=('127.0.0.1', 43123)) as client:
         path = ROOT + '/invitations/' + invitation['id']

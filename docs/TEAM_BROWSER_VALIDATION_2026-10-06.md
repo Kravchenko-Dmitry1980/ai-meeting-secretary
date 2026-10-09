@@ -1,5 +1,53 @@
 # T9 synthetic browser smoke — 2026-10-06
 
+### Дополнение 2026-10-08, 14:15 МСК: свежая HTTP fixture для ручной Team-приёмки
+
+После того как владелец не смог пройти Chrome TLS interstitial, создана новая loopback-only fixture `t9-http-ui-4c6562c20dc64b0babb4a1a95d449eb2`, порт50626, режим `HTTP_SYNTHETIC_UI_ONLY`, manifest `ready`, max lifetime30 минут (ориентировочно до14:45 МСК). В Codex открыты [страница с синтетическими участниками и одноразовыми кодами](http://secretary-t9.localhost:50626/fixture) и [Team UI для входа и ручной проверки](http://secretary-t9.localhost:50626/team/). Используйте код, который отображается только на первой локальной странице, затем проверьте views/filters/создание и изменения задачи. HTTP fixture не требует переходить через предупреждение сертификата; TLS/MAX WebView/телефон не квалифицирует.
+
+Это отдельная синтетическая БД с mock Vikunja. Реальные MAX, Polza, задачи, записи и платные вызовы не используются. Ручная приёмка владельца пока pending.
+
+### Дополнение 2026-10-08, 14:10 МСК: полный синтетический smoke кнопок и доступный локальный Secretary
+
+На disposable `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-be3c411bef4742f6933f37cbba93ba69`/51750 подтверждены смена статуса («Новая» → «Принята»), матрица важности/срочности, комментарий с историей, срок с явным часовым поясом и обновление списка; каждая команда завершилась квитанцией `Применено и проверено`. Значения селекторов работали через native controls; прежняя невозможность увидеть меню в accessibility snapshot не являлась дефектом продукта. Run остановлен, изменения остались только в его временной БД. Вместе с отдельным run/65133 покрыты вход синтетического участника, проект, «Сегодня»/«Канбан»/«Матрица», фильтр «Мои/Все» и создание задачи.
+
+Пользователь сообщил, что не может перейти предупреждение локального HTTPS-сертификата. Trust store и настройки Chrome не менялись, TLS interstitial не обходился. Предыдущая HTTP fixture на порту61358 теперь не слушает. Для проверки основного UI поднят отдельный пустой offline Secretary на [http://127.0.0.1:8765/](http://127.0.0.1:8765/): `cloud_enabled=false`, `key_configured=false`, ноль встреч в новой scratch-БД. Это позволяет проверить локальный интерфейс без пользовательских данных; Team UI и ручная приёмка остаются незавершёнными.
+
+Ни один из этих browser smokes не подключался к реальному MAX, Polza или Vikunja и не квалифицирует телефон, TLS, production runtime либо качество протокола.
+
+### Дополнение 2026-10-08, 13:14 МСК: автоматизированный UI smoke
+
+На отдельном disposable `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-c21786048f084eb6994eec593c19088f`/65133 пройдены вход синтетического участника, загрузка проекта, «Сегодня»/«Канбан»/«Матрица», фильтр «Мои/Все», создание задачи и проверка результата команды до `Применено и проверено`. После проверки run штатно остановлен и listener удалён; задача была только в его отдельной временной БД. Владелец handoff на порту61358 оставлен нетронутым и доступен по [fixture](http://secretary-t9.localhost:61358/fixture) и [Team UI](http://secretary-t9.localhost:61358/team/).
+
+Не пройдено автоматизацией: список значений «Изменить статус» не появился в accessibility tree после открытия; поэтому смена статуса требует ручной проверки. Комментарий/приоритет не проверялись в этом браузерном сценарии. AIPex Browser вернул HTTP403 на loopback-origin; ограничение адаптера оставлено без изменений. Результат не подтверждает реальный MAX, Polza, внешний Vikunja, TLS, телефон или production runtime.
+
+### Дополнение 2026-10-08, 13:04 МСК: актуальная HTTP fixture для ручной проверки
+
+После повторного полного offline прогона поднят отдельный loopback-only run `t9-http-ui-3111d5427ebe4c16af81677b32bbc8e6`, порт61358, режим `HTTP_SYNTHETIC_UI_ONLY`, максимум 30 минут. [Fixture](http://secretary-t9.localhost:61358/fixture) и [Team UI](http://secretary-t9.localhost:61358/team/) открыты в двух вкладках Codex; `/fixture`, `/fixture/status`, `/team/` и `/team/team.html` проверены с HTTP200. Запуск примерно в13:00:23 МСК, автоматическая остановка примерно в13:30:23.
+
+В fixture отображаются только синтетические участники Анна, Борис и Вера; коды остаются на локальной странице, в отчёт не копировались и в Team UI не вводились. На Team UI видны поле одноразового кода и кнопка «Войти», пока отключённая до ввода кода. MAX Bridge отсутствует. Можно использовать код Анны или Бориса со страницы fixture для ручного входа, затем проверить представления «Сегодня», «Канбан», «Матрица», фильтры задач, создание задачи, комментарий, статус, важность/срочность и receipt в синтетическом Vikunja. Используйте только коды с этой страницы; они одноразовые и действуют 5 минут. Стенд не подключён к рабочим MAX, Polza, пользовательским встречам или платежам.
+
+Это не обход TLS-предупреждения: используется отдельный HTTP loopback-origin без перехода через сертификатный interstitial. TLS, MAX WebView/телефон и production runtime не проверяются. На момент запуска основной порт `127.0.0.1:8765` не слушал; ручная приёмка владельца остаётся pending.
+
+Полный offline backend/audit прогон теперь завершён: **5179 passed / 0 failed / 0 errors / exit 0 / 1736,57 с**, одно существующее предупреждение Starlette/httpx. JUnit: `../.runtime/team-rollout/full-offline-20261008-1228msk.xml`. Frontend — **289/289** `test:processing`, typecheck/lint/build — exit0; OpenAPI-generated frontend types совпали с обеими сохранёнными схемами.
+
+### Дополнение 2026-10-08, 01:35 МСК: свежая HTTP fixture после TTL
+
+Порт52425 завершился штатно по TTL; новая loopback-only fixture `t9-http-ui-da9825b9fb8e4123ac755c34d06643f9` имеет порт49344 и TTL до примерно02:05:34 МСК. Четыре маршрута `/fixture`, `/team/`, `/team/team.html`, `/fixture/status` снова проверяются напрямую; fixture и Team UI открыты в Chrome. Ссылки: [fixture](http://secretary-t9.localhost:49344/fixture), [Team UI](http://secretary-t9.localhost:49344/team/). Коды не считывались; это synthetic data + mock Vikunja, не real MAX/Polza.
+
+В этой же итерации общий offline backend/audit run дал **5178 PASS / 1 FAIL**; ошибка была только в ненадёжном 20мс overlap fixture для двух MAX synthetic HTTP-процессов. Добавлен bounded peer rendezvous после записи попытки и вне SQL-транзакции; точечный тест прошёл1/1, `tests/test_team_load.py` —8/8. Полный suite после изменения ещё не запускался.
+
+### Дополнение 2026-10-08, 01:02 МСК: HTTP fixture обновлена после невозможности пройти TLS interstitial
+
+Владелец не смог перейти предупреждение локального HTTPS сертификата; обход TLS и изменение trust store не выполнялись. Предыдущий run на порту53230 остановлен штатно, вместо него поднят `HTTP_SYNTHETIC_UI_ONLY` `t9-http-ui-14949d7ba144418296777ff534cfafa1` на порту52425 с TTL до примерно01:31:58 МСК. На выделенной сборке `.runtime/qa-build-20261007` прямые loopback GET `/fixture`, `/team/`, `/team/team.html`, `/fixture/status` вернули HTTP200. Ссылки: [fixture](http://secretary-t9.localhost:52425/fixture), [Team UI](http://secretary-t9.localhost:52425/team/); обе страницы открыты в Chrome. Team UI показывает поле одноразового кода и отключённую до ввода кнопку «Войти». Код не считывался и не вводился.
+
+Это только локальная синтетическая UI fixture с mock Vikunja. MAX Bridge не подключён, OTP владельцем не вводился, кнопки, требующие MAX bridge, могут оставаться недоступными; реальный Gateway, аккаунты, Polza, данные встреч и платежи не затрагиваются. Основной порт8765 проверен отдельно: `/` и `/health` — HTTP200, `/team/` и `/api/team/v1/health` — HTTP404. Процесс не перезапускался и работает из другой worktree. Owner manual/live/TLS/phone acceptance остаются открытыми.
+
+### Дополнение 2026-10-08, 00:36 МСК: свежая HTTP fixture из последней сборки
+
+Предыдущий HTTP run на порту56508 штатно завершился: manifest `stopped`, owner process отсутствовал. Поднят новый isolated run `t9-http-ui-646d3fcae28448058e141daa7942f740`, mode `HTTP_SYNTHETIC_UI_ONLY`, port53230, max lifetime1800с, fixture run `t9-ui-bca77558bcf74d30b30eaca5087122d2`. Источник — отдельная сборка `.runtime/qa-build-20261007`; disposable prepared copy `.runtime/team-rollout/t9-http-dist-e0a9626997d144afa057377fc77c20d6` удалил ровно один remote MAX SDK tag и сохранил3 локальных assets. `/fixture`, `/team/`, `/team/team.html` и `/fixture/status` проверены как HTTP200 через прямой loopback-запрос; manager status — `ready`.
+
+В Chrome открыты [синтетические участники и коды](http://secretary-t9.localhost:53230/fixture) и [Team UI](http://secretary-t9.localhost:53230/team/); страницы имеют ожидаемые titles. DOM Team login сообщает, что MAX Bridge не подключён, и показывает поле одноразового кода. Код не прочитан и не вводился; кнопка «Войти» disabled пока поле пустое. Пользователь не проходил HTTPS interstitial, trust store и browser settings не менялись. Ручная приёмка владельца ещё pending; TTL заканчивается около01:03:32 МСК. Mock Vikunja/синтетические участники только; production API, MAX, Polza, телефон и реальные задачи не затрагивались.
+
 ### Дополнение 2026-10-06, 19:36 МСК: HTTP handoff без прохождения TLS interstitial
 
 Владелец сообщил, что Chrome не позволяет перейти через предупреждение

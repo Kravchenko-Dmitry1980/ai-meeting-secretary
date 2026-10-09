@@ -104,6 +104,20 @@ def test_local_api_security_and_no_secret(settings):
         assert api.patch("/api/v1/config", headers=auth(api), json={"polza_api_key": "new-secret"}).status_code == 422
 
 
+def test_offline_launch_cannot_reenable_saved_cloud_config(settings):
+    Database(settings.data_dir / "secretary.sqlite3").set_configuration({"cloud_enabled": True})
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(),
+                     run_worker=False, outbound_enabled=False)
+
+    with TestClient(app, base_url="http://127.0.0.1:8765") as api:
+        assert api.get("/api/v1/config").json()["cloud_enabled"] is False
+        response = api.patch("/api/v1/config", headers=auth(api), json={"cloud_enabled": True})
+        assert response.status_code == 409
+        assert response.json()["detail"] == "runtime_outbound_disabled"
+        assert api.get("/api/v1/config").json()["cloud_enabled"] is False
+        assert app.state.db.configuration()["cloud_enabled"] is True
+
+
 def test_config_prices_reset_when_model_changes(settings):
     with client(settings) as api:
         changed = api.patch("/api/v1/config", headers=auth(api), json={"stt_model": "other/model"}).json()
@@ -599,7 +613,8 @@ def test_api_factory_schema_export_does_not_recover_running_job(settings):
     meeting = app.state.db.create_meeting("Active job")
     job = app.state.db.enqueue(meeting["id"], "transcribe")
     app.state.db.claim()
-    exported = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    exported = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False,
+                          enforce_single_instance=False)
     exported.openapi()
     assert app.state.db.job(job["id"])["status"] == "running"
 

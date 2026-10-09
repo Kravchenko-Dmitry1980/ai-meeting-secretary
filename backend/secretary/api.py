@@ -191,7 +191,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                enrollment_capture=None, voice_store=None, enrollment_decoder=None, voice_engine=None, voice_model=None,
                task_publications_factory=None, team_auth_factory=None, publication_worker_factory=None,
                database_path=None, billing_path=None, maintenance=None, participant_id=None,
-               outbound_enabled=True) -> FastAPI:
+               outbound_enabled=True, enforce_single_instance=True) -> FastAPI:
     settings = settings or Settings()
     from secretary.infrastructure.maintenance_binding import restore_guard_present
     from secretary.team_settings import RuntimeConfigurationError
@@ -199,6 +199,13 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     effective_billing_path = billing_path if billing_path is not None else settings.data_dir / 'billing.sqlite3'
     if restore_guard_present((secretary_path, effective_billing_path)):
         raise RuntimeConfigurationError('team_restore_reconciliation_required')
+    instance_lock = None
+    if enforce_single_instance:
+        from secretary.infrastructure.instance_lock import DataDirectoryLock, DataDirectoryLockError
+        try:
+            instance_lock = DataDirectoryLock(settings.data_dir)
+        except DataDirectoryLockError as exc:
+            raise RuntimeConfigurationError(exc.code) from None
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     project_tmp = settings.data_dir / "tmp"
     project_tmp.mkdir(exist_ok=True)
@@ -270,11 +277,16 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                         try:
                             await worker.close()
                         finally:
-                            if publication_worker is not None:
-                                publication_worker.stop()
-                                await asyncio.shield(publication_task)
+                            try:
+                                if publication_worker is not None:
+                                    publication_worker.stop()
+                                    await asyncio.shield(publication_task)
+                            finally:
+                                if instance_lock is not None:
+                                    instance_lock.release()
 
     app = FastAPI(title="Secretary", version="0.1.0", lifespan=lifespan)
+    app.state.instance_lock = instance_lock
     app.add_middleware(BodyLimitMiddleware, max_upload_bytes=settings.max_upload_bytes)
     if maintenance is not None:
         from secretary.interface.maintenance_middleware import MaintenanceMiddleware
@@ -948,6 +960,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def edit_config(changes: dict):
         if changes.keys() - EDITABLE_CONFIG:
             raise HTTPException(422, "Only non-secret configuration may be edited")
+        if not outbound_enabled and "cloud_enabled" in changes and changes["cloud_enabled"] is not False:
+            raise HTTPException(409, "runtime_outbound_disabled")
         changes = dict(changes)
         for field in ("stt_model", "summary_model"):
             if field in changes and isinstance(changes[field], str) and not changes[field].strip():

@@ -115,6 +115,7 @@ class _CloudRemote:
         self.directory, self.index = Path(directory), index
         self.slots = {str(member['max_user_id']): slot for slot, member in enumerate(members)}
         self.active_voice_event = None
+        self.max_overlap_rendezvous_used = False
 
     def _journal(self, provider, slot, operation, request_hash, outcome, effect, *, budget=None):
         started = time.perf_counter_ns()
@@ -176,6 +177,11 @@ class _CloudRemote:
         outcome = '429' if limited else 'committed_503' if slot == 2 else 'committed_timeout' if slot == 3 else '200'
         attempt, effect_id = self._journal('max', slot, operation, hashlib.sha256(request.content).hexdigest(),
             outcome, not limited)
+        if not self.max_overlap_rendezvous_used:
+            # The durable request attempt exists before waiting, and no SQL
+            # transaction is held while the other real process reaches MAX.
+            self.max_overlap_rendezvous_used = True
+            _barrier(self.directory, 'max_http_first_attempt', self.index)
         self._finish(attempt)
         if limited:
             return httpx.Response(429, headers={'Retry-After': '2'}, json={'error': 'synthetic-limit'})

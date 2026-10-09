@@ -45,6 +45,7 @@ def test_export_isolates_database_env_devices_network_and_worker(tmp_path, monke
     def guarded_create(settings, **kwargs):
         assert not settings.key_configured and not settings.cloud_enabled
         assert kwargs["run_worker"] is False
+        assert kwargs["enforce_single_instance"] is False
         assert isinstance(kwargs["capture"], exporter.NoopCapture)
         return original_create(settings, **kwargs)
 
@@ -73,6 +74,7 @@ def test_failed_export_restores_temp_directory_and_removes_scratch(tmp_path, mon
 
     def guarded_create(settings, **kwargs):
         isolated_dirs.append(settings.data_dir.parent)
+        assert kwargs["enforce_single_instance"] is False
         app = original_create(settings, **kwargs)
         def failed_schema():
             raise RuntimeError("synthetic schema failure")

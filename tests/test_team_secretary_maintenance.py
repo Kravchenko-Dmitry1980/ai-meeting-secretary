@@ -183,7 +183,8 @@ def test_main_factory_does_not_replace_live_idle_predecessor(tmp_path, monkeypat
     from secretary.orchestration.secretary_team_runtime import create_secretary_team_app
     from secretary.infrastructure import team_process_identity
     config = runtime_config(tmp_path)
-    original = create_secretary_team_app(config, identity_reader=identity, run_worker=False)
+    original = create_secretary_team_app(config, identity_reader=identity, run_worker=False,
+                                         enforce_single_instance=False)
     before = config.secretary_database_path.read_bytes()
     descriptor_path = config.control_database_path.parent / 'secretary-participant.json'
     descriptor = descriptor_path.read_bytes()
@@ -231,7 +232,8 @@ def test_main_factory_recovers_dead_background_receipt_before_new_registration(t
     # does not assign this pytest process to a native Windows Job Object.
     monkeypatch.setattr(MaintenanceRepository, 'has_native_containment',
         lambda self, participant_id, run_id: True, raising=False)
-    replacement = create_secretary_team_app(config, identity_reader=lambda:new_identity, run_worker=False)
+    replacement = create_secretary_team_app(config, identity_reader=lambda:new_identity, run_worker=False,
+                                            enforce_single_instance=False)
     assert replacement.state.db.job(job['id'])['status'] == 'queued'
     assert gate.active_operations() == ()
     assert replacement.state.team_runtime_run_id != old.run_id

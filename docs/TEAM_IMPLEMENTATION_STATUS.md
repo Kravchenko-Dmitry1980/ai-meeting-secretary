@@ -1,5 +1,120 @@
 # Secretary Team: журнал реализации
 
+## Дополнение 2026-10-09, 11:43 МСК: усиление source-only R4 и доступная HTTP fixture
+
+После source review приватная draft-карта R4 получила три точечных усиления: Job-процессы ограничены на уровне Windows ядра; file reads привязаны к фактическому открытому handle с отказом при неизвестной идентичности; parent повторно проверяет смысл environment artifacts. RED→GREEN подтверждён для случаев неизвестного `st_dev/st_ino`, а worker и parent после временного тестового возврата к старой логике восстановлены до точных исходных SHA.
+
+Свежий набор из пяти standalone проверок: **72/72 PASS**, без failures/errors/skips и без реальных child, Go, network, SQL или native API вызовов. Эти тесты не запускали helper/Go/GCC и не подтверждают full R4. Контракт root и draft-карты совпадает (`4db394b9…081ad6`); post-repair независимое review и launch freeze ещё не выполнены, разрешение владельца на публичные 319 module paths pending.
+
+Владелец не смог пройти старое TLS-предупреждение. Доступность отдельной HTTP `HTTP_SYNTHETIC_UI_ONLY` fixture проверена; свежий run `t9-http-ui-668ab0c2cdd34cdaa3cac957c52b5d70`, port `50754`, готов до ориентировочно 12:13 МСК. [Страница входа](http://secretary-t9.localhost:50754/team/) и [страница выдачи синтетического кода](http://secretary-t9.localhost:50754/fixture) открыты во встроенном браузере. Предыдущий run штатно остановлен. Это отдельный mock Vikunja и синтетические данные, без MAX/Polza/рабочих встреч. Ручная приёмка пока не получена.
+
+## Дополнение 2026-10-09, 11:22 МСК: ручной UI handoff обновлён
+
+После сообщения владельца о невозможности пройти TLS interstitial открыт новый `HTTP_SYNTHETIC_UI_ONLY` стенд `t9-http-ui-5adc729f98034ea7aa084a84ce9f991d`, port `58637`, TTL до ориентировочно 11:52 МСК. `/fixture`, `/team/`, `/fixture/status` вернули HTTP 200, основной Secretary `/health` — 200. [Ручная fixture](http://secretary-t9.localhost:58637/fixture). Используются только синтетические участники и mock Vikunja; MAX, Polza, реальные данные, платежи и production не задействованы. Ручная приёмка владельца остаётся pending; TLS, MAX WebView и production не квалифицированы.
+
+`tests/test_team_ui_http_fixture.py`: 5 passed/0 failed, 1 существующее Starlette/httpx deprecation warning, 18,45с; `probe_team_ui_http.py status` — ready. Startup/instance-lock/backup selection: 12 passed/0 failed, 1 такое же предупреждение, 5,89с. PowerShell syntax, `doctor.ps1` offline/identity checks и `git diff --check` прошли.
+
+## Дополнение 2026-10-09, 11:02 МСК: HTTP handoff без обхода TLS и launcher log repair
+
+Владелец сообщил, что пройти Chrome TLS warning не удаётся. Trust store и сертификаты не менялись. Для ручной проверки создан `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-9e49e01375fe497aad61d24404c48b19` на `secretary-t9.localhost:50841`, TTL 30 минут. Точные ссылки: [fixture](http://secretary-t9.localhost:50841/fixture) и [Team UI](http://secretary-t9.localhost:50841/team/). На этом hostname `/fixture`, `/team/`, `/fixture/status` → HTTP 200; `127.0.0.1:50841` отвергается проверкой Host (403). Входите только синтетическим участником по коду со страницы fixture; не присылайте код в чат. Стенд использует отдельную disposable БД и mock Vikunja, это не TLS/MAX/Polza/production evidence.
+
+Основной Secretary запущен в offline-режиме на [http://127.0.0.1:8765/](http://127.0.0.1:8765/) с пустой scratch-БД: `/health` и `/` → 200, `/team/` → ожидаемый 404, Team runtime не настроен. `doctor.ps1` подтверждает process identity и отключённый outbound guard; Polza не вызывалась. Исправлено сохранение per-launch stdout/stderr в `scripts/start.ps1`; тест `tests/test_offline_launcher.py` покрывает UUID-имена логов и запись путей в state. Изменённые файлы: `scripts/start.ps1`, `tests/test_offline_launcher.py`, `docs/TEAM_TESTING_CURRENT.md`, `docs/LOCAL_PRODUCTION_PLAN.md`, `docs/TEAM_IMPLEMENTATION_STATUS.md`, `docs/superpowers/plans/2026-10-03-secretary-vikunja-max-sol-6-1.md`.
+
+Проверки: `tests/test_offline_launcher.py tests/test_instance_lock.py tests/test_local_backup_cli.py tests/test_secretary_backup.py` через `scripts/run_offline_tests.py` → **12 passed, 0 failed, 1 существующее Starlette/httpx deprecation warning, 5,51 с, exit 0**; PowerShell parser PASS; `doctor.ps1` PASS; точный HTTP fixture origin 3 маршрута PASS; `git diff --check` PASS с advisory LF/CRLF warnings. Ручная приёмка владельца ещё не выполнена. Следующий шаг: пройти короткий synthetic сценарий из `TEAM_TESTING_CURRENT.md`; после него продолжить оставшиеся R4–R6 и T13 live/manual/24h gates. Общий goal остаётся ACTIVE.
+
+## Дополнение 2026-10-08, 21:52 МСК: R4 source revalidation до ревью
+
+На текущей рабочей копии read-only перепроверен source registry новой R4 dependency-card: **310 файлов / 4 875 473 байта**, пропусков, несовпадений SHA и небезопасных путей — 0. AST parse текущих `check_dependencies.py` и `run_dependencies.py` — PASS. Чеки pure-receipts подтвердили current worker/parent/contract pins и статусы **56 worker/policy/trace/parallel + 14 parent groups PASS**. [Машиночитаемый receipt](../.runtime/team-rollout/r4-native-ro-dependencies-20261008-cd32aa5b96be478c875d439467cefbf8/pre-review-source-revalidation-20261008.json).
+
+Это только source revalidation до ревью: current independent review и launch freeze отсутствуют; actual helper, Go, network, SQL/native operations — 0; metadata preparation и full R4 не квалифицированы. Текущие действия не меняли pinned worker/parent/contract.
+
+## Дополнение 2026-10-08, 21:48 МСК: повторный HTTP handoff и focused test
+
+Владелец сообщил, что Chrome не позволяет пройти тестовое TLS-предупреждение. Без изменения trust store обновлён короткоживущий локальный handoff `HTTP_SYNTHETIC_UI_ONLY`: run `t9-http-ui-b33bc949420c4ae5a850194d5b48d8d1`, port54652, до примерно22:15 МСК. `/fixture/status`, `/fixture` и `/team/` дают HTTP200. Используются synthetic participants, disposable БД и mock Vikunja; настоящие сервисы, данные и расходы не задействованы. [Fixture](http://secretary-t9.localhost:54652/fixture), [Team UI](http://secretary-t9.localhost:54652/team/).
+
+Через штатный wrapper пройден `tests/test_team_ui_http_fixture.py`: **5 passed, 0 failed, 1 warning, 14,63 с, exit0**. Тесты проверяют допустимые loopback/Host/Origin границы, реальный test Gateway с MockTransport, Secure/HttpOnly cookie и отсутствие provider mutations. Предупреждение — устаревающий `httpx` через `starlette.testclient`.
+
+Основной Secretary отвечает на `http://127.0.0.1:8765/` (`Secretary · Встречи`, `/health=ok`) и работает с `--offline`, PID8412 и отдельной пустой scratch-БД. Team runtime в основной процесс не смонтирован (`/team/` →404); доска доступна отдельно только как synthetic fixture. Ручная приёмка владельца pending.
+
+## Дополнение 2026-10-08, 21:34 МСК: 2 066 team/API tests и новый R4 baseline
+
+Через штатный офлайн runner выполнена широкая выборка из 55 файлов: **2 066 passed, 0 failed, 0 skipped, 1 warning**, 507,12 с, exit 0. Она включает API и backend, Team runtime/routes/tasks, MAX contracts/transport, Polza budget/API, Vikunja adapter, OpenAPI и audit. [JSON-отчёт с полным списком файлов](../.runtime/team-rollout/secretary-team-api-test-20261008.json). Предупреждение — устаревающий `httpx` integration в `starlette.testclient`.
+
+Frontend verification: **289/289 tests**, TypeScript check, ESLint и isolated production build прошли. Сборка сохранена отдельно в `.runtime/team-rollout/frontend-build-20261008`; `frontend/dist` не перезаписывался. [Receipt](../.runtime/team-rollout/frontend-validation-20261008.json).
+
+Новый synthetic browser smoke подтверждает основные виды, фильтры и несколько preview→confirm→verification flows только с mock Vikunja. [Receipt](../.runtime/team-rollout/t9-http-ui-34f01000f62d4859b171f20c2ff4eda0/browser-outcome.json). Ручной owner acceptance, HTTPS/TLS, MAX WebView/телефон, реальные сервисы и 24-hour soak остаются открытыми. Временный ручной стенд `HTTP_SYNTHETIC_UI_ONLY` на `secretary-t9.localhost:58474` готов примерно до 21:44 МСК.
+
+R4 stale source registry не трактуется как дефект приложения: 32/310 хешей расходились со старой записью, отсутствующих файлов было 0. В новой версионной карточке сохранён тот же набор путей, захешировано текущее дерево (310/310 совпадений); worker/parent и контракт перепривязаны только к этому свежему registry. Pure evidence — 56 worker/policy/trace/parallel + 14 parent = 70/70, без Go/network/SQL/native. Независимое ревью и exact launch freeze ещё требуются, поэтому metadata acquisition и полный R4 не выполнялись. Старая карточка сохранена без изменений. Старый HTTP ручной стенд завершился около21:44; ссылка в актуальном checkpoint выше.
+
+
+## Дополнение 2026-10-08, 21:15 МСК: T9 browser smoke и обновлённый ручной стенд
+
+В disposable browser run `t9-http-ui-34f01000f62d4859b171f20c2ff4eda0`/53710 проверены три представления задач, фильтры «Мои/Все», большой project ID `9007199254741009`, командные preview/confirm/receipt для комментария, статуса, приоритета, предложения срока и создания задачи. Все подтверждённые команды получили `Применено и проверено`; новая задача появилась в синтетическом проекте. Assign/rename прошли preview-only; действующий срок от предложения не изменился. Script-подобное описание рендерилось как текст. [Синтетический browser receipt](../.runtime/team-rollout/t9-http-ui-34f01000f62d4859b171f20c2ff4eda0/browser-outcome.json).
+
+Smoke run остановлен cooperative stop; его disposable БД оставлена в собственном `.runtime` run-root. Для владельца создан отдельный готовый handoff `t9-http-ui-d1fb2efea80247768b96346f014227a0`, порт58474, `HTTP_SYNTHETIC_UI_ONLY`, max 30 минут, ссылки: [fixture](http://secretary-t9.localhost:58474/fixture), [Team UI](http://secretary-t9.localhost:58474/team/). Он использует собственную одноразовую БД и mock Vikunja. Коды в журнал не записываются.
+
+Итог границ: synthetic browser smoke PASS; TLS/manual owner acceptance, production Vikunja, MAX, Polza, мобильное устройство и 24-hour soak остаются открытыми. Пользователь не смог пройти прежний browser TLS interstitial; этот обход не менял доверенные сертификаты и не квалифицирует HTTPS.
+
+## Дополнение 2026-10-08 15:25 МСК: full offline pass, restore hash race, renewed UI handoff
+
+Корректный плановый запуск `.venv\Scripts\python.exe -B scripts/run_offline_tests.py tests audit/tests -q --tb=short` завершился: **5 189 passed, 0 failed, 1 предупреждение, 1 726,95 с (28:46), exit 0**. Предыдущий прямой `pytest -q` дал два ошибки импорта `scripts.team` из-за отсутствующей project `scripts/` в `sys.path`; отдельный файл `tests/test_restore_runtime_evidence.py` через wrapper прошёл **47/47**, полный suite через wrapper — зелёный.
+
+Security review воспроизвёл гонку восстановления: backup проходил начальную проверку манифеста, но файл можно было изменить до его копирования. Добавлена проверка размера и SHA-256 результата каждого скопированного media/SQLite-файла. Regression сначала упал (RED, `DID NOT RAISE`), после исправления целевой набор `.venv\Scripts\python.exe -B scripts/run_offline_tests.py tests/test_secretary_backup.py tests/test_local_backup_cli.py tests/test_restore_runtime_evidence.py -q --tb=short` прошёл **54/54**. `py_compile` и `git diff --check` — exit 0; `ruff` отсутствует в офлайн-окружении. Реальные данные и restore-drill не использовались.
+
+После невозможности пройти Chrome TLS interstitial запущен loopback-only `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-9f630b670c2c4d40a117dcc6918f5739`, port62171, max 30 минут (ориентировочно до15:45 МСК). [Fixture](http://secretary-t9.localhost:62171/fixture) выдаёт только синтетические коды, [Team UI](http://secretary-t9.localhost:62171/team/) оставлена открытой в Codex на экране входа. Последняя проверка процесса и listener была успешной в15:24 МСК. Реальные MAX/Vikunja/Polza, рабочие задачи, ключи и платежи не затрагивались. Ручная приёмка владельца остаётся pending.
+
+Ограничения: team restore reconciliation/activation gates R4–R6 не закрыты; внешний HTTPS, live MAX/Vikunja/Polza, телефон и 24-часовой soak не квалифицированы. Локальный Secretary safe mode остаётся отдельным scratch-запуском без ключа/встреч.
+
+## Дополнение 2026-10-08 13:14 МСК: синтетический UI smoke
+
+На отдельной одноразовой HTTP fixture `t9-http-ui-c21786048f084eb6994eec593c19088f`/65133 автоматизированно проверены вход по synthetic OTP, загрузка проекта, вкладки «Сегодня», «Канбан», «Матрица», фильтр «Мои/Все» и создание задачи с подтверждённой квитанцией `Применено и проверено`. После теста run остановлен через свой `probe_team_ui_http.py stop`; процесс и listener на65133 завершились. Тестовая задача находилась в отдельной временной БД и не попала в handoff run.
+
+Handoff run `t9-http-ui-3111d5427ebe4c16af81677b32bbc8e6` на61358 и его две вкладки оставлены для владельца; одноразовый код туда не вводился. При раскрытии контрола «Изменить статус» accessibility tree показал пустой пункт меню, поэтому изменение статуса не засчитано как пройденное. Попытка AIPex Browser получить loopback UI вернула403; guard не ослаблялся. Ручная проверка самого селектора, комментариев, приоритета и критичных кнопок остаётся открытой.
+
+## Checkpoint 2026-10-08 13:04 МСК: полный offline pass и новый HTTP handoff
+
+После bounded rendezvous repair полный изолированный `tests audit/tests` прогон завершился: **5 179 passed, 0 failed, 0 errors, exit0, 1 736,57 с (28:56)**; одно предупреждение Starlette/httpx. [JUnit](../.runtime/team-rollout/full-offline-20261008-1228msk.xml), [лог](../.runtime/team-rollout/full-offline-20261008-1228msk.log). В первом запуске после product-neutral repair единственный отказ пришёлся на тестовую 20-мс scheduling гонку, а не на контракт приложения. Фикстура теперь фиксирует начало первой MAX synthetic попытки каждого процесса и ожидает peer rendezvous вне SQL-транзакции; проверка реального межпроцессного overlap сохранена.
+
+Frontend повторно прошёл **289/289** processing tests, typecheck, lint и production build (1 776 модулей/10,65 с) в отдельный каталог `.runtime/qa-build-20261008`. Повторная генерация из `docs/openapi.json` и `docs/contracts/team.openapi.json` дала файлы, идентичные `frontend/src/generated/api.d.ts` и `frontend/src/generated/team-api.d.ts`.
+
+Load/fault report `.runtime/team-rollout/t13-load-6ec1ace4dadf42c2887a15dbdcf27577/metrics.json`: 10 synthetic users, 2 Python processes, 1 000 remote tasks, 5 000 scoped projections, 50 accepted commands, 42 verified apply, 5 conflicts, 2 uncertain, 1 reject; 10 forbidden attempts refused; 0 listed invariant violations. Acceptance p95 2,18 с, execution p95 0,83 с. Синхронизация 500 задач одного synthetic project заняла 34,17–34,34 с; latency needs optimization and does not qualify production SLA.
+
+Для ручного осмотра открыт `HTTP_SYNTHETIC_UI_ONLY`, run `t9-http-ui-3111d5427ebe4c16af81677b32bbc8e6`, port61358, ориентировочная остановка13:30:23 МСК: [fixture](http://secretary-t9.localhost:61358/fixture), [Team UI](http://secretary-t9.localhost:61358/team/). Четыре fixture routes → HTTP200; UI пока на экране входа по синтетическому коду. Ни коды, ни production данные/сервисы не использовались. Основной порт8765 сейчас не слушает. Владелец ещё должен пройти ручной synthetic acceptance; MAX/Vikunja/Polza live, phone, TLS, main-runtime integration и 24h soak не квалифицированы.
+
+## Checkpoint 2026-10-08 01:35 МСК: load-fixture race repair and fresh T9 handoff
+
+Свежий полный backend/audit прогон завершился **5178 passed, 1 failed**, 1837,52 с; отказал только `test_two_process_shared_authority_load_fault_invariants` на требовании наблюдаемого пересечения MAX HTTP-вызовов. Причина — 20мс искусственного окна не гарантировали scheduling двух процессов. В `tests/team_load_cloud_fixture.py` первая попытка каждого процесса теперь фиксируется до bounded rendezvous с реальным peer; ожидание происходит вне SQLite-транзакции. Тест точечно прошёл (**1 passed/60,16 с**), затем весь `tests/test_team_load.py` (**8 passed/77,12 с**). Получено 4 перекрывающиеся пары реальных дочерних процессов, 44 synthetic side effects, 42 verified applies, zero заявленных инвариантных нарушений; [metrics](../.runtime/team-rollout/t13-load-78f1816d6ae6461285064f088d813801/metrics.json). Продуктовый код не менялся; полный повторный backend/audit после repair ещё впереди.
+
+Fixture `t9-http-ui-14949d7ba144418296777ff534cfafa1` штатно остановлена после TTL. Новая `HTTP_SYNTHETIC_UI_ONLY` fixture `t9-http-ui-da9825b9fb8e4123ac755c34d06643f9`, порт49344, готова до примерно02:05:34 МСК. [Fixture](http://secretary-t9.localhost:49344/fixture) и [Team UI](http://secretary-t9.localhost:49344/team/) открыты в Chrome. Это mock Vikunja и синтетические данные; коды не считывались, MAX/Polza/живые записи и платежи не использовались. Ручная приёмка всё ещё pending.
+
+## Checkpoint 2026-10-08 01:02 МСК: T9 HTTP handoff renewed; full offline suite running
+
+Предыдущая synthetic fixture `t9-http-ui-646d3fcae28448058e141daa7942f740` штатно остановлена после проверки terminal manifest. Поднят новый изолированный `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-14949d7ba144418296777ff534cfafa1`, порт52425, TTL30 минут (до примерно01:31:58 МСК), на базе отдельной сборки `.runtime/qa-build-20261007`. `/fixture`, `/team/`, `/team/team.html` и `/fixture/status` ответили HTTP200; fixture и Team UI открыты в Chrome. Используются синтетические данные и mock Vikunja; MAX Bridge не подключён, код не вводился, ручная приёмка остаётся pending.
+
+Свежий полный backend/audit offline sweep `tests audit/tests` ещё выполняется; результат не засчитывается до завершения и чтения exit/status. В этой итерации frontend `test:processing` —289 passed/0 failed; `typecheck` и `lint` — exit0. Основной порт8765 `/` и `/health` — HTTP200, а `/team/` и `/api/team/v1/health` — HTTP404; процесс не перезапускался и принадлежит другой worktree. Это подтверждает, что Team Gateway пока не смонтирован в основном runtime.
+
+## Checkpoint 2026-10-08 00:36 МСК: T9 handoff and R4 point diagnostic
+
+После штатного истечения port56508 проверен terminal manifest/process; новая свежая `HTTP_SYNTHETIC_UI_ONLY` fixture `t9-http-ui-646d3fcae28448058e141daa7942f740` запущена от последней отдельной сборки `.runtime/qa-build-20261007`, порт53230, TTL 30 минут. Prepared copy удалил один MAX SDK script tag и сохранил три локальных assets. `/fixture` и `/team/` вернули200; страницы открыты в Chrome. MAX Bridge не подключён, одноразовый код владельцем ещё не введён; ручная приёмка pending.
+
+T12R point-file диагностический срез прошёл: 4 frozen `sha/read` режима на `dxva2api.idl` (28 062B) совпали с ожидаемым SHA; elapsed76,17мс; forbidden events/stat failures 0; Go/network/SQL/provider calls 0. Отчёт: [point-file diagnostic](../.runtime/team-rollout/r4-inputs-point-dxva2api-20261008/point-file-report.json), SHA256 `152098976b4b8cd4ca486e5a12515c3da55febdbb0c5d904d962dd64759d1428`. Причина старого 419-секундного preflight не установлена; old card remains closed, separate final acquisition review/freeze ещё впереди.
+
+## Checkpoint 2026-10-07 23:54 МСК: FULL_OFFLINE_SWEEP_AND_DATA_DIRECTORY_LEASE
+
+Добавлена защита единственного процесса на каталог данных: `create_app()` захватывает неблокирующую OS-блокировку до создания SQLite и recovery; второй экземпляр в том же процессе и отдельном subprocess получает `data_directory_in_use`. Штатный shutdown освобождает lease. Schema-only OpenAPI export работает с отдельной временной БД и явно отключает runtime lease; тесты проверяют очистку временного каталога и отказ до миграций. Изначальный полный прогон выявил три вызванных этой правкой регрессии (две очистки temp-папки export и один тест, моделирующий мёртвый процесс внутри pytest); причина устранена, embedded-тест явно использует внутренний opt-out.
+
+Итоговый полный backend/audit offline sweep: `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` → **5 179 passed, 0 failed, 1 существующий Starlette/httpx deprecation warning, 1 303,48 s, exit 0**. Целевые lock/export/recovery suites: **33 passed**. Frontend: `npm.cmd run test:processing` → **289 passed**, `npm.cmd run typecheck` и `npm.cmd run lint` → exit 0. Live Polza/MAX, рабочие записи и платежи не использовались.
+
+Дополнительная production-сборка 08.10.2026 в отдельный каталог `.runtime/qa-build-20261007` прошла: Vite преобразовал 1 776 модулей, build завершился за 9,69 s. Используемый `frontend/dist` не перезаписывался; сообщение Vite о времени в build plugins — диагностическое.
+
+Через AIPex Browser проверен вход тестовым синтетическим кодом в `HTTP_SYNTHETIC_UI_ONLY`: вход открыл Team UI, вкладки «Сегодня», «Канбан» и «Матрица» переключаются. «Новая задача» и «Обновить» отключены из-за отсутствующего MAX Bridge; отправка реальной команды не квалифицирована. Свежая fixture `http://secretary-t9.localhost:56508/fixture` и Team UI `http://secretary-t9.localhost:56508/team/` возвращают HTTP 200; TTL — примерно до 00:24 МСК 08.10.2026. Пользовательская ручная приёмка, TLS/MAX WebView и live-интеграции остаются открытыми; текущий основной порт 8765 по-прежнему не монтирует Team runtime. Общая цель остаётся активной.
+
+## Checkpoint 2026-10-07 22:30 МСК: POLZA_ASYNC_POLL_RESERVATION_REGRESSION
+
+Закрыта offline-проверка сохранения резерва после принятого Polza async POST. Через настоящий `PolzaClient` и `httpx.MockTransport` проверены GET polling ответы 401, 404 и три последовательных 429: пока квитанция не получена, локальный расход остаётся `unknown`, provider job ID сохраняется, а возобновление выполняет только GET по тому же ID без второго POST. После synthetic успешного ответа расход фиксируется один раз.
+
+Проверка: `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests/test_polza.py tests/test_price_rejection.py tests/test_stt_cap_resume.py tests/test_cloud_budget_boundary.py tests/test_monthly_budget.py tests/test_budget_dispatch_boundary.py -q --tb=short` → **172 passed, 0 failed, 1 существующий Starlette/httpx deprecation warning, 17.62 s, exit 0**. Новый параметризованный тест находится в `tests/test_price_rejection.py`. Сеть, реальные ключи и платные запросы не использовались; это не заменяет отдельную приёмку live Polza и сверку фактического счёта. Ручная приёмка владельца пока pending, но для проверки UI теперь открыт свежий loopback `HTTP_SYNTHETIC_UI_ONLY` стенд; TLS/WebView критерии остаются открытыми, актуальные ссылки — в [текущем отчёте тестирования](TEAM_TESTING_CURRENT.md).
+
 ## Checkpoint 2026-10-06 15:55 МСК: UPSTREAM_CHECK_AND_NARROW_LOGIN_VIEWPORT
 
 Официальные источники повторно сверены: релизы Vikunja всё ещё помечают v2.7.0 как Latest, а опубликованная конфигурация не документирует read-only SQLite setting; R4 остаётся заблокирован без смены источника/архитектуры. Дополнительно выполнен screenshot-only CSS viewport check synthetic Team login при 390×844, touch выключен: экран помещается по ширине. Это не проверка authenticated board/phone/MAX WebView; screenshot и подробная граница — [T9 browser report](TEAM_BROWSER_VALIDATION_2026-10-06.md). Ручная приёмка не закрыта.

@@ -125,8 +125,11 @@ def _guarded_popen(original, args, *positional, **kwargs):
                 raise PermissionError("offline guard: junction outside scratch denied")
     elif executable == "powershell.exe" and command[1:5] == ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]:
         preflight = ROOT / "scripts/team/check_prerequisites.ps1"
-        if (len(command) != 8 or Path(command[5]).resolve() != preflight
-                or command[6] != "-OutputPath" or not Path(command[7]).resolve().is_relative_to(SCRATCH)):
+        exact_preflight = len(command) >= 6 and Path(command[5]).resolve() == preflight
+        stdout_only = len(command) == 6
+        scratch_report = (len(command) == 8 and command[6] == "-OutputPath"
+                          and Path(command[7]).resolve().is_relative_to(SCRATCH))
+        if not exact_preflight or not (stdout_only or scratch_report):
             raise PermissionError("offline guard: only exact read-only preflight allowed")
     else:
         raise PermissionError("offline guard: unapproved process denied")

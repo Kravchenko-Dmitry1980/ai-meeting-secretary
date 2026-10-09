@@ -1,5 +1,37 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-09, 12:40 МСК
+
+Полный offline backend/audit набор подтверждён текущим запуском: **5 190 passed, 0 failed, 1 предупреждение Starlette/httpx, 1 926,35 с (32:06)**. Frontend — 289 passed; typecheck, lint и production build успешны. Основной offline Secretary отвечает `/health=200`; живой OpenAPI 3.1.0 содержит 52 пути, включая 50 `/api/v1/*`. Конфигурация API подтверждает `cloud_enabled=false` и `allow_unknown_price=false`. Перечисление аудиоустройств доступно: найдены классы microphone и system; фактический захват и прослушивание не запускались.
+
+В Chrome открыты [основной Secretary](http://127.0.0.1:8765/), [синтетическая fixture](http://secretary-t9.localhost:54710/fixture) и [Team UI](http://secretary-t9.localhost:54710/team/). Fixture `HTTP_SYNTHETIC_UI_ONLY` проверена на HTTP 200 и ограничена watchdog примерно до 12:55 МСК; это mock Vikunja без MAX, Polza и рабочих данных. Владелец ещё не выполнил вход и ручной сценарий Team.
+
+Следующий технический шаг исходного плана остаётся физическим коротким тестом microphone + WASAPI loopback при выключенном облаке. До него нельзя считать аудиозахват принятой аппаратной проверкой. Затем нужен один согласованный облачный benchmark на допустимом 5–10-минутном аудио с эталоном и установленным владельцем пределом, далее backup/restore drill и 30/60/180-минутные тесты. Настоящие Polza/Vikunja/MAX, TLS, телефон, 24-часовой soak и ежедневная эксплуатация пока не квалифицированы.
+
+## Progress checkpoint — 2026-10-09, 11:43 МСК
+
+В R4 draft-карте завершены локальные policy/model repairs; пять pure suites прошли **72/72**. Это не запуск реального dependency helper и не full R4. До дальнейшей подготовки остаются независимое post-repair review, новый exact launch freeze и решение владельца о точных публичных Go module paths; пока их нет, helper/Go/GCC/proxy не запускаются.
+
+Основной Secretary работает отдельно в `--offline` режиме на scratch-БД; команда Team проверяется только на короткоживущей синтетической HTTP fixture `t9-http-ui-668ab0c2cdd34cdaa3cac957c52b5d70`, port `50754`, ориентировочно до 12:13 МСК: [страница входа](http://secretary-t9.localhost:50754/team/) и [fixture](http://secretary-t9.localhost:50754/fixture). Владелец сообщил, что пройти TLS interstitial не удалось; ручная приёмка ещё ожидается. `HTTP_SYNTHETIC_UI_ONLY` не доказывает TLS, MAX, production Vikunja/Polza, телефон или 24-часовую эксплуатацию.
+
+## Ручной UI handoff — 09.10.2026, 11:22 МСК
+
+Team UI доступен через свежий временный HTTP synthetic run `t9-http-ui-5adc729f98034ea7aa084a84ce9f991d`, порт `58637`, ориентировочно до 11:52 МСК: [fixture](http://secretary-t9.localhost:58637/fixture), [Team UI](http://secretary-t9.localhost:58637/team/). Проверены оба маршрута и `/fixture/status` (HTTP 200). Это только локальные синтетические данные и mock Vikunja; HTTPS/TLS, MAX WebView и реальные сервисы не квалифицированы.
+
+Текущая HTTP-fixture validation: **5 passed**; startup/instance-lock/backup regression: **12 passed**. Ручной owner acceptance pending; тестовый HTTP сеанс не считается production или TLS приёмкой.
+
+**Актуальный запуск 09.10.2026, 11:02 МСК:** Secretary доступен на `http://127.0.0.1:8765/` в offline-режиме с отдельной пустой scratch-БД; `/health=ok`, `/=200`, `/team/=404`. Процесс сопоставлен с текущим launch state, облако отключено, старые общие журналы сохранены. Для Team UI создан временный отдельный mock-стенд: [синтетическая fixture](http://secretary-t9.localhost:50841/fixture), [Team UI](http://secretary-t9.localhost:50841/team/), TTL 30 минут от старта (примерно до11:24 МСК). TLS-предупреждение обходить не нужно: открывайте точный HTTP hostname `secretary-t9.localhost`; вариант `127.0.0.1:50841` блокируется проверкой Host. Это локальная ручная проверка интерфейса, не подключение к настоящему MAX/Vikunja/Polza или production.
+
+**UI-проверка 08.10.2026, 23:00 МСК:** обход TLS не выполнялся. Для ручной проверки открыт отдельный `HTTP_SYNTHETIC_UI_ONLY` стенд на `http://secretary-t9.localhost:65381/fixture` и `http://secretary-t9.localhost:65381/team/`; код доступа виден только на странице fixture и живёт 5 минут. На disposable данных пройдены переходы Сегодня/Канбан/Матрица, создание задачи без срока, preview → confirm → проверенная квитанция, изменение приоритета и статуса с перемещением карточки. Владелец вручную ещё не принял UI; узкий экран/touch/MAX WebView не проверены. Реальные MAX, Polza и рабочая БД не задействованы.
+
+**Повторная проверка 08.10.2026, 22:51 МСК:** frontend `npm run test:processing` → **289 passed, 0 failed**. Расширенный offline Team/API набор (все `tests/test_team_*.py` и API/contract regression tests) → **1348 passed, 0 failed, 1 существующий Starlette/httpx deprecation warning, 398,68 с**; runner запрещал внешнюю сеть, рабочие данные, ключи и аудиоустройства. В `scripts/doctor.ps1` исправлена передача Python-диагностики через PowerShell 5.1 и проверка PID типа `Int64`; stale PID теперь отличим от активного, но не связанного с записью слушателя, health-check для неподтверждённого процесса не выполняется. Сам `/health` отдельно ответил `200`, но владелец слушателя не сопоставлен с сохранённым запуском. Свежая loopback-приёмка `HTTP_SYNTHETIC_UI_ONLY`: `/fixture` и `/team/` → `200`, режим simulation и `httpx.MockTransport`; ручная приёмка владельца ожидается. Реальные Polza/MAX, TLS и рабочие данные не задействовались.
+
+**Повторная проверка 08.10.2026, 22:35 МСК:** focused suite локального launcher/instance lock/backup: `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests\test_instance_lock.py tests\test_local_backup_cli.py tests\test_offline_launcher.py tests\test_secretary_backup.py -q --tb=short` → **11 passed, 0 failed, 1 существующий Starlette/httpx deprecation warning, 5,23 с**. Проверялись только синтетические данные; реальный backup, Task Scheduler, рабочая БД и внешние провайдеры не запускались. Сейчас основной offline Secretary отвечает `200` на `/health`; `/team/` на нём `404`, потому что Team runtime не смонтирован. Отдельный `HTTP_SYNTHETIC_UI_ONLY` fixture отвечает `200`; это не TLS или production-приёмка.
+
+**Проверка 08.10.2026, 15:25 МСК:** восстановление было дополнительно закрыто от гонки после первоначальной проверки архива: перед сохранением restore теперь сверяет SHA-256 и размер каждой фактически скопированной media/SQLite file с манифестом. Regression прошла RED→GREEN; backup/CLI/runtime-evidence suite — **54 passed**. Полный `.venv\Scripts\python.exe -B scripts/run_offline_tests.py tests audit/tests -q --tb=short` — **5 189 passed, 0 failed, 1 предупреждение, 28:46, exit0**. Предыдущие 2 ошибки при прямом `pytest` были из-за отсутствия `scripts/` в import path; штатный runner прошёл полный набор. Синтетические тестовые данные, реальная БД и Polza не использовались.
+
+**Проверка 07.10.2026, 22:30 МСК:** прежний пункт ниже описывал непроверенный риск, что ошибка GET polling после принятого async POST может освободить резерв и привести к повторному платному POST. Теперь сценарий закрыт offline-регрессией через `PolzaClient` + `httpx.MockTransport` для GET 401/404/429: reservation остаётся `unknown`, принятый provider job ID сохраняется, а resume использует только GET по тому же ID; подтверждённая synthetic-квитанция переводит расход в `confirmed`. Команда и результат: `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests/test_polza.py tests/test_price_rejection.py tests/test_stt_cap_resume.py tests/test_cloud_budget_boundary.py tests/test_monthly_budget.py tests/test_budget_dispatch_boundary.py -q --tb=short` → **172 passed, 0 failed, 1 существующий deprecation warning**. Реальные Polza, ключи и платный запрос не использовались; live-проверка остаётся отдельным шагом с бюджетом владельца.
+
 Дата: 2026-10-02. Назначение согласовано: один пользователь, текущий Windows-компьютер, локальные аудио/SQLite и облачная обработка через Polza. Этот документ — план будущих действий; приведённые ниже команды при его подготовке не выполнялись.
 
 ## 1. Что уже получилось
@@ -68,9 +100,9 @@ Loopback записывает поток выбранного render endpoint Wi
 
 ### Сначала проверить резерв расходов без сети
 
-Статическое чтение `worker.py:173–196` и `polza.py:142–173` выявило риск: после принятого async POST и сохранения provider job ID ошибка GET polling с кодом 401/404/429 может попасть в ветку `rejected` и освободить ещё не подтверждённый резерв. Ошибка получения статуса не доказывает отсутствие оплаты принятого задания. Во время подготовки этого плана сценарий не воспроизводился, код не исправлялся.
+Первоначальное чтение `worker.py:173–196` и `polza.py:142–173` описывало риск, что после принятого async POST ошибка GET polling с кодом 401/404/429 может освободить резерв. Offline-регрессия теперь проходит через `PolzaClient` и `httpx.MockTransport`: для всех трёх статусов расход остаётся `unknown`, provider job ID сохраняется, возобновление делает только GET по существующему ID, второго POST нет; квитанция переводит расход в `confirmed`. Реализация уже удовлетворяет этому сценарию, поэтому исправлять production-код не потребовалось.
 
-До платной приёмки добавить тест `accepted POST + ID → GET 401/404/429`, подтвердить поведение и устранить проблему. Приёмка: расход остаётся reserved/unknown до квитанции или доказанного отклонения исходного задания; продолжение использует существующий ID и только GET; второй POST не появляется; бюджет не освобождается для следующего задания по одной ошибке polling. Синхронный маршрут проверить отдельно. До закрытия проверки async-модели не допускать к эксплуатации.
+Проверено командой `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests/test_polza.py tests/test_price_rejection.py tests/test_stt_cap_resume.py tests/test_cloud_budget_boundary.py tests/test_monthly_budget.py tests/test_budget_dispatch_boundary.py -q --tb=short`: **172 passed / 0 failed / 1 существующий warning**. До live Polza-приёмки остаётся сверить фактический протокол и счёт провайдера в одном ограниченном запуске с бюджетом владельца. Синтетическая регрессия не доказывает cloud качество, реальные тарифы или отсутствие внешних provider-side ограничений.
 
 ### Входы, которые предоставляет владелец
 
@@ -111,12 +143,12 @@ Runner сам временно разрешает cloud в рамках запу
 
 ## 6. Этап 4 — необходимые доработки перед ежедневной работой
 
-Это будущие задачи реализации, **не уже существующие команды/функции**.
+Статус на 08.10.2026: резерв расходов после принятого async-задания и безопасный offline-запуск реализованы отдельно; для резервирования данных ниже добавлены CLI и локальный restore. Это не означает допуска к ежедневной эксплуатации: disk/cache, операторская сверка неопределённых расходов, реальный backup/restore и аппаратная/облачная приёмка ещё открыты.
 
 | Приоритет / задача | Что сделать | Приёмка |
 |---|---|---|
 | P0 — резерв после принятого async задания | Проверить и исправить обнаруженный чтением кода сценарий accepted POST → failed GET; различать отказ исходного запроса и невозможность узнать его статус | GET 401/404/429 не освобождает резерв принятого задания; resume не повторяет POST; расход подтверждается квитанцией или остаётся unknown |
-| P0 — восстановление данных | Добавить backup/restore с manifest версии, контрольными суммами, SQLite + audio + transcripts + capture manifests; согласованный cold snapshot. Инструмент восстановления проверяет пути и работает с гарантированным запретом cloud. Сначала восстановить в изолированную копию | Проверка целостности БД и ссылок на файлы, совпадение ID/версий/hash, воспроизведение и экспорт; 0 обращений к Polza. После восстановления обычный рабочий каталог не изменён |
+| P0 — восстановление данных — реализовано, синтетически проверено | `scripts/local_backup.py` делает cold snapshot SQLite через Backup API и копирует остальные файлы data directory; manifest фиксирует состав и SHA-256. Restore возможен только в новую изолированную папку, проверяет ссылки и копии по хешам, переносит пути и выключает cloud/unknown-price | 7 synthetic backup/CLI tests входят в focused набор 54 PASS; включая backup→verify→restore, целостность SQLite, аудио/voice assets, неизвестную квитанцию, relocation, запрет cloud, tamper, copy-time hash race, active lock и внешние ссылки. Реальные данные не использовались; ручное проигрывание/экспорт и owner restore-drill остаются неподтверждёнными |
 | P0 — место на диске и кэш | Проверять свободное место до импорта/записи и во время записи; оценивать native PCM, derivatives, временные файлы и playback snapshots. Ввести ограничение/очистку старых playback versions с защитой активных readers; отдельно контролировать рост originals по выбранному сроку хранения | Длинный тест с плеером не создаёт неограниченный кэш; достижение порога даёт понятную остановку/предупреждение и сохраняет последнюю пригодную часть. Disk-full моделируется в тестовой среде, не заполнением системного диска |
 | P0 — неопределённые расходы | Добавить операторский просмотр provider request/job ID, статуса и receipts; подтверждённую сверку unknown/uncertain с журналом основания. Не сбрасывать usage напрямую в БД и не разрешать повтор только по нажатию «Продолжить» | Известный async ID продолжает polling без нового POST. Неизвестный sync исход остаётся заблокированным до доказательной сверки; расход учтён один раз, исходная история сохранена |
 | P0 — безопасный запуск/восстановление | Блокировка единственного server instance на один data directory до migrations/recovery; maintenance/offline режим, который сильнее сохранённого cloud flag; защита секретов при diagnostics/tests | Второй процесс, включая запуск на другом порту и напрямую, отклоняется до изменения jobs/recovery первого; restored DB с прежним cloud=true не отправляет запросы в safe mode. Тесты не читают рабочий `.env`, а отчёты/сборка не содержат значение ключа |
@@ -128,16 +160,47 @@ Runner сам временно разрешает cloud в рамках запу
 
 Минимум для первого ограниченного пилота: закрытые P0. Резервное копирование допустимо вручную, если восстановление реально проверено; это не заменяет исправление учёта расходов, блокировку второго экземпляра и контроль диска. Для ежедневной эксплуатации закрыть P0 и P1. Упаковка в installer сама по себе не закрывает эти проверки.
 
+**Проверка 07.10.2026:** P0-подзадача единственного экземпляра реализована. `create_app()` получает OS-backed lease на каталог данных до создания SQLite/recovery; повторный запуск того же процесса и отдельного процесса отклоняется, освобождение при штатном завершении проверено. Изолированный schema-only exporter явно использует внутренний opt-out и не занимает рабочий каталог. Доказательства: `tests/test_instance_lock.py`, `tests/test_openapi_export.py`, полный offline backend/audit прогон ниже в журнале реализации. Это закрывает только защиту от второго экземпляра, не весь допуск к ежедневной эксплуатации.
+
+**Проверка 08.10.2026, 14:10 МСК:** безопасный offline-запуск дополнен и проверен: `scripts/start.ps1 -Offline` запускает основной локальный UI с `outbound_enabled=False`, хранит режим запуска в state-файле, отказывается усыновлять процесс с другим outbound-режимом, запрещает сочетание с Team runtime. При сохранённом в SQLite `cloud_enabled=true` процесс показывает облако выключенным; попытка включить его через API получает `409 runtime_outbound_disabled`. Регрессия RED→GREEN и live-проверка на отдельной пустой scratch-БД прошли; в live scratch нет встреч, `key_configured=false`, `/health=ok`. Доказательства: `tests/test_backend.py::test_offline_launch_cannot_reenable_saved_cloud_config`, `tests/test_offline_launcher.py`, affected suite 133 PASS и текущий UI на `http://127.0.0.1:8765/`. Не закрыты backup/restore, disk/cache controls, учёт уже неопределённых расходов и остальные требования P0/P1.
+
+**Проверка 08.10.2026, 14:27 МСК:** локальный cold backup/verify/restore добавлен в `backend/secretary/infrastructure/local_backup.py`, CLI — `scripts/local_backup.py`. Тестовая цепочка прошла 6/6 на синтетической SQLite и синтетических файлах. Restore создаёт только новую дочернюю папку вне исходного data directory/архива, переносит абсолютные media/chunk/capture пути, проверяет SQLite integrity/foreign keys и SHA-256, устанавливает `cloud_enabled=false`, `allow_unknown_price=false`, `local_cost_limits_enabled=true`; ни Polza, ни рабочая база не использовались. Настоящий backup, ручное открытие восстановленной встречи, проигрывание/экспорт и проверка целевого зашифрованного носителя не выполнялись.
+
 ### Резервирование и восстановление: обязательные детали
 
 - Бэкап после встречи и перед обновлением; закрыть запись и дождаться завершения cloud stage, затем штатно остановить Secretary. Если запрос был прерван, отдельно сохранить и сверить его provider ID/неопределённый расход.
-- Копировать весь согласованный `data/`, включая существующие WAL/SHM, не выбрасывая их вручную. Секрет хранить отдельно в защищённом владельцем месте; обычный release archive его не содержит.
-- Для живой SQLite использовать предусмотренный Backup API, но согласованность аудио/manifest всё равно требует отдельного протокола. SQLite отдельно описывает роль WAL и snapshot backup: [SQLite Backup API](https://www.sqlite.org/backup.html), [SQLite WAL](https://www.sqlite.org/wal.html).
+- Перед запуском остановить Secretary штатной командой `scripts/stop.ps1`; команда backup также откажет, если ОС-lock занят. Не завершать процесс принудительно. CLI сам создаёт согласованные снимки `secretary.sqlite3` и `billing.sqlite3` через SQLite Backup API, затем копирует аудио, transcripts, capture manifests, voice assets и прочие обычные файлы data directory. WAL/SHM не копируются как отдельные файлы: их зафиксированные SQLite-данные попадают в snapshot. [SQLite Backup API](https://www.sqlite.org/backup.html), [SQLite WAL](https://www.sqlite.org/wal.html).
+- `.env` и API-ключ не входят в backup. SQLite billing ledger входит: неизвестные и подтверждённые операции сохраняются. Backup может содержать встречи, транскрипты и зашифрованные voice profiles, поэтому место назначения выбирает владелец; использовать второй зашифрованный том (например BitLocker), а не единственную папку на исходном диске.
 - Единственная копия на том же диске не защищает от отказа диска. Выбрать второй накопитель/защищённое хранилище и проверить свободное место/доступ; место назначения определяет владелец.
 - Предлагаемый срок копий: 7 последних ежедневных + 4 недельных; подстроить под объём встреч. Очистка старых копий только после проверки нового backup и выбранной политики.
 - Операционный ориентир: потеря не более последнего интервала между backup; отдельная копия после критической встречи. Предлагаемое время восстановления — до 30 min, затем подтвердить фактическим restore drill.
-- `chunks.path`, `media_path` и capture manifests содержат пути. Запуск копии базы из другой папки без проверки может продолжить ссылаться на рабочие файлы. Restore drill обязан проверить, что все используемые пути находятся внутри изолированной восстановленной копии; перспективно хранить относительные пути либо делать контролируемую миграцию.
+- `chunks.path`, `media_path` и capture manifests содержат абсолютные пути. Restore переносит их и проверяет, что используемые assets находятся внутри восстановленного каталога; создание поверх существующей папки или внутри исходного data directory запрещено. Команды проверены на синтетических данных; до еженедельной эксплуатации владелец отдельно выбирает data directory и зашифрованное место для реальной копии.
 - Откат старого кода поверх уже мигрировавшей БД не считать безопасным по умолчанию. Восстанавливать проверенную пару code + data; новые данные после checkpoint предварительно сохранять отдельно.
+
+### Команды Windows
+
+Запускать из корня проекта только после завершения встречи и `scripts/stop.ps1`. `--data-dir` должен совпадать с текущим значением `SECRETARY_DATA_DIR`; если оно не задано, используется `D:\AI\Projects\Active\Secretary\data`. Backup destination должен быть новым каталогом, а его родитель — уже существовать.
+
+```powershell
+Set-Location -LiteralPath 'D:\AI\Projects\Active\Secretary'
+& '.\scripts\stop.ps1'
+$Python = '.\.venv\Scripts\python.exe'
+$DataDir = 'D:\AI\Projects\Active\Secretary\data'
+$BackupDir = 'E:\SecretaryBackups\backup-2026-10-08'
+& $Python '.\scripts\local_backup.py' backup --data-dir $DataDir --destination $BackupDir
+& $Python '.\scripts\local_backup.py' verify --backup-dir $BackupDir
+```
+
+Сначала создать отдельный каталог восстановления вне исходных данных и архива. Restore ничего не удаляет и не заменяет; при ошибке оставляет помеченную `restore.partial.json` папку для диагностики.
+
+```powershell
+$RestoreRoot = 'D:\SecretaryRestore'
+New-Item -ItemType Directory -Force -Path $RestoreRoot | Out-Null
+$RestoreDir = Join-Path $RestoreRoot 'restore-2026-10-08'
+& $Python '.\scripts\local_backup.py' restore --backup-dir $BackupDir --restore-root $RestoreRoot --destination $RestoreDir
+```
+
+CLI печатает только статус, идентификатор backup/restore, число БД/файлов и общий объём; пути и содержимое встреч не выводит. Код не делает сетевых запросов. Пока реальный owner restore drill не проведён, не переносить восстановленный каталог в рабочее расположение и не считать восстановление принятым.
 
 ## 7. Этап 5 — нагрузка и отказы
 
