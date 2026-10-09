@@ -5446,6 +5446,28 @@
               }
             ],
             "title": "Frontend Version"
+          },
+          "build_check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Check"
+          },
+          "lockfiles_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockfiles Verified"
           }
         },
         "additionalProperties": false,

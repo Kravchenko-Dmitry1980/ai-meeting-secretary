@@ -89,6 +89,10 @@ if (Test-Path -LiteralPath $StatePath) {
                         if ($Component.backend_version -or $Component.frontend_version) {
                             $Detail = "; backend=$($Component.backend_version); frontend=$($Component.frontend_version)"
                         }
+                        if ($null -ne $Component.lockfiles_verified) {
+                            $Detail += "; lockfiles_verified=$($Component.lockfiles_verified)"
+                        }
+                        if ($Component.build_check) { $Detail += "; build_check=$($Component.build_check)" }
                         if ($Component.code) { $Detail += "; code=$($Component.code)" }
                     }
                     Write-Output "$($Check.Label): $($Component.state)$Detail"

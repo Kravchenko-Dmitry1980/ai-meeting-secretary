@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,9 @@ STALE_JOB_GRACE_SECONDS = 300
 _JOB_STATES = {"queued", "running", "waiting_config", "paused_budget", "uncertain",
                "failed", "cancelled", "succeeded"}
 _RELEASE_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,63}\Z")
+_RELEASE_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_RELEASE_LOCKFILES = ("uv.lock", "frontend/package-lock.json")
+_MAX_RELEASE_LOCKFILE_BYTES = 16 * 1024 * 1024
 
 
 def _database_status(path: Path) -> dict:
@@ -103,10 +107,36 @@ def _job_status(db, now: datetime, stale_after_seconds: int) -> dict:
             "stale_after_seconds": stale_after_seconds}
 
 
-def _release_parity_status(frontend_dist: Path, backend_version: str) -> dict:
+def _release_lockfile_hash(project_root: Path, relative_path: str) -> tuple[str, str | None]:
+    try:
+        root = Path(project_root).resolve(strict=True)
+        candidate = Path(project_root) / relative_path
+        if candidate.is_symlink():
+            return "unavailable", None
+        resolved = candidate.resolve(strict=True)
+        if (not resolved.is_relative_to(root) or not resolved.is_file()
+                or resolved.stat().st_size > _MAX_RELEASE_LOCKFILE_BYTES):
+            return "unavailable", None
+        digest = hashlib.sha256()
+        total = 0
+        with resolved.open("rb") as stream:
+            while chunk := stream.read(64 * 1024):
+                total += len(chunk)
+                if total > _MAX_RELEASE_LOCKFILE_BYTES:
+                    return "unavailable", None
+                digest.update(chunk)
+        return "healthy", digest.hexdigest()
+    except FileNotFoundError:
+        return "missing", None
+    except (OSError, RuntimeError, ValueError):
+        return "unavailable", None
+
+
+def _release_parity_status(project_root: Path, backend_version: str) -> dict:
     if not isinstance(backend_version, str) or not _RELEASE_VERSION.fullmatch(backend_version):
         return {"state": "unavailable", "code": "backend_version_invalid"}
-    manifest_path = Path(frontend_dist) / "secretary-release.json"
+    project_root = Path(project_root)
+    manifest_path = project_root / "frontend" / "dist" / "secretary-release.json"
     if not manifest_path.is_file():
         return {"state": "not_configured", "code": "release_manifest_missing",
                 "backend_version": backend_version}
@@ -115,12 +145,19 @@ def _release_parity_status(frontend_dist: Path, backend_version: str) -> dict:
             raise ValueError
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if (not isinstance(manifest, dict)
-                or set(manifest) != {"schema_version", "backend_version", "frontend_version"}
-                or type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1
+                or set(manifest) != {"schema_version", "backend_version", "frontend_version",
+                                     "build_check", "lockfiles"}
+                or type(manifest["schema_version"]) is not int or manifest["schema_version"] != 2
                 or not isinstance(manifest["backend_version"], str)
                 or not isinstance(manifest["frontend_version"], str)
                 or not _RELEASE_VERSION.fullmatch(manifest["backend_version"])
-                or not _RELEASE_VERSION.fullmatch(manifest["frontend_version"])):
+                or not _RELEASE_VERSION.fullmatch(manifest["frontend_version"])
+                or manifest["build_check"] != "vite-production"
+                or not isinstance(manifest["lockfiles"], dict)
+                or set(manifest["lockfiles"]) != set(_RELEASE_LOCKFILES)
+                or any(not isinstance(manifest["lockfiles"][name], str)
+                       or not _RELEASE_SHA256.fullmatch(manifest["lockfiles"][name])
+                       for name in _RELEASE_LOCKFILES)):
             raise ValueError
     except (OSError, UnicodeError, ValueError):
         return {"state": "unavailable", "code": "release_manifest_invalid",
@@ -128,7 +165,20 @@ def _release_parity_status(frontend_dist: Path, backend_version: str) -> dict:
 
     versions = {"backend_version": backend_version,
                 "manifest_backend_version": manifest["backend_version"],
-                "frontend_version": manifest["frontend_version"]}
+                "frontend_version": manifest["frontend_version"],
+                "build_check": manifest["build_check"]}
+    for relative_path in _RELEASE_LOCKFILES:
+        lock_state, actual_hash = _release_lockfile_hash(project_root, relative_path)
+        if lock_state == "missing":
+            return {"state": "not_configured", "code": "release_lockfile_missing",
+                    "lockfiles_verified": False, **versions}
+        if lock_state != "healthy":
+            return {"state": "unavailable", "code": "release_lockfile_unavailable",
+                    "lockfiles_verified": False, **versions}
+        if actual_hash != manifest["lockfiles"][relative_path]:
+            return {"state": "mismatch", "code": "release_lockfile_mismatch",
+                    "lockfiles_verified": False, **versions}
+    versions["lockfiles_verified"] = True
     if manifest["backend_version"] != backend_version or manifest["frontend_version"] != backend_version:
         return {"state": "mismatch", "code": "release_version_mismatch", **versions}
     return {"state": "healthy", **versions}
@@ -166,7 +216,7 @@ def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
         ffprobe = "missing"
     frontend_dist = Path(settings.project_dir) / "frontend" / "dist"
     frontend = "available" if (frontend_dist / "index.html").is_file() else "missing"
-    release_parity = _release_parity_status(frontend_dist, backend_version)
+    release_parity = _release_parity_status(Path(settings.project_dir), backend_version)
 
     if not outbound_enabled or not settings.cloud_enabled:
         cloud_state = "disabled"
@@ -218,11 +268,11 @@ def build_readiness_report(settings, db, *, worker_task, run_worker: bool,
         blockers.append("frontend_build_missing")
     release_state = release_parity["state"]
     if release_state == "not_configured":
-        blockers.append("release_manifest_missing")
+        blockers.append(release_parity.get("code", "release_manifest_missing"))
     elif release_state == "unavailable":
-        blockers.append("release_manifest_invalid")
+        blockers.append(release_parity.get("code", "release_manifest_invalid"))
     elif release_state == "mismatch":
-        blockers.append("release_version_mismatch")
+        blockers.append(release_parity.get("code", "release_version_mismatch"))
     if processing_state != "healthy":
         blockers.append("processing_worker_degraded")
     if publication_state == "degraded":

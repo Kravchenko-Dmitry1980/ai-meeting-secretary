@@ -253,6 +253,8 @@ class LocalReadinessComponent(BaseModel):
     backend_version: str | None = None
     manifest_backend_version: str | None = None
     frontend_version: str | None = None
+    build_check: str | None = None
+    lockfiles_verified: bool | None = None
 
 
 class LocalReadinessJobs(BaseModel):

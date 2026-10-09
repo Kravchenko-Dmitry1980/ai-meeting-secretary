@@ -1,5 +1,21 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-10, 01:50 МСК
+
+Release manifest schema v2 завершена и прошла focused проверки. Guarded полный backend/audit набор: **5 229 passed, 0 failed**, одно известное предупреждение Starlette/httpx, 1 706,84 с. Frontend: **293 теста** и release-manifest integration прошли, typecheck/lint/build в scratch — PASS. Новая сборка не копировалась в `frontend/dist` и рабочий процесс не перезапускался.
+
+В свежем `HTTP_SYNTHETIC_UI_ONLY` browser smoke успешно пройдены вход по новому синтетическому коду, Today/Kanban/Matrix, выбор проекта, refresh, отмена preview и подтверждённое создание синтетической задачи с проверенной квитанцией. Предыдущая ошибка входа не подтверждает дефект cookie: новый код прошёл; HTTPS предупреждение не обходилось. [Team UI для ручного просмотра](http://secretary-t9.localhost:54567/team/) временно доступен примерно до 02:13 МСК на disposable mock-данных.
+
+Ограничения выпуска остаются: live app ещё не содержит `release_parity`; `/ready=local_ok` не означает production qualification; рабочие данные лежат на незашифрованном D:, защищённая резервная копия и rollback drill не подготовлены. Не менять live runtime и рабочую БД до закрытия этих инфраструктурных gates.
+
+## Progress checkpoint — 2026-10-10, 01:27 МСК
+
+Release manifest повышен до schema v2: production-артефакт включает версии приложения, маркер production-режима и хеши Python/npm lock-файлов; `/ready` сверяет их и блокирует локальный readiness при несовпадении, отсутствии или недоступности входов. Release-manifest test, 100 focused readiness/API/backend/OpenAPI/isolation tests, 293 frontend tests, typecheck, lint, scratch Vite production build, lockfile checks и синтаксические проверки прошли. Полный guarded backend/audit набор ещё выполняется; результат будет дописан после его завершения.
+
+Текущий `127.0.0.1:8765` отвечает `/health=ok` и `/ready=local_ok`, но `production_qualified=false`; запущенный процесс старый и не сообщает `release_parity`. Его не перезапускал и рабочий `frontend/dist` не заменял. Рабочий каталог остаётся на незашифрованном D:, защищённая копия и проверенный rollback не подготовлены.
+
+Ручную Team-приёмку пока не пройти: HTTPS interstitial не принят, обхода не было; тестовый HTTP fallback после synthetic code показал `team_authentication_required`, доска не открылась. Не менять `Secure` cookie ради HTTP; нужен доверенный локальный HTTPS-сеанс. Никаких MAX/Polza вызовов, платных запросов или обращений к рабочим встречам во время QA не выполнялось.
+
 ## Progress checkpoint — 2026-10-10, 01:06 МСК
 
 Выполнена P1-сверка версий release artifact: Vite генерирует `secretary-release.json` из backend `pyproject.toml` и frontend `package.json`; `/ready` сравнивает обе версии с версией FastAPI и сообщает `healthy`, `mismatch`, `not_configured` или `unavailable`. Недостающий/невалидный/несовпадающий manifest становится конкретным readiness blocker; `doctor.ps1` показывает версии и код причины, без путей и секретов. `scripts/check_lifecycle.py` теперь требует parity при тестовом запуске/перезапуске.

@@ -73,3 +73,46 @@ def test_lifecycle_stop_marker_is_scoped_to_its_run_id(tmp_path):
 
     assert marker_path(root, RUN_ID) == expected
     assert marker_path(root, other_run) != expected
+
+
+class ReadyResponse:
+    status_code = 200
+
+    def __init__(self, report):
+        self.report = report
+
+    def json(self):
+        return self.report
+
+
+class ReadyClient:
+    def __init__(self, report):
+        self.report = report
+
+    def get(self, path):
+        assert path == "/ready"
+        return ReadyResponse(self.report)
+
+
+def test_lifecycle_readiness_requires_production_build_and_verified_lockfiles():
+    check = load_check()
+    components = {
+        "database": {"state": "healthy"},
+        "storage": {"state": "healthy"},
+        "processing_worker": {"state": "healthy"},
+        "frontend_build": {"state": "available"},
+        "release_parity": {
+            "state": "healthy", "build_check": "vite-production", "lockfiles_verified": True,
+        },
+        "cloud": {"state": "disabled"},
+        "device_capture": {"state": "not_qualified"},
+        "backup": {"state": "not_checked"},
+    }
+    report = {
+        "status": "local_ok", "production_qualified": False,
+        "components": components, "jobs": {"state": "healthy"},
+    }
+
+    assert check._local_readiness_is_safe(ReadyClient(report)) is True
+    components["release_parity"]["lockfiles_verified"] = False
+    assert check._local_readiness_is_safe(ReadyClient(report)) is False

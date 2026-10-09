@@ -1,5 +1,19 @@
 # Проверки Secretary V1
 
+## Результат продолженного QA — 2026-10-10, 01:50 МСК
+
+- Guarded полный набор `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершился с exit 0: **5 229 passed, 0 failed**, одно известное предупреждение Starlette о связке `httpx`/`starlette.testclient`, 1 706,84 с (28:26). Runner запрещает сеть и доступ к рабочим данным/устройствам, удаляет Polza/MAX credentials из окружения тестов.
+- Для release manifest schema v2: readiness/API/backend/OpenAPI/isolation — **101 passed**; frontend processing — **293 passed**; release-manifest integration — **1 passed**; typecheck, lint, scratch production build, lockfile/syntax checks — PASS. Production build создавался только в `.runtime`, `frontend/dist` не заменялся.
+- Свежий HTTP synthetic browser smoke: вход по свежему одноразовому коду, Today/Kanban/Matrix, выбор проекта, refresh, cancel preview без записи, затем подтверждённое создание синтетической задачи с квитанцией «Применено и проверено». Проверка проводилась только на loopback fixture с disposable БД/mock Vikunja.
+- Основной процесс Secretary не перезапускался и не обновлялся: `/health=ok`, `/ready=local_ok`, `production_qualified=false`; live-процесс всё ещё не сообщает `release_parity`. Данные и `frontend/dist` не заменялись. TLS/HTTPS, MAX, реальная Vikunja/Polza, телефон и production readiness остаются отдельными незакрытыми проверками.
+
+## Продолжение QA — 2026-10-10, 01:27 МСК
+
+- Release readiness усилена до manifest schema v2: собранный frontend фиксирует версии backend/frontend, маркер production-сборки Vite и SHA-256 `uv.lock`/`frontend/package-lock.json`; `/ready` сверяет lock-файлы с manifest, а `doctor.ps1` показывает безопасный статус проверки. Lifecycle predicate требует production-маркер и совпадение lock-файлов. Отдельные hash-проверки не являются подписью сборки и сами по себе не доказывают, что установленное окружение создано из этих lock-файлов.
+- RED→GREEN и focused evidence: readiness/API/backend/OpenAPI/isolation — **100 passed**; `npm run test:processing` — **293 passed**; release manifest integration — **1 passed**; typecheck, lint, scratch production build, Python/PowerShell parsing, `uv lock --check --offline`, `npm ci --dry-run --ignore-scripts --offline` — PASS. Guarded полный backend/audit набор сейчас выполняется; итог добавить после завершения.
+- Основной live process не перезапускался: `/health=ok`, `/ready=local_ok`, `production_qualified=false`, процесс ещё не сообщает `release_parity`; live OpenAPI — 3.1.0, 56 маршрутов. Новая сборка проверялась в scratch-папке, `frontend/dist` и рабочие данные не заменялись.
+- HTTPS предупреждение для Team fixture владелец пройти не смог; обход не выполнялся. На временном HTTP fixture тестовый код дал UI `team_authentication_required`; доска и task-команды не открывались. Gateway сохраняет `Secure; HttpOnly; SameSite=Lax`; manual UI acceptance требует доверенного TLS и остаётся блокером. Polza, MAX, реальные записи и платные запросы не использовались.
+
 ## Дополнение 2026-10-09, 16:29 МСК
 
 - Защита от disk-full добавлена для audio capture, multipart uploads, enrollment и playback-cache: fail-closed preflight, повторные проверки длительных операций, аккуратное завершение capture, удаление partial upload и LRU-кэш до 2 ГиБ с reader leases.

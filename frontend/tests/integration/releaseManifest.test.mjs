@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -39,10 +40,17 @@ test('production Vite build emits matching Secretary and frontend release versio
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     const frontend = JSON.parse(readFileSync(path.join(frontendRoot, 'package.json'), 'utf8'));
     const backend = tomlVersion(readFileSync(path.join(projectRoot, 'pyproject.toml'), 'utf8'), 'project');
+    const lockfiles = {
+      'uv.lock': createHash('sha256').update(readFileSync(path.join(projectRoot, 'uv.lock'))).digest('hex'),
+      'frontend/package-lock.json': createHash('sha256')
+        .update(readFileSync(path.join(frontendRoot, 'package-lock.json'))).digest('hex'),
+    };
     assert.deepEqual(manifest, {
-      schema_version: 1,
+      schema_version: 2,
       backend_version: backend,
       frontend_version: frontend.version,
+      build_check: 'vite-production',
+      lockfiles,
     });
   } finally {
     rmSync(scratch, { recursive: true, force: true });

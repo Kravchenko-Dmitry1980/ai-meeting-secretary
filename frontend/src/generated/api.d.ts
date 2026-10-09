@@ -1657,6 +1657,10 @@ export interface components {
             manifest_backend_version?: string | null;
             /** Frontend Version */
             frontend_version?: string | null;
+            /** Build Check */
+            build_check?: string | null;
+            /** Lockfiles Verified */
+            lockfiles_verified?: boolean | null;
         };
         /** LocalReadinessJobs */
         LocalReadinessJobs: {
