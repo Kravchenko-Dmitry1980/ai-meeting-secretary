@@ -423,9 +423,15 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def monthly_budget_snapshot():
         return cloud_budget.snapshot().public()
 
-    @app.post("/api/v1/cloud-budget/refresh")
+    def require_outbound_cloud_access():
+        if not outbound_enabled:
+            raise HTTPException(status_code=409, detail="runtime_outbound_disabled")
+
+    @app.post("/api/v1/cloud-budget/refresh", responses={
+        409: {"description": "Облачные запросы выключены в offline-режиме"}})
     async def refresh_monthly_budget():
         # An explicit owner action also authorizes switching the active key identity.
+        require_outbound_cloud_access()
         usage = await cloud_budget.account_reader.read_key_usage()
         cloud_budget.refresh_account(usage)
         return cloud_budget.snapshot().public()
@@ -438,12 +444,14 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def budget_scope_snapshot(scope_id: UUID):
         return cloud_budget.scope_snapshot(str(scope_id))
 
-    @app.post("/api/v1/cloud-budget/operations/{operation_id}/reconcile")
+    @app.post("/api/v1/cloud-budget/operations/{operation_id}/reconcile", responses={
+        409: {"description": "Облачные запросы выключены или квитанцию нельзя безопасно применить"}})
     async def reconcile_cloud_operation(operation_id: UUID):
         reservation = cloud_budget.reservation(str(operation_id))
         if reservation.status in {"confirmed", "released"}:
             return {"operation_id": str(operation_id), "status": reservation.status,
                     "budget": cloud_budget.snapshot().public()}
+        require_outbound_cloud_access()
         history = app.state.cloud_budget_history
         if history.key_tag != reservation.key_tag:
             raise BudgetError("monthly_budget_key_changed")

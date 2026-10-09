@@ -2797,6 +2797,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Облачные запросы выключены в offline-режиме */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     create_budget_scope_api_v1_cloud_budget_scopes_post: {
@@ -2882,6 +2889,13 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Облачные запросы выключены или квитанцию нельзя безопасно применить */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

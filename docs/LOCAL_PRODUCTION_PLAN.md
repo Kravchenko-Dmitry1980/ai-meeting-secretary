@@ -1,5 +1,17 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-09, 22:08 МСК
+
+Повторная проверка API обнаружила обход offline-режима: `POST /api/v1/cloud-budget/refresh` вызывал чтение usage Polza, а `POST /api/v1/cloud-budget/operations/{id}/reconcile` — чтение квитанции, не проверяя `outbound_enabled`. Добавлена общая проверка перед внешним обращением; offline-запуск отвечает `409 runtime_outbound_disabled`, а уже завершённые локальные операции по-прежнему читаются без сети. Ответы `409` отражены в OpenAPI и сгенерированных TypeScript-типах.
+
+Регрессии для обоих маршрутов прошли RED→GREEN: до исправления обе получали `200`, после — `409` без вызова provider-адаптера; неопределённый резерв остаётся `uncertain`. Проверки: API/OpenAPI набор — **8 passed**; полный `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` — **5 209 passed, 0 failed, 1 Starlette/httpx deprecation warning, 22:57, exit 0**. UI-проверки: `npm run test:processing` — **289 passed**; `typecheck`, `lint`, `build` — exit 0. `git diff --check` прошёл. Полный лог: `.runtime/offline-final-20261009-214449.log`.
+
+Исправленное приложение запущено на `http://127.0.0.1:8765/` в `--offline` на отдельной пустой scratch-БД `.runtime/manual-acceptance-offline-c25b92b3f0334bc394b50d58e2825970`; doctor подтвердил identity процесса, `Outbound guard: disabled`, `/health=ok`. Живые `/openapi.json` и `/api/v1/config` подтверждают оба ответа `409` и `cloud_enabled=false`.
+
+Для ручной проверки создан новый временный `HTTP_SYNTHETIC_UI_ONLY` стенд: [fixture](http://secretary-t9.localhost:57256/fixture), [Team UI](http://secretary-t9.localhost:57256/team/), TTL 30 минут от старта. Оба маршрута отвечают HTTP 200; только synthetic participants и mock Vikunja. TLS, MAX WebView, Polza и рабочие данные не задействованы; `tls_qualification=not_tested`. Предупреждение HTTPS-сертификата не обходилось. Ручная приёмка владельца ещё не выполнена.
+
+Открытые пункты остаются прежними: операторский экран/журнал сверки неизвестных расходов, реальный backup/restore на выбранном защищённом носителе, политика хранения originals, проверка microphone/WASAPI loopback и 30/60/180-минутные native-записи, один согласованный benchmark Polza, внешний HTTPS/MAX и пилот владельца. Полный набор тестов не заменяет эти проверки.
+
 ## Progress checkpoint — 2026-10-09, 16:29 МСК
 
 Исправлена обработка нехватки дискового места при записи, импорте, enrollment и построении playback-кэша: API отвечает `507`, незавершённые загрузки убираются, завершённые audio chunks сохраняются; playback-кэш ограничен 2 ГиБ и не удаляет файлы, которые сейчас отдаются плееру. Полный guarded offline набор дал **5 206 passed, 1 failed**: единственный отказ был от устаревших generated OpenAPI-файлов после добавления `507`. Контракт и клиентские типы обновлены; затронутый backend/API набор после этого прошёл **215 passed**, 1 прежнее предупреждение `StarletteDeprecationWarning`. Полный набор повторно после синхронизации документации не запускался.

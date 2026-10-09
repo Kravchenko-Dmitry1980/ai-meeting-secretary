@@ -10,9 +10,10 @@ from test_backend import FakeCapture, FakeProvider
 from test_monthly_budget import NOW
 
 
-def app_fixture(tmp_path):
+def app_fixture(tmp_path, *, outbound_enabled=True):
     settings = Settings(_env_file=None, project_dir=tmp_path, data_dir=tmp_path / "data")
-    return create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    return create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False,
+                      outbound_enabled=outbound_enabled)
 
 
 def test_refresh_and_scope_api_require_local_owner_token(tmp_path):
@@ -91,3 +92,51 @@ def test_exact_receipt_reconciliation_settles_once_and_refuses_wrong_key(tmp_pat
         assert history.calls == 1
         assert budget.snapshot().confirmed_micro == 2_000000
         assert budget.snapshot().reserved_micro == 0
+
+
+def test_offline_budget_refresh_is_rejected_before_provider_access(tmp_path):
+    app = app_fixture(tmp_path, outbound_enabled=False)
+    class Account:
+        calls = 0
+        async def read_key_usage(self):
+            self.calls += 1
+            return AccountUsage("synthetic", 3000_000000, 2999_000000, 1_000000, "monthly", NOW)
+    account = Account()
+    app.state.cloud_budget.account_reader = account
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        headers = {"X-Secretary-Token": client.get("/api/v1/session").json()["csrf_token"]}
+        response = client.post("/api/v1/cloud-budget/refresh", headers=headers)
+        assert response.status_code == 409
+        assert response.json()["detail"] == "runtime_outbound_disabled"
+        assert account.calls == 0
+
+
+def test_offline_receipt_reconciliation_is_rejected_before_provider_access(tmp_path):
+    from decimal import Decimal
+    from secretary.domain.cloud_budget import CloudCharge
+    app = app_fixture(tmp_path, outbound_enabled=False)
+    budget = app.state.cloud_budget
+    budget.clock = lambda: NOW
+    budget.refresh_account(AccountUsage("synthetic", 3000_000000, 3000_000000, 0, "monthly", NOW))
+    operation = str(uuid4())
+    budget.reserve(CloudCharge(operation, "meeting_stt", "a" * 64, 1_000000, 1_000000))
+    budget.bind_provider_receipt(operation, "gen_synthetic")
+    budget.mark_uncertain(operation)
+
+    class History:
+        key_tag = "synthetic"
+        calls = 0
+        async def read_receipt(self, identifier):
+            self.calls += 1
+            return {"provider_request_id": identifier, "confirmed_rub": Decimal("1"),
+                    "provider_period": None, "status": "completed"}
+    history = History()
+    app.state.cloud_budget_history = history
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        headers = {"X-Secretary-Token": client.get("/api/v1/session").json()["csrf_token"]}
+        response = client.post(f"/api/v1/cloud-budget/operations/{operation}/reconcile", headers=headers)
+        assert response.status_code == 409
+        assert response.json()["detail"] == "runtime_outbound_disabled"
+        assert history.calls == 0
+        assert budget.reservation(operation).status == "uncertain"
+        assert budget.snapshot().reserved_micro == 1_000000
