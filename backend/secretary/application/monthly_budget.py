@@ -215,6 +215,104 @@ class MonthlyBudget:
                 raise BudgetError("unknown_budget_operation")
             return self._reservation(row)
 
+    @staticmethod
+    def _public_operation(row) -> dict:
+        return {
+            "operation_id": row["operation_id"], "category": row["category"],
+            "period": row["period"], "status": row["status"],
+            "estimated_rub": row["estimated_micro"] / 1_000_000,
+            "reserved_rub": row["reserved_micro"] / 1_000_000,
+            "observed_rub": row["observed_cost_micro"] / 1_000_000 if row["observed_cost_micro"] is not None else None,
+            "confirmed_rub": row["confirmed_micro"] / 1_000_000 if row["confirmed_micro"] is not None else None,
+            "provider_request_id": row["provider_request_id"], "provider_job_id": row["provider_job_id"],
+            "confirmed_period": row["confirmed_period"], "created_ms": row["created_ms"],
+            "updated_ms": row["updated_ms"],
+        }
+
+    @staticmethod
+    def _public_reconciliation_event(row) -> dict:
+        return {
+            "event_id": row["event_id"], "occurred_ms": row["occurred_ms"],
+            "outcome": row["outcome"], "reason_code": row["reason_code"],
+            "provider_status": row["provider_status"],
+            "provider_request_id": row["provider_request_id"],
+            "provider_job_id": row["provider_job_id"],
+            "provider_cost_rub": row["provider_cost_micro"] / 1_000_000 if row["provider_cost_micro"] is not None else None,
+            "provider_period": row["provider_period"],
+        }
+
+    def list_operations(self, *, limit: int = 100, offset: int = 0, status: str | None = None) -> dict:
+        if type(limit) is not int or not 1 <= limit <= 200 or type(offset) is not int or not 0 <= offset <= 100_000:
+            raise BudgetError("invalid_budget_operation_page")
+        if status is not None and status not in {"reserved", "submitted", "uncertain", "confirmed", "released"}:
+            raise BudgetError("invalid_budget_operation_status")
+        with self.repository.transaction() as connection:
+            where, args = (" WHERE status=?", [status]) if status else ("", [])
+            rows = connection.execute("SELECT * FROM billing_charges" + where +
+                " ORDER BY updated_ms DESC,operation_id ASC LIMIT ? OFFSET ?", (*args, limit + 1, offset)).fetchall()
+            has_more = len(rows) > limit
+            items = rows[:limit]
+            return {"items": [self._public_operation(row) for row in items], "limit": limit,
+                    "offset": offset, "next_offset": offset + limit if has_more else None}
+
+    def operation_details(self, operation_id: str) -> dict:
+        with self.repository.transaction() as connection:
+            row = connection.execute("SELECT * FROM billing_charges WHERE operation_id=?", (operation_id,)).fetchone()
+            if row is None:
+                raise BudgetError("unknown_budget_operation")
+            journal = connection.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='billing_reconciliation_events'""").fetchone()
+            events = connection.execute("""SELECT * FROM billing_reconciliation_events
+                WHERE operation_id=? ORDER BY event_id""", (operation_id,)).fetchall() if journal else []
+            return {"operation": self._public_operation(row),
+                    "events": [self._public_reconciliation_event(event) for event in events]}
+
+    @staticmethod
+    def _insert_reconciliation_event(connection, operation_id: str, event: dict, now) -> None:
+        allowed = {"lookup_started", "lookup_blocked", "provider_pending", "receipt_applied", "receipt_unresolved"}
+        outcome = event.get("outcome")
+        reason = event.get("reason_code")
+        if outcome not in allowed or (reason is not None and (not isinstance(reason, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", reason))):
+            raise BudgetError("invalid_budget_reconciliation_event")
+        status = event.get("provider_status")
+        if status not in (None, "pending", "completed", "failed"):
+            raise BudgetError("invalid_budget_reconciliation_event")
+        provider_id = event.get("provider_request_id")
+        if provider_id is not None and (not isinstance(provider_id, str) or not 1 <= len(provider_id) <= 256 or not provider_id.isprintable()):
+            provider_id = None
+        provider_job_id = event.get("provider_job_id")
+        if provider_job_id is not None and (not isinstance(provider_job_id, str) or not 1 <= len(provider_job_id) <= 256 or not provider_job_id.isprintable()):
+            provider_job_id = None
+        raw_cost = event.get("provider_cost_rub")
+        try:
+            cost = to_micro(raw_cost) if raw_cost is not None else None
+        except BudgetError:
+            cost = None
+        period = event.get("provider_period")
+        if period is not None and (not isinstance(period, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period)):
+            period = None
+        event_id = connection.execute("SELECT COALESCE(MAX(event_id),0)+1 FROM billing_reconciliation_events").fetchone()[0]
+        connection.execute("""INSERT INTO billing_reconciliation_events(
+            event_id,operation_id,occurred_ms,outcome,reason_code,provider_status,provider_request_id,
+            provider_job_id,provider_cost_micro,provider_period) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (event_id, operation_id, timestamp_ms(now), outcome, reason, status, provider_id, provider_job_id, cost, period))
+
+    def append_reconciliation_event(self, operation_id: str, event: dict) -> None:
+        with self.repository.transaction() as connection:
+            if connection.execute("SELECT 1 FROM billing_charges WHERE operation_id=?", (operation_id,)).fetchone() is None:
+                raise BudgetError("unknown_budget_operation")
+            journal = connection.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='billing_reconciliation_events'""").fetchone()
+            if journal is None:
+                guard_table = connection.execute("""SELECT 1 FROM sqlite_master
+                    WHERE type='table' AND name='maintenance_restore_guard'""").fetchone()
+                guarded = guard_table and connection.execute(
+                    "SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1").fetchone()
+                if guarded:
+                    return  # Old guarded snapshots stay read-only and are never migrated for diagnostics.
+                raise BudgetError("billing_reconciliation_unavailable")
+            self._insert_reconciliation_event(connection, operation_id, event, self.clock())
+
     def reserve(self, charge: CloudCharge, *, key_tag=None) -> Reservation:
         payload_hash = hashlib.sha256(json.dumps(asdict(charge), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         with self.repository.transaction() as connection:
@@ -356,7 +454,7 @@ class MonthlyBudget:
                                      (provider_job_id,)).fetchone()
             return row[0] if row else None
 
-    def settle(self, operation_id: str, receipt: dict) -> BudgetSnapshot:
+    def settle(self, operation_id: str, receipt: dict, *, reconciliation_event: dict | None = None) -> BudgetSnapshot:
         raw_cost = receipt.get("confirmed_rub")
         cost = None
         if raw_cost is not None:
@@ -385,6 +483,8 @@ class MonthlyBudget:
                     raise BudgetError("budget_receipt_conflict")
                 if cost is not None and (cost != row["confirmed_micro"] or (provider_id and provider_id != row["provider_request_id"])):
                     raise BudgetError("budget_receipt_conflict")
+                if reconciliation_event is not None:
+                    self._insert_reconciliation_event(connection, operation_id, reconciliation_event, now)
                 return self._snapshot(connection, now)
             if row["status"] == "released":
                 raise BudgetError("budget_receipt_conflict")
@@ -399,6 +499,16 @@ class MonthlyBudget:
                     "confirmed" if cost is not None and period else "uncertain", timestamp_ms(now), operation_id))
             except sqlite3.IntegrityError as exc:
                 raise BudgetError("budget_receipt_identity_conflict") from exc
+            if reconciliation_event is not None:
+                updated = connection.execute("SELECT status FROM billing_charges WHERE operation_id=?", (operation_id,)).fetchone()
+                event = dict(reconciliation_event)
+                if updated["status"] == "confirmed":
+                    event["outcome"] = "receipt_applied"
+                    event["reason_code"] = None
+                else:
+                    event["outcome"] = "receipt_unresolved"
+                    event["reason_code"] = event.get("reason_code") or ("provider_period_unavailable" if cost is not None else "receipt_cost_unavailable")
+                self._insert_reconciliation_event(connection, operation_id, event, now)
             return self._snapshot(connection, now)
 
     def take_warnings(self) -> list[int]:

@@ -1,4 +1,4 @@
-import type { AppConfig, AudioChunk, DeviceList, IdentificationState, Meeting, ModelCatalog, PendingSummary, ProcessingJob, ProcessingMode, RecordingState, SegmentPage, Speaker, Summary, Usage } from '../types/api';
+import type { AppConfig, AudioChunk, CloudBudgetOperationDetails, CloudBudgetOperationPage, DeviceList, IdentificationState, Meeting, ModelCatalog, PendingSummary, ProcessingJob, ProcessingMode, RecordingState, SegmentPage, Speaker, Summary, Usage } from '../types/api';
 
 let sessionToken: string | null = null;
 let sessionRequest: Promise<string> | null = null;
@@ -69,6 +69,9 @@ export const api = {
   saveConfig: (config: Omit<AppConfig, 'key_configured'>) => write<AppConfig>('/config', config, 'PATCH'),
   models: () => request<ModelCatalog>('/models'),
   usage: (id?: string) => request<Usage>(`/usage${id ? `?meeting_id=${encodeURIComponent(id)}` : ''}`),
+  cloudBudgetOperations: (status = 'uncertain', limit = 50, offset = 0) => request<CloudBudgetOperationPage>(`/cloud-budget/operations?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`),
+  cloudBudgetOperation: (id: string) => request<CloudBudgetOperationDetails>(`/cloud-budget/operations/${encodeURIComponent(id)}`),
+  reconcileCloudBudgetOperation: (id: string) => write<{ operation_id: string; status: string; budget: unknown }>(`/cloud-budget/operations/${encodeURIComponent(id)}/reconcile`),
   upload: (id: string, file: File) => {
     const body = new FormData(); body.append('file', file);
     return request<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/upload`, { method: 'POST', body });

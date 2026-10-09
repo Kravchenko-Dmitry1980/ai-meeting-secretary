@@ -517,6 +517,123 @@
         }
       }
     },
+    "/api/v1/cloud-budget/operations": {
+      "get": {
+        "summary": "List Cloud Budget Operations",
+        "operationId": "list_cloud_budget_operations_api_v1_cloud_budget_operations_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "reserved",
+                    "submitted",
+                    "uncertain",
+                    "confirmed",
+                    "released"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudBudgetOperationPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/operations/{operation_id}": {
+      "get": {
+        "summary": "Cloud Budget Operation Details",
+        "operationId": "cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudBudgetOperationDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/cloud-budget/refresh": {
       "post": {
         "summary": "Refresh Monthly Budget",
@@ -3937,6 +4054,291 @@
           "status"
         ],
         "title": "CarryoverProvenance"
+      },
+      "CloudBudgetOperationDetails": {
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/CloudBudgetOperationView"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CloudBudgetReconciliationEventView"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation",
+          "events"
+        ],
+        "title": "CloudBudgetOperationDetails"
+      },
+      "CloudBudgetOperationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CloudBudgetOperationView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "CloudBudgetOperationPage"
+      },
+      "CloudBudgetOperationView": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "reserved",
+              "submitted",
+              "uncertain",
+              "confirmed",
+              "released"
+            ],
+            "title": "Status"
+          },
+          "estimated_rub": {
+            "type": "number",
+            "title": "Estimated Rub"
+          },
+          "reserved_rub": {
+            "type": "number",
+            "title": "Reserved Rub"
+          },
+          "observed_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Rub"
+          },
+          "confirmed_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Rub"
+          },
+          "provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Request Id"
+          },
+          "provider_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Job Id"
+          },
+          "confirmed_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Period"
+          },
+          "created_ms": {
+            "type": "integer",
+            "title": "Created Ms"
+          },
+          "updated_ms": {
+            "type": "integer",
+            "title": "Updated Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "category",
+          "period",
+          "status",
+          "estimated_rub",
+          "reserved_rub",
+          "observed_rub",
+          "confirmed_rub",
+          "provider_request_id",
+          "provider_job_id",
+          "confirmed_period",
+          "created_ms",
+          "updated_ms"
+        ],
+        "title": "CloudBudgetOperationView"
+      },
+      "CloudBudgetReconciliationEventView": {
+        "properties": {
+          "event_id": {
+            "type": "integer",
+            "title": "Event Id"
+          },
+          "occurred_ms": {
+            "type": "integer",
+            "title": "Occurred Ms"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "lookup_started",
+              "lookup_blocked",
+              "provider_pending",
+              "receipt_applied",
+              "receipt_unresolved"
+            ],
+            "title": "Outcome"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "completed",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Request Id"
+          },
+          "provider_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Job Id"
+          },
+          "provider_cost_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Rub"
+          },
+          "provider_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Period"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "occurred_ms",
+          "outcome",
+          "reason_code",
+          "provider_status",
+          "provider_request_id",
+          "provider_job_id",
+          "provider_cost_rub",
+          "provider_period"
+        ],
+        "title": "CloudBudgetReconciliationEventView"
       },
       "CommandReceipt": {
         "properties": {

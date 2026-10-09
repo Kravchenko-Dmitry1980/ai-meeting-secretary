@@ -48,8 +48,8 @@ class BudgetRepository:
             connection.execute("CREATE TABLE IF NOT EXISTS billing_schema(version INTEGER NOT NULL)")
             row = connection.execute("SELECT version FROM billing_schema").fetchone()
             if row is None:
-                connection.execute("INSERT INTO billing_schema VALUES(3)")
-            elif row[0] not in (1, 2, 3):
+                connection.execute("INSERT INTO billing_schema VALUES(4)")
+            elif row[0] not in (1, 2, 3, 4):
                 raise BudgetError("unsupported_billing_schema")
             connection.execute("""CREATE TABLE IF NOT EXISTS billing_state (
                 name TEXT PRIMARY KEY, value TEXT NOT NULL)""")
@@ -65,7 +65,7 @@ class BudgetRepository:
             for name in ("opening_request_watermark", "latest_request_watermark"):
                 if name not in columns:
                     connection.execute(f"ALTER TABLE billing_accounts ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
-            connection.execute("UPDATE billing_schema SET version=3")
+            connection.execute("UPDATE billing_schema SET version=4")
             connection.execute("""CREATE TABLE IF NOT EXISTS billing_charges (
                 operation_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, request_hash TEXT NOT NULL,
                 category TEXT NOT NULL, period TEXT NOT NULL, key_tag TEXT NOT NULL,
@@ -92,6 +92,27 @@ class BudgetRepository:
             connection.execute("""CREATE TABLE IF NOT EXISTS billing_included_receipts (
                 period TEXT NOT NULL,key_tag TEXT NOT NULL,provider_request_id TEXT NOT NULL,
                 PRIMARY KEY(period,key_tag,provider_request_id))""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS billing_reconciliation_events (
+                event_id INTEGER PRIMARY KEY,
+                operation_id TEXT NOT NULL REFERENCES billing_charges(operation_id),
+                occurred_ms INTEGER NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN (
+                    'lookup_started','lookup_blocked','provider_pending','receipt_applied','receipt_unresolved')),
+                reason_code TEXT,
+                provider_status TEXT CHECK(provider_status IS NULL OR provider_status IN ('pending','completed','failed')),
+                provider_request_id TEXT,
+                provider_job_id TEXT,
+                provider_cost_micro INTEGER CHECK(provider_cost_micro IS NULL OR provider_cost_micro>=0),
+                provider_period TEXT CHECK(provider_period IS NULL OR provider_period GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]')
+            )""")
+            for verb in ('UPDATE', 'DELETE'):
+                connection.execute(f'''CREATE TRIGGER IF NOT EXISTS billing_reconciliation_no_{verb.lower()}
+                    BEFORE {verb} ON billing_reconciliation_events
+                    BEGIN SELECT RAISE(ABORT,'billing_reconciliation_append_only'); END''')
+            connection.execute('''CREATE TRIGGER IF NOT EXISTS billing_reconciliation_no_replace
+                BEFORE INSERT ON billing_reconciliation_events
+                WHEN NEW.event_id<=COALESCE((SELECT MAX(event_id) FROM billing_reconciliation_events),0)
+                BEGIN SELECT RAISE(ABORT,'billing_reconciliation_append_only'); END''')
             connection.execute(RESTORE_GUARD_DDL)
             for verb in ('UPDATE', 'DELETE'):
                 connection.execute(f'''CREATE TRIGGER IF NOT EXISTS billing_restore_no_{verb.lower()}

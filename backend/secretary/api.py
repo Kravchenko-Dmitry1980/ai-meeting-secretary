@@ -190,6 +190,51 @@ class CreateBudgetScope(BaseModel):
     cap_rub: Decimal = Field(gt=0, le=3000, allow_inf_nan=False)
 
 
+class CloudBudgetOperationView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation_id: UUID
+    # Historical billing rows can contain retired categories; expose them for review.
+    category: str
+    period: str
+    status: Literal["reserved", "submitted", "uncertain", "confirmed", "released"]
+    estimated_rub: float
+    reserved_rub: float
+    observed_rub: float | None
+    confirmed_rub: float | None
+    provider_request_id: str | None
+    provider_job_id: str | None
+    confirmed_period: str | None
+    created_ms: int
+    updated_ms: int
+
+
+class CloudBudgetOperationPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[CloudBudgetOperationView]
+    limit: int
+    offset: int
+    next_offset: int | None
+
+
+class CloudBudgetReconciliationEventView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_id: int
+    occurred_ms: int
+    outcome: Literal["lookup_started", "lookup_blocked", "provider_pending", "receipt_applied", "receipt_unresolved"]
+    reason_code: str | None
+    provider_status: Literal["pending", "completed", "failed"] | None
+    provider_request_id: str | None
+    provider_job_id: str | None
+    provider_cost_rub: float | None
+    provider_period: str | None
+
+
+class CloudBudgetOperationDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: CloudBudgetOperationView
+    events: list[CloudBudgetReconciliationEventView]
+
+
 class ProcessRequest(DTO):
     model_config = ConfigDict(extra="forbid")
     stage: Literal["prepare", "transcribe", "identify_speakers", "summarize"] = "transcribe"
@@ -409,7 +454,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.exception_handler(BudgetError)
     async def budget_failure(request, exc):
-        status = 404 if exc.code == "unknown_budget_scope" else 409
+        status = 404 if exc.code in {"unknown_budget_scope", "unknown_budget_operation"} else 409
         return JSONResponse({"detail": exc.code, "reason_codes": [exc.code]}, status_code=status)
 
     from secretary.infrastructure.team_maintenance import MaintenanceBlocked
@@ -426,6 +471,24 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     def require_outbound_cloud_access():
         if not outbound_enabled:
             raise HTTPException(status_code=409, detail="runtime_outbound_disabled")
+
+    def record_cloud_reconciliation_event(operation_id: str, event: dict) -> None:
+        try:
+            cloud_budget.append_reconciliation_event(operation_id, event)
+        except BudgetError as exc:
+            if exc.code != "maintenance_restore_blocked":
+                raise  # A missing/corrupt journal must stop a new provider lookup.
+
+    @app.get("/api/v1/cloud-budget/operations", response_model=CloudBudgetOperationPage)
+    async def list_cloud_budget_operations(
+            limit: int = Query(default=100, ge=1, le=200),
+            offset: int = Query(default=0, ge=0, le=100_000),
+            status: Literal["reserved", "submitted", "uncertain", "confirmed", "released"] | None = None):
+        return cloud_budget.list_operations(limit=limit, offset=offset, status=status)
+
+    @app.get("/api/v1/cloud-budget/operations/{operation_id}", response_model=CloudBudgetOperationDetails)
+    async def cloud_budget_operation_details(operation_id: UUID):
+        return cloud_budget.operation_details(str(operation_id))
 
     @app.post("/api/v1/cloud-budget/refresh", responses={
         409: {"description": "Облачные запросы выключены в offline-режиме"}})
@@ -447,23 +510,64 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     @app.post("/api/v1/cloud-budget/operations/{operation_id}/reconcile", responses={
         409: {"description": "Облачные запросы выключены или квитанцию нельзя безопасно применить"}})
     async def reconcile_cloud_operation(operation_id: UUID):
-        reservation = cloud_budget.reservation(str(operation_id))
+        operation_id = str(operation_id)
+        reservation = cloud_budget.reservation(operation_id)
         if reservation.status in {"confirmed", "released"}:
-            return {"operation_id": str(operation_id), "status": reservation.status,
+            return {"operation_id": operation_id, "status": reservation.status,
                     "budget": cloud_budget.snapshot().public()}
-        require_outbound_cloud_access()
+        if not outbound_enabled:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": "runtime_outbound_disabled"})
+            require_outbound_cloud_access()
         history = app.state.cloud_budget_history
-        if history.key_tag != reservation.key_tag:
+        try:
+            history_key_tag = history.key_tag
+        except BudgetError as exc:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": exc.code})
+            raise
+        if history_key_tag != reservation.key_tag:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": "monthly_budget_key_changed"})
             raise BudgetError("monthly_budget_key_changed")
         identifier = reservation.provider_request_id or reservation.provider_job_id
         if not identifier:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": "monthly_budget_receipt_identity_unavailable"})
             raise BudgetError("monthly_budget_receipt_identity_unavailable")
-        receipt = await history.read_receipt(identifier)
+        reference = ({"provider_request_id": reservation.provider_request_id}
+                     if reservation.provider_request_id else {"provider_job_id": reservation.provider_job_id})
+        record_cloud_reconciliation_event(operation_id, {
+            "outcome": "lookup_started", **reference})
+        try:
+            receipt = await history.read_receipt(identifier)
+        except BudgetError as exc:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": exc.code,
+                **reference})
+            raise
         if receipt["provider_request_id"] != identifier:
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "lookup_blocked", "reason_code": "budget_receipt_identity_conflict",
+                **reference})
             raise BudgetError("budget_receipt_identity_conflict")
-        if receipt["status"] in {"completed", "failed"}:
-            cloud_budget.settle(str(operation_id), receipt)
-        return {"operation_id": str(operation_id), "status": cloud_budget.reservation(str(operation_id)).status,
+        if receipt["status"] == "pending":
+            record_cloud_reconciliation_event(operation_id, {
+                "outcome": "provider_pending", "reason_code": "provider_pending",
+                **reference, "provider_status": "pending"})
+        elif receipt["status"] in {"completed", "failed"}:
+            try:
+                cloud_budget.settle(operation_id, receipt, reconciliation_event={
+                    "outcome": "receipt_unresolved", **reference,
+                    "provider_status": receipt["status"], "provider_cost_rub": receipt.get("confirmed_rub"),
+                    "provider_period": receipt.get("provider_period"),
+                })
+            except BudgetError as exc:
+                record_cloud_reconciliation_event(operation_id, {
+                    "outcome": "lookup_blocked", "reason_code": exc.code,
+                    **reference, "provider_status": receipt["status"]})
+                raise
+        return {"operation_id": operation_id, "status": cloud_budget.reservation(operation_id).status,
                 "budget": cloud_budget.snapshot().public()}
 
     @app.exception_handler(AssignmentEvidenceError)

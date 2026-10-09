@@ -107,6 +107,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud-budget/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cloud Budget Operations */
+        get: operations["list_cloud_budget_operations_api_v1_cloud_budget_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cloud Budget Operation Details */
+        get: operations["cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cloud-budget/refresh": {
         parameters: {
             query?: never;
@@ -1163,6 +1197,82 @@ export interface components {
              * @enum {string}
              */
             status: "proposed" | "confirmed" | "needs_review";
+        };
+        /** CloudBudgetOperationDetails */
+        CloudBudgetOperationDetails: {
+            operation: components["schemas"]["CloudBudgetOperationView"];
+            /** Events */
+            events: components["schemas"]["CloudBudgetReconciliationEventView"][];
+        };
+        /** CloudBudgetOperationPage */
+        CloudBudgetOperationPage: {
+            /** Items */
+            items: components["schemas"]["CloudBudgetOperationView"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Next Offset */
+            next_offset: number | null;
+        };
+        /** CloudBudgetOperationView */
+        CloudBudgetOperationView: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Category */
+            category: string;
+            /** Period */
+            period: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reserved" | "submitted" | "uncertain" | "confirmed" | "released";
+            /** Estimated Rub */
+            estimated_rub: number;
+            /** Reserved Rub */
+            reserved_rub: number;
+            /** Observed Rub */
+            observed_rub: number | null;
+            /** Confirmed Rub */
+            confirmed_rub: number | null;
+            /** Provider Request Id */
+            provider_request_id: string | null;
+            /** Provider Job Id */
+            provider_job_id: string | null;
+            /** Confirmed Period */
+            confirmed_period: string | null;
+            /** Created Ms */
+            created_ms: number;
+            /** Updated Ms */
+            updated_ms: number;
+        };
+        /** CloudBudgetReconciliationEventView */
+        CloudBudgetReconciliationEventView: {
+            /** Event Id */
+            event_id: number;
+            /** Occurred Ms */
+            occurred_ms: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "lookup_started" | "lookup_blocked" | "provider_pending" | "receipt_applied" | "receipt_unresolved";
+            /** Reason Code */
+            reason_code: string | null;
+            /** Provider Status */
+            provider_status: ("pending" | "completed" | "failed") | null;
+            /** Provider Request Id */
+            provider_request_id: string | null;
+            /** Provider Job Id */
+            provider_job_id: string | null;
+            /** Provider Cost Rub */
+            provider_cost_rub: number | null;
+            /** Provider Period */
+            provider_period: string | null;
         };
         /** CommandReceipt */
         CommandReceipt: {
@@ -2775,6 +2885,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_cloud_budget_operations_api_v1_cloud_budget_operations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                status?: ("reserved" | "submitted" | "uncertain" | "confirmed" | "released") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudBudgetOperationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudBudgetOperationDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

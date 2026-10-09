@@ -40,7 +40,7 @@ FAMILIES = {
         'notification_state': 'state', 'notification_planner_state': None,
         'team_due_resolution_previews': None,
     },
-    'billing': {'billing_charges': 'status'},
+    'billing': {'billing_charges': 'status', 'billing_reconciliation_events': 'outcome'},
     'vikunja': {},
 }
 SAFE_STATES = frozenset({
@@ -49,6 +49,7 @@ SAFE_STATES = frozenset({
     'retryable', 'applied', 'conflict', 'reconciling', 'succeeded', 'failed',
     'cancelled', 'completed', 'stale', 'reserved', 'submitted', 'confirmed',
     'released', 'awaiting_review', 'interrupted', 'cleanup_pending', 'ready', 'revoked',
+    'lookup_started', 'lookup_blocked', 'provider_pending', 'receipt_applied', 'receipt_unresolved',
 })
 PENDING_REQUIREMENTS = [
     'exclusive_owned_writers', 'current_owner_and_directory', 'provider_reconciliation',
@@ -123,9 +124,12 @@ def _source_snapshot(role, path, doc, budget):
             if guard != [(1, doc['restore_id'], 1, doc['source_manifest_sha256'])]:
                 raise BackupError('restore_preview_guard_mismatch')
         version_table = {'secretary': 'schema_migrations', 'team': 'team_schema', 'billing': 'billing_schema'}.get(role)
+        version_rows = list(conn.execute('SELECT version FROM ' + version_table)) if version_table and version_table in tables else []
         if version_table:
-            expected = set(range(1, 10)) if role != 'billing' else {3}
-            if version_table not in tables or {row[0] for row in conn.execute('SELECT version FROM ' + version_table)} != expected:
+            versions = {row[0] for row in version_rows}
+            supported = (versions == set(range(1, 10)) if role != 'billing'
+                         else bool(version_rows) and len(versions) == 1 and next(iter(versions)) in {3, 4})
+            if not supported:
                 raise BackupError('restore_preview_schema_unsupported')
         elif 'files' not in tables:
             raise BackupError('backup_source_role_invalid')
@@ -146,7 +150,11 @@ def _source_snapshot(role, path, doc, budget):
             source.update(_json([table, sorted(row_hashes)]).encode())
         inventory = {}
         for table, column in FAMILIES[role].items():
-            if table not in tables: raise BackupError('restore_preview_schema_unsupported')
+            if table not in tables:
+                if role == 'billing' and table == 'billing_reconciliation_events' and version_rows[0][0] == 3:
+                    inventory[table] = {'rows': 0, 'states': {}}
+                    continue
+                raise BackupError('restore_preview_schema_unsupported')
             entry = {'rows': schema['row_counts'][table]}
             if column:
                 if column not in {item[1] for item in conn.execute('PRAGMA table_info(' + _quoted(table) + ')')}:

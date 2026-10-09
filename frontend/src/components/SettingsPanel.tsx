@@ -4,6 +4,7 @@ import type { AppConfig, ModelCatalog, ModelInfo } from '../types/api';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { CloudBudgetPanel } from './CloudBudgetPanel';
 
 interface Props { config: AppConfig; catalog: ModelCatalog | null; busy: boolean; onClose: () => void; onSave: (config: Omit<AppConfig, 'key_configured'>) => Promise<boolean> }
 const russianSupport = (value?: string | boolean) => value === true || value === 'language_ru_documented_not_live_verified' ? 'заявлен, не проверен' : value === false ? 'нет' : 'не проверен';
@@ -120,6 +121,7 @@ export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props)
             <p className="mt-2 text-xs leading-5 text-slate-500">Без резерва запросы с неизвестной ценой приостанавливаются. Выберите консервативную оценку: она учитывается до ответа провайдера и не является гарантированной ценой.</p>
             </div>}
           </div>
+          <CloudBudgetPanel enabled={config.cloud_enabled && config.key_configured} />
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
             <span role="status" className="text-sm text-mint">{saved ? 'Настройки сохранены' : ''}</span>
             <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Закрыть</Button><Button type="submit" disabled={busy}>{busy ? 'Сохранение…' : 'Сохранить настройки'}</Button></div>

@@ -56,7 +56,7 @@ test('F1: a delayed playback rejection from a source cannot report an error in a
 test('F2: changes made while saving are preserved but never labeled as saved', async () => {
   const runtime = hookRuntime(), gate = deferred(); let submitted;
   const props = { config, catalog: null, busy: false, onClose() {}, onSave(payload) { submitted = payload; return gate.promise; } };
-  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react });
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
   let tree = runtime.render(() => SettingsPanel(props));
   get(tree, (node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
   props.busy = true; tree = runtime.render(() => SettingsPanel(props));
@@ -71,7 +71,7 @@ test('F2: changes made while saving are preserved but never labeled as saved', a
 test('F2: unchanged settings confirm success, and a second synchronous submit is ignored', async () => {
   const runtime = hookRuntime(), gate = deferred(); let calls = 0;
   const props = { config, catalog: null, busy: false, onClose() {}, onSave() { calls++; return gate.promise; } };
-  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react });
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
   let tree = runtime.render(() => SettingsPanel(props)); const submit = get(tree, (node) => node.type === 'form').props.onSubmit;
   submit({ preventDefault() {} }); submit({ preventDefault() {} }); assert.equal(calls, 1);
   gate.resolve(true); await flush(); tree = runtime.render(() => SettingsPanel(props));

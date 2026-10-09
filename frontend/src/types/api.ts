@@ -38,3 +38,7 @@ export interface RecordingState {
 export type UsageRecord = components['schemas']['UsageRecord'];
 export type Usage = components['schemas']['UsageResponse'];
 export interface EventSnapshot { meeting: Meeting; jobs: ProcessingJob[]; segment_count: number }
+export type CloudBudgetOperation = components['schemas']['CloudBudgetOperationView'];
+export type CloudBudgetReconciliationEvent = components['schemas']['CloudBudgetReconciliationEventView'];
+export type CloudBudgetOperationPage = components['schemas']['CloudBudgetOperationPage'];
+export type CloudBudgetOperationDetails = components['schemas']['CloudBudgetOperationDetails'];

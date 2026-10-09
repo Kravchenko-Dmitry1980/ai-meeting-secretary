@@ -1,4 +1,4 @@
-"""Closed restore-quarantine catalogue for Secretary 9, Team 9 and Billing 3.
+"""Closed restore-quarantine catalogue for Secretary 9, Team 9 and Billing 4.
 
 Only declarations live here: no settings, database opens, migrations or writer
 capability. Native Vikunja is represented by the whole-source R1 watermark.
@@ -419,6 +419,10 @@ EXPECTED_COLUMNS = {
     ("billing", "billing_opening_confirmed"): (
         "period", "key_tag", "operation_id",
     ),
+    ("billing", "billing_reconciliation_events"): (
+        "event_id", "operation_id", "occurred_ms", "outcome", "reason_code",
+        "provider_status", "provider_request_id", "provider_job_id", "provider_cost_micro", "provider_period",
+    ),
     ("billing", "billing_schema"): (
         "version",
     ),
@@ -548,6 +552,7 @@ FAMILY_DISPOSITIONS = {
         "billing_warnings": "evidence_only",
         "billing_opening_confirmed": "evidence_only",
         "billing_included_receipts": "evidence_only",
+        "billing_reconciliation_events": "evidence_only",
         "maintenance_restore_guard": "evidence_only",
     },
 }
@@ -658,6 +663,7 @@ PRIMARY_KEYS = {
     ("billing", "billing_warnings"): ("period", "threshold"),
     ("billing", "billing_opening_confirmed"): ("period", "key_tag", "operation_id"),
     ("billing", "billing_included_receipts"): ("period", "key_tag", "provider_request_id"),
+    ("billing", "billing_reconciliation_events"): ("event_id",),
     ("billing", "maintenance_restore_guard"): ("id",),
 }
 

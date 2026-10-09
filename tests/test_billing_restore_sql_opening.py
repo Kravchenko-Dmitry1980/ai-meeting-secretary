@@ -48,7 +48,7 @@ def restored():
 
 
 def assert_history(conn):
-    assert conn.execute('SELECT version FROM billing_schema').fetchone()[0] == 3
+    assert conn.execute('SELECT version FROM billing_schema').fetchone()[0] == 4
     assert [tuple(row) for row in conn.execute('''SELECT status,reserved_micro,observed_cost_micro,confirmed_micro
         FROM billing_charges ORDER BY created_ms''')] == [
             ('reserved', 3000000, None, None), ('submitted', 3000000, None, None), ('uncertain', 3000000, 4000000, None)]
@@ -172,7 +172,7 @@ def test_paid_guard_probe_preserves_bytes_without_transient_sidecars(restored, m
     assert fingerprint(restored.path.parent) == restored.before
 
 
-@pytest.mark.parametrize('version', [1, 2])
+@pytest.mark.parametrize('version', [1, 2, 3])
 def test_ordinary_billing_migrations_and_transactions_still_work(version):
     path = SCRATCH / uuid4().hex / 'ordinary' / 'billing.sqlite3'
     repository = BudgetRepository(path)
@@ -184,7 +184,7 @@ def test_ordinary_billing_migrations_and_transactions_still_work(version):
         conn.execute("INSERT INTO billing_state VALUES('retained','yes')")
     reopened = BudgetRepository(path)
     with reopened.transaction() as conn:
-        assert conn.execute('SELECT version FROM billing_schema').fetchone()[0] == 3
+        assert conn.execute('SELECT version FROM billing_schema').fetchone()[0] == 4
         assert {'opening_request_watermark', 'latest_request_watermark'} <= {
             row[1] for row in conn.execute('PRAGMA table_info(billing_accounts)')}
         assert 'scope_id' in {row[1] for row in conn.execute('PRAGMA table_info(billing_charges)')}

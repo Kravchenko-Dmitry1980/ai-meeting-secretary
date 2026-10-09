@@ -155,7 +155,7 @@ def test_inventory_growth_is_bounded_without_mutating_sources(copy, monkeypatch,
 
 def test_non_unique_declared_identity_is_not_silently_collapsed(copy):
     with closing(sqlite3.connect(copy.restored.databases['billing'])) as conn, conn:
-        conn.execute('INSERT INTO billing_schema VALUES(3)')
+        conn.execute('INSERT INTO billing_schema VALUES(4)')
     domain = module('domain.restore_quarantine')
     with pytest.raises(domain.RestoreQuarantineError, match='restore_quarantine_duplicate_key'):
         collect(copy)
