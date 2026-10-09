@@ -1,5 +1,15 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-09, 13:01 МСК
+
+Пользователь не смог пройти предупреждение тестового TLS-сертификата. Trust store и настройки браузера не менялись; для ручной проверки доступен отдельный локальный `HTTP_SYNTHETIC_UI_ONLY` стенд: [синтетическая fixture](http://secretary-t9.localhost:52743/fixture) и [Team UI](http://secretary-t9.localhost:52743/team/). Run `t9-http-ui-030c3e803d444b788858bc879d579fdd` готов, watchdog остановит его примерно в **13:28 МСК**. `/fixture/status`, `/fixture` и `/team/` возвращают HTTP 200. Используются disposable данные и mock Vikunja; реальный MAX, Polza, записи и аккаунты не задействованы.
+
+Основной Secretary повторно запущен на `http://127.0.0.1:8765/` через `scripts/start.ps1 -Port 8765 -Offline -NoBootstrap -NoBrowser`; `scripts/doctor.ps1` подтвердил идентичность процесса, `Outbound guard: disabled by offline launch` и `/health=ok`. `DATA_DIR` ограничен отдельной пустой БД `.runtime/manual-acceptance-083f5be239094008b4f0e14358c3bdc9`; штатный `data/` не выбран, Team runtime не смонтирован. Внешних и платных вызовов не выполнялось.
+
+На синтетических данных дополнительно выполнен реальный CLI round-trip backup → verify → restore в `.runtime/backup-smoke-385a3440a9df4fa68fd19d162000b219`: манифест backup имеет состояние `complete`, restore — `verified`, `outbound_enabled=false`. Это подтверждает локальный CLI путь на фикстуре, но не резервную копию и восстановление рабочей базы. Владелец ещё должен выбрать отдельный защищённый накопитель и провести restore drill на своих данных.
+
+Короткий ручной Team сценарий: открыть fixture, использовать код, показанный только на этой странице, затем войти в Team UI → открыть «Сегодня», «Канбан», «Матрица» → создать задачу без срока → проверить предпросмотр → отменить → повторить и подтвердить → проверить квитанцию и перемещение карточки. Код не копировать в чат; если браузер не принимает cookie на HTTP loopback, остановиться, не отключая `Secure`.
+
 ## Progress checkpoint — 2026-10-09, 12:40 МСК
 
 Полный offline backend/audit набор подтверждён текущим запуском: **5 190 passed, 0 failed, 1 предупреждение Starlette/httpx, 1 926,35 с (32:06)**. Frontend — 289 passed; typecheck, lint и production build успешны. Основной offline Secretary отвечает `/health=200`; живой OpenAPI 3.1.0 содержит 52 пути, включая 50 `/api/v1/*`. Конфигурация API подтверждает `cloud_enabled=false` и `allow_unknown_price=false`. Перечисление аудиоустройств доступно: найдены классы microphone и system; фактический захват и прослушивание не запускались.

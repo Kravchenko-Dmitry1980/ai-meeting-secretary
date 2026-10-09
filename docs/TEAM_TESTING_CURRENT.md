@@ -1,5 +1,13 @@
 # Текущее тестирование Secretary Team
 
+## Проверка 2026-10-09, 13:01 МСК: новый HTTP handoff и offline Secretary
+
+TLS interstitial по-прежнему не пройден; предупреждение, trust store и настройки cookie не обходились. Создан новый локальный `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-030c3e803d444b788858bc879d579fdd` на порту `52743`, watchdog 30 минут от 12:57:52 МСК (примерно до **13:27:52 МСК**). Открывайте точный hostname: [fixture](http://secretary-t9.localhost:52743/fixture), [Team UI](http://secretary-t9.localhost:52743/team/). Маршруты `/fixture/status`, `/fixture` и `/team/` сейчас отвечают HTTP 200.
+
+Для ручного входа возьмите одноразовый код только со страницы fixture; срок его действия — 5 минут. В Team UI войдите как синтетический участник Анна и проверьте «Сегодня», «Канбан», «Матрица», затем создание задачи без срока: предпросмотр → отмена → повторное подтверждение → квитанция и перемещение карточки. Не отправляйте код в чат. Если HTTP cookie/login не сработает, сообщите об этом; защиту cookie не ослаблять.
+
+Основной Secretary доступен по [локальному адресу](http://127.0.0.1:8765/) и работает offline на отдельной пустой БД `.runtime/manual-acceptance-083f5be239094008b4f0e14358c3bdc9`; `doctor.ps1` проверил процесс и `/health=ok`. Эта БД не использует рабочую папку `data/`; облачные вызовы отключены. Team fixture — только disposable БД и mock Vikunja, без MAX, Polza, рабочих встреч и данных владельца. Ручная приёмка остаётся pending; этот fallback не проверяет HTTPS/TLS, MAX WebView/Bridge, настоящую Vikunja, телефон или напоминания.
+
 ## Проверка 2026-10-09, 12:37 МСК: HTTP fallback повторно открыт в Chrome
 
 HTTPS interstitial не пройден. Вместо изменения trust store поднят новый disposable `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-535ca21f21324c22969449c765cc9a32` от production build `.runtime/qa-build-20261009-current`, порт `54710`, watchdog примерно до **12:55 МСК**. В Chrome оставлены открытыми [синтетические участники](http://secretary-t9.localhost:54710/fixture) и [Team UI](http://secretary-t9.localhost:54710/team/); `/fixture/status` и `/team/` проверены с HTTP 200. Основное приложение также открыто в Chrome по [локальному адресу](http://127.0.0.1:8765/).

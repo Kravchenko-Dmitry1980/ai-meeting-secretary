@@ -1,5 +1,11 @@
 # Проверки Secretary V1
 
+## Дополнение 2026-10-09, 13:01 МСК
+
+- После истечения предыдущей fixture подготовлен новый `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-030c3e803d444b788858bc879d579fdd`. `/fixture/status`, `/fixture`, `/team/` вернули HTTP 200; ручной сценарий владельца ещё не выполнен. См. [текущую ссылку и инструкции](TEAM_TESTING_CURRENT.md).
+- Основной Secretary поднят повторно через `scripts/start.ps1 -Port 8765 -Offline -NoBootstrap -NoBrowser` на отдельной scratch-БД `.runtime/manual-acceptance-083f5be239094008b4f0e14358c3bdc9`; `doctor.ps1` подтвердил владельца процесса, outbound выключен, `/health=200`. Рабочая `data/` не использовалась, облачных запросов не было.
+- CLI smoke на синтетической БД: backup `complete` → verify `verified` → restore `verified`, восстановленная конфигурация имеет `outbound_enabled=false`. Артефакты находятся в `.runtime/backup-smoke-385a3440a9df4fa68fd19d162000b219`. Реальный backup/restore drill владельца на выбранный защищённый носитель остаётся открытым.
+
 ## Повторная проверка 2026-10-09, 12:37 МСК
 
 - Полный offline backend/audit набор `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершился с exit 0: **5 190 passed, 0 failed**, одно предупреждение `StarletteDeprecationWarning` о связке `httpx`/`starlette.testclient`, **1 926,35 с (32:06)**.
