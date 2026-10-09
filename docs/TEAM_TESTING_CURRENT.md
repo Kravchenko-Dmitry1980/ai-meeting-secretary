@@ -1,5 +1,13 @@
 # Текущее тестирование Secretary Team
 
+## Обновлено 2026-10-10, 01:12 МСК — свежий HTTP handoff
+
+Пользователь сообщил, что перейти через TLS-предупреждение Chrome не получается; обход предупреждения и изменение trust store не выполнялись. Для ручного smoke поднят новый loopback-only `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-7ba11fefe1124059a476f6b1b3bf8305` на порту `60751`, watchdog — максимум 30 минут (примерно до **01:42 МСК**). [Fixture с синтетическими участниками](http://secretary-t9.localhost:60751/fixture) и [Team UI](http://secretary-t9.localhost:60751/team/) открыты во встроенном браузере Codex; `/fixture`, `/fixture/status` и `/team/` вернули HTTP 200. Для входа используйте только одноразовый код Анны, видимый на fixture-странице; код действует 5 минут. Не копируйте его в чат.
+
+Сценарий: «Сегодня» → «Канбан» → «Матрица» → создать задачу без срока → preview → отмена и отсутствие записи → повторное подтверждение → квитанция «Применено и проверено» → перемещение карточки. Дополнительно доступны синтетические кнопки внешнего изменения названия/срока и восстановления подтверждённого срока. Не вводите реальные задачи, ключи или персональные данные. Это отдельная disposable БД и HTTP-симулятор Vikunja (`httpx.MockTransport`): MAX, Polza, записи совещаний и данные владельца не задействованы. Этот smoke не квалифицирует TLS/HTTPS, Secure cookies в Chrome, MAX WebView, мобильный браузер, реальную Vikunja, напоминания, Polza или production readiness.
+
+Основной Secretary на `http://127.0.0.1:8765/` остаётся offline, `/health=ok`, `/ready=local_ok`, `cloud_enabled=false`, `production_qualified=false`. Проверка текущего live `/ready` показала, что запущенный процесс ещё не содержит компонента `release_parity`; изменения readiness вошли в commit `bae8387`, но процесс не перезапускался. Обновление рабочей базы отложено до появления защищённой резервной копии и проверенного rollback.
+
 ## Обновлено 2026-10-10, 00:50 МСК
 
 Из-за недоступного TLS interstitial поднят новый loopback `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-499d796cadfd4c4e9eef03db36f1018d` на порту `57303`, максимум на 30 минут. [Fixture с синтетическими участниками](http://secretary-t9.localhost:57303/fixture); [Team UI](http://secretary-t9.localhost:57303/team/). Маршруты `/fixture`, `/fixture/status` и `/team/` ответили HTTP 200; fixture открыта во вкладке Codex. Это disposable fixture с локальным HTTP-симулятором Vikunja; MAX, Polza, реальные встречи и данные владельца не задействованы.
