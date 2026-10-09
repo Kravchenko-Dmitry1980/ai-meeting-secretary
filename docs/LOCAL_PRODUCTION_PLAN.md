@@ -6,7 +6,9 @@
 
 Проверки: полный guarded offline-набор **5 226 passed, 0 failed**, одно известное предупреждение Starlette/httpx; focused API/backend/OpenAPI/isolation — **98 passed**; frontend `typecheck`, `lint`, PowerShell parser, `git diff --check` и изолированный lifecycle smoke — PASS. Lifecycle smoke подтвердил readiness после старта/повторного старта и удаление временного write probe.
 
-После штатного offline-перезапуска `127.0.0.1:8765` отвечает `/health=ok`, `/ready=local_ok`; внешние интеграции выключены. Обнаружено расхождение контекста данных: текущий запуск использует постоянный каталог `data` и API показывает 4 встречи, тогда как старый процесс до остановки показывал 0. Содержимое встреч не открывалось; причина расхождения не установлена и сверка записей остаётся открытой. Ручная UI-приёмка не выполнена: браузер не пропустил предупреждение тестового TLS-сертификата, настройки доверия не менялись.
+После штатного offline-перезапуска `127.0.0.1:8765` отвечает `/health=ok`, `/ready=local_ok`; `cloud_enabled=false`, исходящие интеграции отключены. Обнаружено расхождение контекста данных: текущий запуск использует постоянный каталог `data` и API показывает 4 встречи, тогда как старый процесс до остановки показывал 0. В прежнем checkpoint записан отдельный scratch DATA_DIR; это вероятное объяснение, но точные настройки старого процесса не сохранены. Содержимое встреч не открывалось, сверка записей остаётся открытой.
+
+TLS interstitial не пройден, настройки доверия не менялись. Для ручного UI теста поднят временный HTTP `HTTP_SYNTHETIC_UI_ONLY` стенд: [fixture](http://secretary-t9.localhost:57303/fixture), [Team UI](http://secretary-t9.localhost:57303/team/), run `t9-http-ui-499d796cadfd4c4e9eef03db36f1018d`, watchdog 30 минут. `/fixture`, `/team/` и `/fixture/status` ответили HTTP 200; вкладка открыта в Codex. Это disposable synthetic data и локальный HTTP-симулятор Vikunja, без MAX, Polza и записей владельца. Ручной сценарий владельца ещё не пройден; HTTP стенд не квалифицирует TLS, Secure cookies, MAX WebView или production.
 
 ## Progress checkpoint — 2026-10-10, 00:06 МСК
 
