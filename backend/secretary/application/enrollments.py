@@ -16,6 +16,7 @@ from secretary.infrastructure.voice_engine import LocalVoiceEngine
 from secretary.infrastructure.voice_store import VoiceStore, _current_user_owned
 from secretary.infrastructure.speaker_repository import canonical
 from secretary.application.voice_matching import CandidateMaterial
+from secretary.infrastructure.storage_space import StorageSpaceError, disk_full_storage_error
 
 
 class EnrollmentService:
@@ -170,6 +171,14 @@ class EnrollmentService:
             status = getattr(exc, 'status', 422)
             self.repository.finish(command.operation_id, error=exc.reason, error_status=status)
             raise EnrollmentFailure(exc.reason, status) from None
+        except OSError as exc:
+            storage_error = disk_full_storage_error(exc)
+            if storage_error is None:
+                raise
+            reason = 'insufficient_storage'
+            self.db.execute("UPDATE voice_enrollments SET status='failed',reason_codes=? WHERE id=? AND status='pending'", (json.dumps([reason]), enrollment_id))
+            self.repository.finish(command.operation_id, error=reason, error_status=507)
+            raise EnrollmentFailure(reason, 507) from None
         finally:
             with self._condition:
                 self._events[enrollment_id].remove(cancel)
@@ -328,7 +337,7 @@ class EnrollmentService:
             response = self.recording_state(profile_id, recording_id)
             self.repository.finish(command.operation_id, response)
             return response
-        except Exception:
+        except Exception as exc:
             pending = self.capture.lease.owner == (self.capture.namespace, recording_id)
             reason = 'capture_cleanup_pending' if pending else 'capture_start_failed'
             if self.db.one('SELECT id FROM enrollment_recordings WHERE id=?', (recording_id,)):
@@ -338,6 +347,8 @@ class EnrollmentService:
             # If no device start was attempted, native closure is already confirmed.
             else:
                 self.capture._release(recording_id, {'native_closed': True})
+            if isinstance(exc, StorageSpaceError):
+                raise EnrollmentFailure('insufficient_storage', 507) from None
             raise EnrollmentFailure(reason) from None
 
     def recording_state(self, profile_id, recording_id=None):

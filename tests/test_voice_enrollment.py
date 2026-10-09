@@ -1,6 +1,7 @@
 """Isolated synthetic lifecycle/API/capture tests. No native device or cloud calls."""
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import errno
 import json
 import struct
 import tempfile
@@ -21,6 +22,7 @@ from secretary.infrastructure.database import uid
 from secretary.infrastructure.voice_audio import screen_pcm, wav_bytes
 from secretary.infrastructure.voice_engine import EmbeddingBatch
 from secretary.infrastructure.voice_store import VoiceStore
+from secretary.infrastructure.storage_space import InsufficientStorageError
 from secretary.settings import Settings
 
 MODEL = ModelStamp('speechbrain/spkrec-ecapa-voxceleb', 'a'*40, 'b'*64)
@@ -255,6 +257,31 @@ def test_capture_timeout_holds_lease_and_crash_removes_only_own_staging(ctx):
     ctx.service.recover()
     assert not folder.exists() and original.read_bytes()==b'preserved'
     assert ctx.service.repository.get(ctx.person,start.enrollment_id).status!='ready'
+
+
+def test_enrollment_capture_disk_pressure_returns_507_and_releases_lease(ctx):
+    def no_space(*args, **kwargs):
+        raise InsufficientStorageError(0, 1024, 1024)
+    ctx.sample.start = no_space
+    response = ctx.api.post(
+        f'/api/v1/participants/{ctx.person}/enrollment-recording/start',
+        headers=ctx.token,
+        json={'consent_confirmed': True, 'microphone_id': 'synthetic', 'operation_id': uid()})
+    assert response.status_code == 507
+    assert response.json()['reason_codes'] == ['insufficient_storage']
+    assert ctx.app.state.capture_lease.owner is None
+
+
+def test_enrollment_storage_disk_full_returns_507_and_marks_command_failed(ctx, monkeypatch):
+    monkeypatch.setattr(ctx.store, 'write',
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(errno.ENOSPC, 'synthetic disk full')))
+    response = upload(ctx)
+    assert response.status_code == 507
+    assert response.json()['reason_codes'] == ['insufficient_storage']
+    failed = ctx.db.one("SELECT status,reason_codes FROM voice_enrollments WHERE person_profile_id=? ORDER BY created_at DESC LIMIT 1",
+                        (ctx.person,))
+    assert failed['status'] == 'failed'
+    assert failed['reason_codes'] == '["insufficient_storage"]'
 
 
 def test_delete_cleanup_failure_is_truthful_and_recovery_retries(ctx,monkeypatch):

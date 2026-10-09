@@ -137,7 +137,11 @@ def test_openapi_distinguishes_ready_pending_and_media(app_client):
         assert set(responses["200"]["content"]) == {media}
     audio = paths["/api/v1/meetings/{meeting_id}/audio"]["get"]["responses"]
     assert "audio/wav" in audio["206"]["content"]
-    assert "404" in audio and "416" in audio
+    assert "404" in audio and "416" in audio and "507" in audio
+    assert "507" in paths["/api/v1/meetings/{meeting_id}/upload"]["post"]["responses"]
+    assert "507" in paths["/api/v1/meetings/{meeting_id}/recording/start"]["post"]["responses"]
+    assert "507" in paths["/api/v1/participants/{person_id}/enrollments"]["post"]["responses"]
+    assert "507" in paths["/api/v1/participants/{person_id}/enrollment-recording/start"]["post"]["responses"]
     exported = paths["/api/v1/meetings/{meeting_id}/export"]["get"]["responses"]["200"]["content"]
     assert set(exported) == {"text/plain", "text/markdown", "application/json",
                              "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}

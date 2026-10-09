@@ -19,9 +19,17 @@ from pathlib import Path
 from typing import Callable
 from uuid import UUID
 
+from secretary.infrastructure.storage_space import (
+    ensure_free_space,
+    estimate_capture_workspace_bytes,
+    remaining_capture_workspace_bytes,
+    disk_full_storage_error,
+)
+
 MAX_RECORDING_SECONDS = 3 * 60 * 60
 FRAMES_PER_BUFFER = 1024
 QUEUE_BLOCKS = 256
+MIN_SPACE_CHECK_INTERVAL_SECONDS = 1.0
 
 
 def _utc() -> str:
@@ -205,11 +213,12 @@ def _repair_partial(folder: Path, channel: str, descriptor: dict) -> dict | None
 class _Session:
     def __init__(self, folder: Path, meeting_id: str, selected: list[tuple[str, dict]],
                  module, manager, chunk_seconds: int, on_chunk, on_error, on_finish=None,
-                 max_seconds=None, max_channels=8):
+                 max_seconds=None, max_channels=8, storage_check=None):
         self.folder, self.meeting_id = folder, meeting_id
         self.module, self.manager = module, manager
         self.on_chunk, self.on_error = on_chunk, on_error
         self.on_finish = on_finish
+        self.storage_check = storage_check
         self.max_seconds, self.max_channels = max_seconds if max_seconds is not None else MAX_RECORDING_SECONDS, max_channels
         self.native_closed = False
         self.lock = threading.RLock()
@@ -218,6 +227,7 @@ class _Session:
         self.error: str | None = None
         self.status = "starting"
         self.started = time.monotonic()
+        self.last_space_check = self.started
         self.finished_duration_ms: int | None = None
         self.streams: list = []
         self.writers: dict[str, _ChannelWriter] = {}
@@ -321,8 +331,17 @@ class _Session:
     def run(self) -> None:
         try:
             while not self.stop_event.is_set() or not self.queue.empty():
-                if time.monotonic() - self.started >= self.max_seconds:
+                now = time.monotonic()
+                if now - self.started >= self.max_seconds:
                     self.stop_event.set()
+                if (self.storage_check and not self.stop_event.is_set()
+                        and now - self.last_space_check >= MIN_SPACE_CHECK_INTERVAL_SECONDS):
+                    elapsed = now - self.started
+                    self.last_space_check = now
+                    try:
+                        self.storage_check(elapsed)
+                    except Exception as exc:
+                        self.fail(f"Недостаточно свободного места; запись остановлена, сохранённые части доступны. {exc}")
                 if not self.stop_event.is_set():
                     inactive = [channel for channel, stream in zip(self.writers, self.streams) if not stream.is_active()]
                     if inactive:
@@ -339,7 +358,9 @@ class _Session:
                 if allowed <= len(data) // writer.frame_size:
                     self.stop_event.set()
         except Exception as exc:
-            self.fail(f"Ошибка сохранения аудио: {exc}")
+            storage_error = disk_full_storage_error(exc) if isinstance(exc, OSError) else None
+            self.fail(str(storage_error) + " Запись остановлена; завершённые части сохранены." if storage_error
+                      else f"Ошибка сохранения аудио: {exc}")
         finally:
             self.stop_event.set()
             self._close_native()
@@ -347,7 +368,9 @@ class _Session:
                 try:
                     writer.close()
                 except Exception as exc:
-                    self.fail(f"Ошибка завершения аудиофайла: {exc}")
+                    storage_error = disk_full_storage_error(exc) if isinstance(exc, OSError) else None
+                    self.fail(str(storage_error) + " Завершённые части сохранены." if storage_error
+                              else f"Ошибка завершения аудиофайла: {exc}")
             with self.lock:
                 self.finished_duration_ms = max((w.config["initial_offset_ms"] + w.total_frames * 1000 // w.config["sample_rate"] for w in self.writers.values()), default=0)
                 self.status = "failed" if self.error else "stopped"
@@ -470,19 +493,32 @@ class AudioCapture:
                         if kinds.get(device_id) != channel:
                             raise ValueError(f"Выбранное устройство {channel} недоступно; обновите список")
                         selected.append((channel, raw[device_id]))
+                selected_devices = [device for _, device in selected]
+                ensure_free_space(
+                    self.settings.data_dir,
+                    required_bytes=estimate_capture_workspace_bytes(selected_devices, self.max_seconds),
+                )
+
+                def check_remaining_space(elapsed_seconds: float) -> None:
+                    required = remaining_capture_workspace_bytes(selected_devices, self.max_seconds, elapsed_seconds)
+                    ensure_free_space(self.settings.data_dir, required_bytes=required)
+
                 session = _Session(folder, meeting_id, selected, module, manager,
                                    self.chunk_seconds, on_chunk or (lambda chunk: None),
                                    on_error or (lambda error: None), on_finish,
-                                   self.max_seconds, self.max_channels)
+                                   self.max_seconds, self.max_channels, check_remaining_space)
                 self._session = session
                 self._pending_manager = None
                 self._pending_owner = None
                 self._native_pending = False
                 session.start()
                 return session.snapshot()
-            except BaseException:
+            except BaseException as exc:
                 if session is None:
                     self._close_pending_manager()
+                storage_error = disk_full_storage_error(exc) if isinstance(exc, OSError) else None
+                if storage_error is not None:
+                    raise storage_error from None
                 raise
 
     def _close_pending_manager(self):

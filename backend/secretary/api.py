@@ -18,8 +18,11 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator, StrictBool
 from secretary.domain.identification import IdentifySpeakers, BypassIdentification, IdentificationState
@@ -36,6 +39,8 @@ from secretary.domain.speakers import (
     PatchParticipant, PatchProfile, PersonProfile, ReviewAttribution, SpeakerError, DTO,
 )
 from secretary.infrastructure.database import Database, uid
+from secretary.infrastructure.storage_space import StorageSpaceError, ensure_free_space, disk_full_storage_error
+from secretary.infrastructure.playback_cache import PlaybackCache, MAX_PLAYBACK_CACHE_BYTES
 from secretary.settings import Settings, EDITABLE_CONFIG
 from secretary.application.enrollments import EnrollmentService
 from secretary.domain.enrollment import (Enrollment, EnrollmentFailure, EnrollCommand, ConfirmEnrollment,
@@ -49,22 +54,32 @@ from secretary.domain.task_delivery import (DeliveryReceipt, PublicationContext,
 from secretary.domain.team import TeamConflict, TeamForbidden
 from secretary.application.publication_evidence import PublicationEvidenceError
 
+UPLOAD_SPACE_CHECK_INTERVAL_BYTES = 8 * 1024 * 1024
+
 
 class BodyTooLarge(HTTPException):
     def __init__(self):
         super().__init__(413, "Request body exceeds configured limit")
 
 
+class UploadStoragePressure(HTTPException):
+    def __init__(self, detail):
+        super().__init__(507, detail)
+
+
 class BodyLimitMiddleware:
     """Bound multipart before parser spooling, including chunked requests."""
-    def __init__(self, app, max_upload_bytes):
+    def __init__(self, app, max_upload_bytes, data_dir=None):
         self.app, self.max_upload_bytes = app, max_upload_bytes
+        self.data_dir = Path(data_dir) if data_dir is not None else None
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         enrollment_upload = bool(re.fullmatch(r'/api/v1/participants/[^/]+/enrollments', scope['path']))
-        limit = MAX_PAYLOAD + 65536 if enrollment_upload else (self.max_upload_bytes + 65536 if scope["path"].endswith("/upload") else 1024 * 1024)
+        meeting_upload = scope["path"].endswith("/upload")
+        storage_bounded_upload = enrollment_upload or meeting_upload
+        limit = MAX_PAYLOAD + 65536 if enrollment_upload else (self.max_upload_bytes + 65536 if meeting_upload else 1024 * 1024)
         headers = dict(scope.get("headers", []))
         try:
             length = int(headers.get(b"content-length", b"0"))
@@ -74,19 +89,48 @@ class BodyLimitMiddleware:
             return await JSONResponse({"detail": "Invalid Content-Length"}, 400)(scope, receive, send)
         if length > limit:
             return await JSONResponse({"detail": "Request body exceeds configured limit"}, 413)(scope, receive, send)
+        estimated_upload_bytes = length if length > 0 else limit
+        if storage_bounded_upload and self.data_dir is not None:
+            try:
+                # At peak, request spool, stored source, generated derivatives,
+                # and immutable playback snapshots can coexist.
+                ensure_free_space(self.data_dir, required_bytes=estimated_upload_bytes * 4)
+                ensure_free_space(Path(tempfile.gettempdir()), required_bytes=estimated_upload_bytes)
+            except StorageSpaceError as exc:
+                return await JSONResponse({"detail": str(exc)}, 507)(scope, receive, send)
         received = 0
+        next_space_check = UPLOAD_SPACE_CHECK_INTERVAL_BYTES
         async def bounded_receive():
-            nonlocal received
+            nonlocal received, next_space_check
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
                     raise BodyTooLarge()
+                if (storage_bounded_upload and self.data_dir is not None
+                        and received >= next_space_check):
+                    remaining = max(0, estimated_upload_bytes - received)
+                    try:
+                        ensure_free_space(self.data_dir,
+                                          required_bytes=estimated_upload_bytes * 3 + remaining)
+                        ensure_free_space(Path(tempfile.gettempdir()), required_bytes=remaining)
+                    except StorageSpaceError as exc:
+                        raise UploadStoragePressure(str(exc)) from None
+                    next_space_check = received + UPLOAD_SPACE_CHECK_INTERVAL_BYTES
             return message
         try:
             await self.app(scope, bounded_receive, send)
         except BodyTooLarge:
             await JSONResponse({"detail": "Request body exceeds configured limit"}, 413)(scope, receive, send)
+        except UploadStoragePressure as exc:
+            await JSONResponse({"detail": exc.detail}, 507)(scope, receive, send)
+        except StorageSpaceError as exc:
+            await JSONResponse({"detail": str(exc)}, 507)(scope, receive, send)
+        except OSError as exc:
+            storage_error = disk_full_storage_error(exc)
+            if storage_error is None:
+                raise
+            await JSONResponse({"detail": str(storage_error)}, 507)(scope, receive, send)
 
 
 class SegmentsPage(BaseModel):
@@ -287,11 +331,13 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     app = FastAPI(title="Secretary", version="0.1.0", lifespan=lifespan)
     app.state.instance_lock = instance_lock
-    app.add_middleware(BodyLimitMiddleware, max_upload_bytes=settings.max_upload_bytes)
+    app.add_middleware(BodyLimitMiddleware, max_upload_bytes=settings.max_upload_bytes,
+                       data_dir=settings.data_dir)
     if maintenance is not None:
         from secretary.interface.maintenance_middleware import MaintenanceMiddleware
         app.add_middleware(MaintenanceMiddleware, maintenance=maintenance, participant_id=participant_id)
     app.state.db, app.state.worker, app.state.settings, app.state.capture = db, worker, settings, capture
+    app.state.playback_cache = PlaybackCache(settings.data_dir, MAX_PLAYBACK_CACHE_BYTES)
     app.state.speakers = speaker_service
     assignment_service = AssignmentRepository(db)
     app.state.assignments = assignment_service
@@ -340,6 +386,18 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     @app.options("/{path:path}")
     async def preflight(path: str):
         return Response(status_code=204)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def disk_aware_http_exception(request, exc):
+        if exc.status_code == 400 and exc.detail == "There was an error parsing the body":
+            cause = exc.__cause__
+            while cause is not None:
+                if isinstance(cause, OSError):
+                    storage_error = disk_full_storage_error(cause)
+                    if storage_error is not None:
+                        return JSONResponse({"detail": str(storage_error)}, 507)
+                cause = cause.__cause__
+        return await http_exception_handler(request, exc)
 
     @app.exception_handler(EnrollmentFailure)
     async def enrollment_failure(request, exc):
@@ -469,7 +527,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def enrollments(person_id: str):
         return await asyncio.to_thread(enrollment_service.repository.list, person_id)
 
-    @app.post('/api/v1/participants/{person_id}/enrollments', response_model=Enrollment, status_code=201)
+    @app.post('/api/v1/participants/{person_id}/enrollments', response_model=Enrollment, status_code=201,
+              responses={507: {"model": ErrorResponse, "description": "Недостаточно места для загрузки или сохранения записи"}})
     async def upload_enrollment(person_id: str, file: UploadFile = File(...),
                                 consent_confirmed: str = Form(...), operation_id: str = Form(...)):
         try:
@@ -488,7 +547,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         finally:
             await file.close()
 
-    @app.post('/api/v1/participants/{person_id}/enrollment-recording/start', response_model=EnrollmentRecording)
+    @app.post('/api/v1/participants/{person_id}/enrollment-recording/start', response_model=EnrollmentRecording,
+              responses={507: {"model": ErrorResponse, "description": "Недостаточно места для локальной аудиозаписи"}})
     async def enrollment_recording_start(person_id: str, body: StartEnrollmentRecording):
         return await asyncio.to_thread(enrollment_service.start_recording, person_id, body)
 
@@ -633,8 +693,17 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     async def meeting(meeting_id: str):
         return db.meeting(meeting_id)
 
-    @app.post("/api/v1/meetings/{meeting_id}/upload", status_code=202, response_model=JobAccepted)
+    @app.post("/api/v1/meetings/{meeting_id}/upload", status_code=202, response_model=JobAccepted,
+              responses={507: {"model": ErrorResponse, "description": "Недостаточно места для загрузки аудиозаписи"}})
     async def upload(meeting_id: str, file: UploadFile = File(...)):
+        reported_size_value = getattr(file, "size", None)
+        reported_size = (reported_size_value if type(reported_size_value) is int and reported_size_value >= 0
+                         else settings.max_upload_bytes)
+        try:
+            ensure_free_space(settings.data_dir, required_bytes=reported_size * 3)
+        except StorageSpaceError as exc:
+            await file.close()
+            raise HTTPException(507, str(exc)) from None
         token = uid()
         try:
             db.reserve_upload(meeting_id, token)
@@ -652,10 +721,23 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                     size += len(part)
                     if size > settings.max_upload_bytes:
                         raise HTTPException(413, "Recording exceeds configured upload size")
+                    remaining_workspace = max(0, reported_size * 3 - size)
+                    ensure_free_space(settings.data_dir, required_bytes=remaining_workspace)
                     stream.write(part)
             if size == 0:
                 raise HTTPException(422, "Empty recording")
             temporary.replace(final)
+        except StorageSpaceError as exc:
+            temporary.unlink(missing_ok=True)
+            db.update_meeting(meeting_id, media_path=None, status="new")
+            raise HTTPException(507, str(exc)) from None
+        except OSError as exc:
+            temporary.unlink(missing_ok=True)
+            db.update_meeting(meeting_id, media_path=None, status="new")
+            storage_error = disk_full_storage_error(exc)
+            if storage_error is not None:
+                raise HTTPException(507, str(storage_error)) from None
+            raise
         except BaseException:
             temporary.unlink(missing_ok=True)
             db.update_meeting(meeting_id, media_path=None, status="new")
@@ -682,7 +764,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         db.meeting(meeting_id)
         return capture.state(meeting_id)
 
-    @app.post("/api/v1/meetings/{meeting_id}/recording/start")
+    @app.post("/api/v1/meetings/{meeting_id}/recording/start",
+              responses={507: {"model": ErrorResponse, "description": "Недостаточно места для локальной аудиозаписи"}})
     async def recording_start(meeting_id: str, body: RecordingRequest):
         meeting = db.meeting(meeting_id, internal=True)
         if meeting["media_path"] or db.chunks(meeting_id) or meeting["recording"]:
@@ -719,6 +802,9 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
             if result.get("error") or result.get("status") in {"failed", "error", "unavailable"}:
                 db.update_meeting(meeting_id, recording=0, status="partial_error", error=result.get("error", "Audio capture failed"))
             return result
+        except StorageSpaceError as exc:
+            db.update_meeting(meeting_id, recording=0, status=meeting["status"], error=None)
+            raise HTTPException(507, str(exc)) from None
         except Exception as exc:
             db.update_meeting(meeting_id, recording=0, status="partial_error", error=str(exc))
             raise HTTPException(409, str(exc)) from None
@@ -864,6 +950,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                  400: {"description": "Некорректный заголовок Range", "content": {"text/plain": {"schema": {"type": "string"}}}},
                  404: {"model": ErrorResponse, "description": "Встреча, канал или файл записи не найден"},
                  409: {"model": ErrorResponse, "description": "Аудиофрагменты нельзя объединить без искажения записи"},
+                 507: {"model": ErrorResponse, "description": "Недостаточно места на диске или активный плеер занят в пределах кэша"},
                  416: {"description": "Запрошенный диапазон вне файла", "content": {"text/plain": {"schema": {"type": "string"}}}},
              })
     async def audio(meeting_id: str, channel: Literal["import", "microphone", "system", "mixed"] | None = None):
@@ -892,27 +979,33 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         signature = hashlib.sha256(json.dumps(["timeline-v1", selected, snapshot], separators=(",", ":")).encode()).hexdigest()[:32]
         combined = settings.data_dir / "audio" / meeting_id / f"playback-{selected}-{signature}.wav"
         async with audio_locks.setdefault(meeting_id + selected, asyncio.Lock()):
-            if not combined.exists():
+            try:
+                with wave.open(str(paths[0]), "rb") as first:
+                    params = first.getparams()
+                written_frames = 0
+                frame_size = params.nchannels * params.sampwidth
+                for part, path in zip(selected_parts, paths):
+                    with wave.open(str(path), "rb") as source:
+                        if source.getparams()[:3] != params[:3]:
+                            raise ValueError("Incompatible channel audio formats")
+                        target_frame = round(part["offset_ms"] * params.framerate / 1000)
+                        if written_frames - target_frame > max(1, params.framerate // 1000):
+                            raise ValueError("Overlapping source audio chunks cannot form a faithful playback timeline")
+                        written_frames += max(0, target_frame - written_frames) + source.getnframes()
+                expected_bytes = 44 + written_frames * frame_size
+
                 def concatenate():
                     # The cache basename already includes a hash. Repeating it
                     # in a temporary name can exceed Windows' path limit.
                     partial = combined.with_name(f".{uid()}.partial")
-                    with wave.open(str(paths[0]), "rb") as first:
-                        params = first.getparams()
                     try:
                         with wave.open(str(partial), "wb") as output:
                             output.setparams(params)
                             written_frames = 0
-                            frame_size = params.nchannels * params.sampwidth
                             silence = b"\0" * (32768 * frame_size)
                             for part, path in zip(selected_parts, paths):
                                 with wave.open(str(path), "rb") as source:
-                                    if source.getparams()[:3] != params[:3]:
-                                        raise ValueError("Incompatible channel audio formats")
-                                    target_frame = round(part["offset_ms"] * params.framerate / 1000)
-                                    if written_frames - target_frame > max(1, params.framerate // 1000):
-                                        raise ValueError("Overlapping source audio chunks cannot form a faithful playback timeline")
-                                    gap = max(0, target_frame - written_frames)
+                                    gap = max(0, round(part["offset_ms"] * params.framerate / 1000) - written_frames)
                                     while gap:
                                         count = min(gap, 32768)
                                         output.writeframesraw(silence[:count * frame_size])
@@ -922,20 +1015,28 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                                         output.writeframesraw(data)
                                         written_frames += len(data) // frame_size
                         # Atomic create-if-absent; never replace a WAV held by a player.
-                        # A second process producing this exact snapshot can only reuse it.
                         try:
                             os.link(partial, combined)
                         except FileExistsError:
                             pass
                     finally:
                         partial.unlink(missing_ok=True)
-                try:
-                    await asyncio.to_thread(concatenate)
-                except FileNotFoundError:
-                    raise HTTPException(404, missing_audio) from None
-                except ValueError as exc:
-                    raise HTTPException(409, str(exc)) from None
-        return FileResponse(combined, media_type="audio/wav", headers={"X-Secretary-Audio-Channel": selected})
+                lease = await asyncio.to_thread(
+                    app.state.playback_cache.get_or_create, combined, expected_bytes, concatenate)
+            except FileNotFoundError:
+                raise HTTPException(404, missing_audio) from None
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            except StorageSpaceError as exc:
+                raise HTTPException(507, str(exc)) from None
+            except OSError as exc:
+                storage_error = disk_full_storage_error(exc)
+                if storage_error is not None:
+                    raise HTTPException(507, str(storage_error)) from None
+                raise
+        return FileResponse(lease.path, media_type="audio/wav",
+                            headers={"X-Secretary-Audio-Channel": selected},
+                            background=BackgroundTask(lease.release))
 
     @app.get("/api/v1/meetings/{meeting_id}/export", response_class=Response,
              responses={200: {"description": "Документ в формате, выбранном параметром format",

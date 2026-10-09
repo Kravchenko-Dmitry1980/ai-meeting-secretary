@@ -1,25 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import io
 import json
 import hashlib
+import shutil
 import struct
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import httpx
 from fastapi.testclient import TestClient
 
 from secretary.api import create_app
+import secretary.api as api_module
 from secretary.application.evidence import validate_summary
 from secretary.application.preparation import cloud_audio, prepare_audio
 from secretary.application.worker import Worker
 from secretary.application.exporting import export_meeting
 from secretary.domain.models import TranscriptSegment
 from secretary.infrastructure.database import Database, stable_id, uid
+from secretary.infrastructure.storage_space import InsufficientStorageError
 from secretary.infrastructure.polza import ProviderError
 from secretary.settings import Settings
 
@@ -159,6 +164,219 @@ def test_empty_upload_and_reupload_are_distinct(settings):
         assert api.post(url, headers=auth(api), files={"file": ("empty.wav", b"")}).status_code == 422
         assert api.post(url, headers=auth(api), files={"file": ("input.wav", wav_bytes())}).status_code == 202
         assert api.post(url, headers=auth(api), files={"file": ("input.wav", wav_bytes())}).status_code == 409
+
+
+def test_upload_preflight_rejects_low_disk_before_creating_meeting_media(settings, monkeypatch):
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as api:
+        meeting = api.post("/api/v1/meetings", headers=auth(api), json={"title": "Low disk"}).json()
+        monkeypatch.setattr(shutil, "disk_usage", lambda _path: SimpleNamespace(total=100, used=100, free=0))
+
+        response = api.post(f"/api/v1/meetings/{meeting['id']}/upload", headers=auth(api),
+                            files={"file": ("synthetic.wav", wav_bytes(), "audio/wav")})
+
+        current = app.state.db.meeting(meeting["id"], internal=True)
+        assert response.status_code == 507
+        assert "свободного места" in response.json()["detail"].lower()
+        assert current["status"] == "new" and current["media_path"] is None
+        assert not (settings.data_dir / "uploads" / meeting["id"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_chunked_upload_aborts_before_spooling_when_disk_drops(settings, monkeypatch):
+    settings.max_upload_bytes = 1024 * 1024
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    meeting = app.state.db.create_meeting("Synthetic low disk during upload")
+    from starlette.datastructures import UploadFile
+    original_write = UploadFile.write
+    writes = 0
+
+    async def counted_write(upload, data):
+        nonlocal writes
+        writes += len(data)
+        await original_write(upload, data)
+
+    monkeypatch.setattr(UploadFile, "write", counted_write)
+    disk_checks = 0
+
+    def disk_usage(_path):
+        nonlocal disk_checks
+        disk_checks += 1
+        free = 10**12 if disk_checks <= 2 else 0
+        return SimpleNamespace(total=10**12, used=10**12 - free, free=free)
+
+    monkeypatch.setattr(shutil, "disk_usage", disk_usage)
+    monkeypatch.setattr(api_module, "UPLOAD_SPACE_CHECK_INTERVAL_BYTES", 1, raising=False)
+    payload = (b"--x\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x.wav\"\r\n"
+               b"Content-Type: audio/wav\r\n\r\nsynthetic audio\r\n--x--\r\n")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8765") as api:
+        token = (await api.get("/api/v1/session")).json()["csrf_token"]
+        headers = {"Content-Type": "multipart/form-data; boundary=x", "X-Secretary-Token": token}
+
+        async def parts():
+            yield payload
+
+        response = await api.post(f"/api/v1/meetings/{meeting['id']}/upload", content=parts(), headers=headers)
+
+    current = app.state.db.meeting(meeting["id"], internal=True)
+    assert response.status_code == 507, response.text
+    assert "свободного места" in response.json()["detail"].lower()
+    assert writes == 0
+    assert current["status"] == "new" and current["media_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_chunked_upload_operating_system_disk_full_returns_507(settings, monkeypatch):
+    settings.max_upload_bytes = 1024 * 1024
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    meeting = app.state.db.create_meeting("Synthetic spool disk full")
+    from starlette.datastructures import UploadFile
+
+    async def fail_spool_write(_upload, _data):
+        raise OSError(errno.ENOSPC, "synthetic disk full")
+
+    monkeypatch.setattr(UploadFile, "write", fail_spool_write)
+    payload = (b"--x\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x.wav\"\r\n"
+               b"Content-Type: audio/wav\r\n\r\nsynthetic audio\r\n--x--\r\n")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                                 base_url="http://127.0.0.1:8765") as api:
+        token = (await api.get("/api/v1/session")).json()["csrf_token"]
+        headers = {"Content-Type": "multipart/form-data; boundary=x", "X-Secretary-Token": token}
+
+        async def parts():
+            yield payload
+
+        response = await api.post(f"/api/v1/meetings/{meeting['id']}/upload", content=parts(), headers=headers)
+
+    current = app.state.db.meeting(meeting["id"], internal=True)
+    assert response.status_code == 507, response.text
+    assert "диск заполнен" in response.json()["detail"].lower()
+    assert current["status"] == "new" and current["media_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_upload_stops_copy_when_free_space_drops_and_removes_partial_file(settings, monkeypatch):
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    meeting = app.state.db.create_meeting("Synthetic low disk during copy")
+    endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "").endswith("/upload"))
+    low_disk = False
+
+    def disk_usage(_path):
+        free = 0 if low_disk else 10**12
+        return SimpleNamespace(total=10**12, used=10**12 - free, free=free)
+
+    monkeypatch.setattr(shutil, "disk_usage", disk_usage)
+
+    class File:
+        size = 32
+
+        def __init__(self):
+            self.reads = 0
+            self.closed = False
+
+        async def read(self, _limit):
+            nonlocal low_disk
+            self.reads += 1
+            if self.reads == 1:
+                return b"A" * 16
+            if self.reads == 2:
+                low_disk = True
+                return b"B" * 16
+            return b""
+
+        async def close(self):
+            self.closed = True
+
+    file = File()
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as caught:
+        await endpoint(meeting["id"], file)
+
+    current = app.state.db.meeting(meeting["id"], internal=True)
+    assert caught.value.status_code == 507 and file.closed
+    assert current["status"] == "new" and current["media_path"] is None
+    assert not list((settings.data_dir / "uploads" / meeting["id"]).glob("*.partial"))
+
+
+@pytest.mark.asyncio
+async def test_upload_os_disk_full_returns_507_and_removes_partial_file(settings, monkeypatch):
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    meeting = app.state.db.create_meeting("Synthetic operating-system disk full")
+    endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "").endswith("/upload"))
+    original_open = Path.open
+    upload_dir = settings.data_dir / "uploads" / meeting["id"]
+
+    def disk_full_open(path, *args, **kwargs):
+        if path.parent == upload_dir and path.name.endswith(".partial"):
+            raise OSError(errno.ENOSPC, "synthetic disk full")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", disk_full_open)
+
+    class File:
+        size = 4
+
+        def __init__(self):
+            self.closed = False
+
+        async def read(self, _limit):
+            return b"data"
+
+        async def close(self):
+            self.closed = True
+
+    file = File()
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as caught:
+        await endpoint(meeting["id"], file)
+
+    current = app.state.db.meeting(meeting["id"], internal=True)
+    assert caught.value.status_code == 507 and file.closed
+    assert current["status"] == "new" and current["media_path"] is None
+    assert not list(upload_dir.glob("*.partial"))
+
+
+@pytest.mark.asyncio
+async def test_playback_os_disk_full_returns_507_and_removes_partial_file(settings, monkeypatch):
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    meeting = app.state.db.create_meeting("Synthetic playback disk full")
+    folder = settings.data_dir / "audio" / meeting["id"]
+    folder.mkdir(parents=True)
+    source = folder / "delayed.wav"
+    source.write_bytes(wav_bytes())
+    app.state.db.add_chunk(meeting["id"], {"path": str(source), "sequence": 0, "channel": "import",
+                                             "offset_ms": 1000, "duration_ms": 1000,
+                                             "sha256": hashlib.sha256(source.read_bytes()).hexdigest()})
+    monkeypatch.setattr(api_module.os, "link",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(errno.ENOSPC, "synthetic disk full")))
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                                 base_url="http://127.0.0.1:8765") as api:
+        response = await api.get(f"/api/v1/meetings/{meeting['id']}/audio?channel=import")
+
+    assert response.status_code == 507
+    assert not list(folder.glob("*.partial"))
+    assert source.is_file()
+
+
+def test_recording_preflight_storage_error_returns_507_without_partial_state(settings):
+    class StoragePressureCapture(FakeCapture):
+        def start(self, *_args, **_kwargs):
+            raise InsufficientStorageError(0, 1024, 1024)
+
+    app = create_app(settings, provider_factory=FakeProvider,
+                     capture=StoragePressureCapture(), run_worker=False)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as api:
+        meeting = api.post("/api/v1/meetings", headers=auth(api), json={"title": "Low disk"}).json()
+        response = api.post(f"/api/v1/meetings/{meeting['id']}/recording/start",
+                            headers=auth(api), json={"auto_process": False})
+        current = app.state.db.meeting(meeting["id"], internal=True)
+
+        assert response.status_code == 507
+        assert current["status"] == "new" and current["recording"] == 0
+        assert "свободного места" in response.json()["detail"].lower()
 
 
 def test_atomic_claim_and_duplicate_enqueue(db):
@@ -743,6 +961,40 @@ async def test_playback_single_delayed_channel_keeps_meeting_time_origin(setting
             assert stream.getnframes() == 12000
             assert stream.readframes(7200) == b"\0" * (7200 * 4)
             assert stream.readframes(4800) == struct.pack("<hh", 123, 123) * 4800
+
+
+@pytest.mark.asyncio
+async def test_playback_cache_evicts_old_versions_but_never_active_reader(settings, monkeypatch):
+    monkeypatch.setattr(api_module, "MAX_PLAYBACK_CACHE_BYTES", 350_000, raising=False)
+    app = create_app(settings, provider_factory=FakeProvider, capture=FakeCapture(), run_worker=False)
+    db = app.state.db
+    first = db.create_meeting("First cache lease")
+    second = db.create_meeting("Second cache lease")
+    for meeting in (first, second):
+        folder = settings.data_dir / "audio" / meeting["id"]
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / "delayed.wav"
+        path.write_bytes(wav_bytes())
+        db.add_chunk(meeting["id"], {"path": str(path), "sequence": 0, "channel": "import", "offset_ms": 5000,
+                                     "duration_ms": 1000, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    audio_route = next(route for route in app.routes if getattr(route, "path", None) == "/api/v1/meetings/{meeting_id}/audio")
+
+    first_response = await audio_route.endpoint(first["id"], "import")
+    first_cache = Path(first_response.path)
+    assert first_cache.exists()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://127.0.0.1:8765") as api:
+        blocked = await api.get(f"/api/v1/meetings/{second['id']}/audio?channel=import")
+    assert blocked.status_code == 507
+    assert first_cache.exists(), "a response-held playback file must not be evicted"
+
+    await first_response.background()
+    second_response = await audio_route.endpoint(second["id"], "import")
+    second_cache = Path(second_response.path)
+    assert second_cache.exists()
+    assert not first_cache.exists(), "the oldest inactive playback cache should be evicted at the configured cap"
+    assert second_cache.stat().st_size <= api_module.MAX_PLAYBACK_CACHE_BYTES
+    await second_response.background()
 
 
 @pytest.mark.asyncio

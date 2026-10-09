@@ -1269,6 +1269,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места для загрузки или сохранения записи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1314,6 +1324,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnrollmentRecording"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Недостаточно места для локальной аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2121,6 +2141,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места для загрузки аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2261,6 +2291,16 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "507": {
+            "description": "Недостаточно места для локальной аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
@@ -2933,6 +2973,16 @@
           },
           "409": {
             "description": "Аудиофрагменты нельзя объединить без искажения записи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Недостаточно места на диске или активный плеер занят в пределах кэша",
             "content": {
               "application/json": {
                 "schema": {
