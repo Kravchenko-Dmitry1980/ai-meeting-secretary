@@ -1,5 +1,11 @@
 # Текущее тестирование Secretary Team
 
+## Свежая HTTP fixture — 2026-10-10, 03:46 МСК
+
+Поскольку Chrome не пропускает локальное TLS-предупреждение, создан новый одноразовый loopback HTTP стенд: [страница синтетической фикстуры](http://secretary-t9.localhost:64637/fixture) и [Team UI](http://secretary-t9.localhost:64637/team/). Оба URL и `/fixture/status` отвечают HTTP 200; режим `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, provider `httpx.MockTransport`. Примерный срок жизни — до 03:56 МСК. Использовать именно `http://`; прежний `https://…:53124` не является актуальной ссылкой.
+
+На странице fixture код входа можно получить только локально; его не отправлять в чат. Внешняя Vikunja, MAX, Polza и рабочие задачи не подключены. Это позволяет проверить только синтетическую Team UI и не квалифицирует TLS, телефон, production-интеграцию или ручную приёмку. После истечения стенда запустить `& '.\.venv\Scripts\python.exe' -B '.\scripts\team\probe_team_ui_http.py' start`.
+
 ## Свежий HTTP стенд — 2026-10-10, 02:46 МСК
 
 Предыдущая fixture `:59979` истекла. Новая loopback-only fixture работает на [странице синтетических кодов](http://secretary-t9.localhost:64904/fixture) и в [Team UI](http://secretary-t9.localhost:64904/team/), примерно до 03:12 МСК. `/fixture`, `/team/`, `/fixture/status` проверены: HTTP 200, `simulation=true`, `HTTP_SYNTHETIC_UI_ONLY`, `httpx.MockTransport`. HTTPS-предупреждение проходить не требуется; MAX, Polza и реальные задачи не подключены.

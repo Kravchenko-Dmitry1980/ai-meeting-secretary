@@ -150,6 +150,59 @@ async def test_async_job_mapping_survives_lost_caller_ack_and_poll_is_free(tmp_p
     assert budget.snapshot().reserved_micro == 0
 
 
+@pytest.mark.asyncio
+async def test_worker_poll_failure_retains_reservations_and_resume_never_resubmits(tmp_path):
+    from secretary.application.worker import Worker
+    from secretary.infrastructure.database import Database
+    from test_backend import prepared
+
+    configuration = settings(tmp_path, stt_model="aiesa/transcribe").model_copy(update={
+        "local_cost_limits_enabled": True, "meeting_budget_rub": 10,
+    })
+    budget = ledger(tmp_path, key=KEY_TAG)
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "gen_poll_pending", "status": "processing",
+                                             "usage": {"cost_rub": 8}})
+        raise httpx.ReadTimeout("synthetic poll timeout", request=request)
+
+    def provider_factory(configuration):
+        return PolzaClient(configuration, httpx.MockTransport(handler), budget=budget,
+                           charge_context={"key_tag": KEY_TAG})
+
+    db = Database(configuration.data_dir / "secretary.sqlite3")
+    meeting, _ = prepared(db, configuration)
+    worker = Worker(db, configuration, provider_factory)
+    job = worker.enqueue_transcription(meeting["id"])
+
+    await worker.run_once()
+    first = db.job(job["id"], internal=True)
+    first_usage = db.rows("SELECT id,status,reserved_rub FROM usage WHERE job_id=?", (job["id"],))
+    operation_id = budget.operation_for_job("gen_poll_pending")
+    monthly_reservation = budget.reservation(operation_id)
+
+    assert calls == ["POST", "GET"]
+    assert first["provider_job_id"] == "gen_poll_pending" and first["status"] == "queued"
+    assert len(first_usage) == 1 and first_usage[0]["status"] == "unknown"
+    assert first_usage[0]["reserved_rub"] is not None
+    assert monthly_reservation.status == "submitted"
+    assert budget.snapshot().reserved_micro >= 8_000000
+
+    await worker.run_once()
+    second = db.job(job["id"], internal=True)
+    second_usage = db.rows("SELECT id,status,reserved_rub FROM usage WHERE job_id=?", (job["id"],))
+
+    assert calls == ["POST", "GET", "GET"]
+    assert second["provider_job_id"] == "gen_poll_pending" and second["status"] == "queued"
+    assert second_usage == first_usage
+    assert budget.operation_for_job("gen_poll_pending") == operation_id
+    assert budget.reservation(operation_id).status == "submitted"
+    assert budget.snapshot().reserved_micro >= 8_000000
+
+
 def test_production_factory_always_connects_same_monthly_repository(tmp_path):
     from secretary.infrastructure.polza import build_polza_client
     a = build_polza_client(settings(tmp_path))
