@@ -1,11 +1,11 @@
 # Проверки Secretary V1
 
-## Продолжение проверки — 2026-10-10, 06:31 МСК
+## Продолжение проверки — 2026-10-10, 06:33 МСК
 
 - После небольшой правки пустого состояния `MeetingResults` полный frontend-набор прошёл: **297/297**; release-manifest — **1/1**, `typecheck`, `lint` и production build в `.runtime/qa-build-goal-20261010-r2` — PASS. Новая регрессия сначала воспроизвела неверное сообщение, затем прошла с исправлением. `frontend/dist` не заменялся.
 - Свежий guarded backend/audit прогон от 06:09 МСК остаётся **5 232 passed, 0 failed**, одно известное предупреждение `StarletteDeprecationWarning`, 30:59. Backend-код после этого прогона не менялся.
-- Основной процесс `127.0.0.1:8765`: `/health=200/ok`, `/ready=200/local_ok`, `cloud_enabled=false`, `production_qualified=false`. Uptime на точке наблюдения около **5,7 ч**. Read-only монитор 24 ч запущен; первая минутная проверка успешна, промежуточный evidence сохраняется в `.runtime/uptime-watch-results-20261010/`. Результат не засчитывается до полного окна без перезапусков, ошибок или пропусков.
-- Отдельная `HTTP_SYNTHETIC_UI_ONLY` fixture и Team UI отвечают HTTP 200; провайдер — `httpx.MockTransport`, TLS не тестируется. Ссылки для ручной проверки и локальный порядок входа — в [текущем отчёте](TEAM_TESTING_CURRENT.md). Ручная приёмка владельца не подтверждена; проверка не покрывает TLS/MAX, реальную Vikunja/Polza, рабочие встречи или телефон.
+- Основной процесс `127.0.0.1:8765`: `/health=200/ok`, `/ready=200/local_ok`, `cloud_enabled=false`, `production_qualified=false`. Uptime на точке наблюдения около **5,7 ч**. Read-only монитор 24 ч запущен; на текущем срезе — 3 успешные минутные проверки, промежуточный evidence сохраняется в `.runtime/uptime-watch-results-20261010/`. Результат не засчитывается до полного окна без перезапусков, ошибок или пропусков.
+- Отдельная [HTTP_SYNTHETIC_UI_ONLY fixture](http://secretary-t9.localhost:60243/fixture) и [Team UI](http://secretary-t9.localhost:60243/team/) отвечают HTTP 200; run `t9-http-ui-de15cde51afa4ed6873be7b6a29038c1`, провайдер — `httpx.MockTransport`, TLS не тестируется. Ручная приёмка владельца не подтверждена; проверка не покрывает TLS/MAX, реальную Vikunja/Polza, рабочие встречи или телефон.
 - C: и D: сейчас без BitLocker (`ProtectionStatus=Off`). Подтверждённая защищённая копия и restore-drill отсутствуют; microphone/WASAPI capture и live Polza benchmark остаются незакрытыми gates.
 
 ## Повторная проверка — 2026-10-10, 05:09 МСК
