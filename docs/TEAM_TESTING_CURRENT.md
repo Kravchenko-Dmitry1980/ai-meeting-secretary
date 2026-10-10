@@ -1,5 +1,11 @@
 # Текущее тестирование Secretary Team
 
+## Актуальная ссылка для ручного входа — 2026-10-10, 05:34 МСК
+
+Предыдущий временный стенд завершился, поэтому запущен новый изолированный `HTTP_SYNTHETIC_UI_ONLY` run на 30 минут, ориентировочно до 06:04 МСК. В Codex In-app Browser открыты [страница синтетических участников](http://secretary-t9.localhost:49916/fixture) и [Team UI](http://secretary-t9.localhost:49916/team/). Проверены GET `/fixture/status`, `/fixture`, `/team/`: HTTP 200; статус подтверждает `simulation=true`, `provider=httpx.MockTransport`, `tls_qualification=not_tested`.
+
+В управляемом Chrome профиль `Dmitry` заблокировал HTTP fixture с `ERR_BLOCKED_BY_CLIENT`; исходный HTTPS-адрес по-прежнему упирается в предупреждение сертификата. Предупреждения не обходились, доверенные сертификаты и настройки браузера не менялись. Используйте две ссылки именно в Codex In-app Browser: на странице fixture нажмите «Новый синтетический код» у Анны, затем введите его в поле «Одноразовый код» на странице Team UI и нажмите «Войти». Код действует 5 минут и вводится только локально; не отправляйте его в чат. Team UI оставлена на экране входа. Это ручная приёмка синтетического интерфейса; реальные записи и задачи, MAX, Polza и внешняя Vikunja не подключены. Стенд временный, `production_qualified=false`.
+
 ## Свежая HTTP fixture — 2026-10-10, 05:14 МСК
 
 Пользователь не смог пройти локальное TLS-предупреждение; обход сертификата и изменение trust store не выполнялись. Для ручного synthetic smoke открыты отдельные вкладки Codex: [страница синтетической фикстуры](http://secretary-t9.localhost:49702/fixture) и [Team UI](http://secretary-t9.localhost:49702/team/). Проверенные GET `/fixture`, `/team/`, `/fixture/status` ответили HTTP 200; статус сообщает `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, provider `httpx.MockTransport`, `tls_qualification=not_tested`. Стенд временный, ожидаемый TTL — около 30 минут с момента запуска.
