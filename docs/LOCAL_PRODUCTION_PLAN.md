@@ -1,5 +1,13 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-10, 04:01 МСК
+
+В основном UI и backend подтверждено, что 69-минутная запись завершила расшифровку 35/35 чанков и summary; повторять обработку не нужно. История хранит 34 старых failed transcription attempts. Usage ledger по этой встрече содержит 35 неизвестных STT-расходов без provider request ID; в доступных локальных записях нет исходных HTTP-ответов, поэтому точная стоимость и причина отсутствия receipts не установлены. Это не следует смешивать с текущей суммой кабинета Polza.
+
+Текущий main runtime отвечает `health=ok`, `ready=local_ok`, но `production_qualified=false` и работает в offline-режиме (`cloud_enabled=false`). Дополнительные лимиты Secretary выключены по указанию владельца; ключ присутствует, не выводился. Frontend revalidation: 293 tests, release manifest build 1 test, typecheck/lint PASS; backend/audit: 5 231 PASS. Реальных сетевых/аудио тестов в этой проверке не было.
+
+Пользователь не смог пройти локальное HTTPS-предупреждение, поэтому оставлена временная loopback [HTTP fixture](http://secretary-t9.localhost:57500/fixture) и [Team UI](http://secretary-t9.localhost:57500/team/); свежая проверка подтвердила HTTP 200 для обеих страниц и `/fixture/status`, режим синтетический, `tls_qualification=not_tested`. Ручной вход владельца ещё не выполнен. На ПК нет защищённого тома для реального backup. Следующие gates без автоматической подмены: владелец импортирует короткий WAV, вместе с владельцем выполняется тест microphone/WASAPI и прослушивание; отдельно сверяются неизвестные расходы в кабинете (если возможно по журналу), затем выбирается защищённое backup-место и проводится restore drill; benchmark качества требует проверенного эталона. 30/60/180-min и 24-hour qualification остаются незавершёнными.
+
 ## Progress checkpoint — 2026-10-10, 03:46 МСК
 
 Добавлена регрессия на повтор polling асинхронной задачи Polza: при временной ошибке provider job ID и оба резерва остаются закреплены, worker возобновляет GET той же задачи и не отправляет повторный платный POST. Полный offline backend/audit прогон: **5 231 passed, 0 failed**, один deprecation warning, 33:30. Scratch Secretary и основной `/health` отвечают; облако scratch выключено.

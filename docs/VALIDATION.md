@@ -1,5 +1,14 @@
 # Проверки Secretary V1
 
+## Сверка результатов и runtime — 2026-10-10, 04:01 МСК
+
+- Свежая frontend-проверка: `npm.cmd run test:processing` — **293 passed**, release-manifest production build — **1 passed**, `typecheck` и `lint` — exit 0. Backend/audit offline-набор выше — 5 231 passed.
+- В основном UI выбрана запись длительностью 1:09:07: сейчас показано `35 из 35` и «Расшифровка сохранена». Backend history содержит 35 succeeded transcription jobs, 34 прежних failed попытки и succeeded summary. Это уже выполненная обработка, повторный платный запуск не требуется; смысл и качество итогов ещё должен проверить владелец.
+- Локальный usage ledger для этой встречи показывает 35 STT-записей со статусом `unknown`, у них нет `provider_request_id`; сверить их по точному ID из UI нельзя. В доступных локальных записях нет сохранённого тела исходного HTTP-ответа, поэтому нельзя установить, отсутствовал ли `usage.cost_rub` в ответе Polza или старый runtime его не зафиксировал. Текущий adapter читает `usage.cost_rub` при наличии, а contract tests это проверяют. Ledger — не текущая выписка кабинета Polza.
+- `doctor.ps1`: `/health=ok`, `/ready=local_ok`, worker и SQLite healthy, `production_qualified=false`; основной процесс запущен в offline-режиме, `cloud_enabled=false`. Дополнительные локальные лимиты Secretary выключены; ключ установлен, значение не читалось/не выводилось. Новых Polza-запросов в этом прогоне не было.
+- Устройства перечислены, но аудиозахват не выполнялся. На ПК доступны только C: и D:, оба без BitLocker; защищённого места для реального backup/restore сейчас нет.
+- Пользователь не смог пройти локальное HTTPS-предупреждение; обход и изменение trust store не выполнялись. Вместо этого проверена loopback [HTTP fixture](http://secretary-t9.localhost:57500/fixture) и [Team UI](http://secretary-t9.localhost:57500/team/): оба маршрута и `/fixture/status` ответили HTTP 200; статус — `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, `provider=httpx.MockTransport`, `tls_qualification=not_tested`. Стенд доступен ориентировочно до 04:26 МСК; входной код берётся только на локальной странице. MAX, Polza и рабочие задачи не задействованы.
+
 ## Продолжение QA — 2026-10-10, 03:46 МСК
 
 - Полный guarded offline прогон `scripts/run_offline_tests.py tests audit/tests -q --tb=short` завершён: **5 231 passed, 0 failed**, одно предупреждение Starlette/httpx о deprecation `TestClient`, 33:30. Новый интеграционный регрессионный тест проверяет, что тайм-аут polling сохраняет локальный и месячный резерв, а повторная попытка делает GET прежней provider-задачи без второго POST.
