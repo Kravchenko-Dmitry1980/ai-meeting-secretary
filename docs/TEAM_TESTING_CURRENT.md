@@ -1,6 +1,16 @@
 # Текущее тестирование Secretary Team
 
-## Актуальная ссылка для ручного входа — 2026-10-10, 06:33 МСК
+## Результат проверки входа — 2026-10-10, 07:19 МСК
+
+Актуальные страницы synthetic run `t9-http-ui-5a41d7f7c5624689a4177ef66c6cb2d8`: [fixture и обновление тестового кода](http://secretary-t9.localhost:53522/fixture), [Team UI](http://secretary-t9.localhost:53522/team/). В управляемом Codex In-app Browser вход с кодом, отображавшимся в старой открытой вкладке, вернул `team_authentication_required`; код уже превысил срок действия 5 минут. Повторный выпуск кода управляемым кликом не подтвердился, поэтому не считаю вход пройденным. Chrome TLS и настройки cookie не менялись.
+
+Для следующего ручного шага откройте обе ссылки именно в Codex In-app Browser, на fixture нажмите «Новый синтетический код» у Анны и сразу введите его в Team UI. Код вводите только локально и не отправляйте в чат. Не вводите реальные задачи, API-ключи или пользовательские данные. Ожидаемое окончание текущего стенда — 07:25:50 МСК; после этого нужна новая fixture.
+
+## Свежий 30-минутный стенд — 2026-10-10, 06:56 МСК
+
+После неудачной попытки пройти TLS-предупреждение для Chrome поднят новый run `t9-http-ui-5a41d7f7c5624689a4177ef66c6cb2d8`, доступный до **07:25:50 МСК**: [fixture с участниками](http://secretary-t9.localhost:53522/fixture), [Team UI](http://secretary-t9.localhost:53522/team/). GET `/fixture/status`, `/fixture`, `/team/` проверены: HTTP 200, `HTTP_SYNTHETIC_UI_ONLY`, `httpx.MockTransport`. Обе страницы открыты в видимых вкладках Codex In-app Browser. Для входа вручную возьмите свежий код Анны со страницы fixture и введите только в Team UI; затем выберите проект 7. Не отправляйте коды в чат. `127.0.0.1:53522` отвечает ожидаемым 403, потому что стенд принимает только точный Host `secretary-t9.localhost:53522`. Реальные записи, Polza, MAX и внешняя Vikunja не задействованы.
+
+## Предыдущий run для ручного входа — 2026-10-10, 06:33 МСК
 
 Чтобы продлить окно ручной проверки, запущен новый изолированный `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-de15cde51afa4ed6873be7b6a29038c1` на 30 минут, ориентировочно до 07:02 МСК. В Codex In-app Browser открыты [страница синтетических участников](http://secretary-t9.localhost:60243/fixture) и [Team UI](http://secretary-t9.localhost:60243/team/). Проверены GET `/fixture/status`, `/fixture`, `/team/`: HTTP 200; статус подтверждает `simulation=true`, `provider=httpx.MockTransport`, `tls_qualification=not_tested`.
 

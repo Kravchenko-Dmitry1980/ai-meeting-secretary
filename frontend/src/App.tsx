@@ -73,11 +73,17 @@ function App() {
   }, [selected?.id, selected?.transcript_version, model.selectionRevision]);
   const effectiveMode = selected?.processing_mode ?? processingMode;
   const voiceMode = effectiveMode === 'voice_identification';
-  const speakerWorkflow = useSpeakerWorkflow(selected?.id ?? '', selected?.transcript_version ?? 0, model.selectionRevision);
-  const identityRevision = `${speakerWorkflow.roster?.roster_revision ?? ''}:${speakerWorkflow.snapshot?.revision ?? ''}`;
-  const lastIdentity = useRef<{ scope: string; revision: string } | null>(null);
   const refreshMeeting = model.refreshMeeting;
   const selectionRevision = model.selectionRevision;
+  const selectedMeetingId = selected?.id ?? '';
+  const selectedTranscriptVersion = selected?.transcript_version ?? 0;
+  const refreshStaleSpeakerVersion = useCallback((meetingId: string, version: number) => {
+    if (selectedMeetingId !== meetingId || selectedTranscriptVersion !== version) return;
+    void refreshMeeting();
+  }, [selectedMeetingId, selectedTranscriptVersion, refreshMeeting]);
+  const speakerWorkflow = useSpeakerWorkflow(selectedMeetingId, selectedTranscriptVersion, selectionRevision, refreshStaleSpeakerVersion);
+  const identityRevision = `${speakerWorkflow.roster?.roster_revision ?? ''}:${speakerWorkflow.snapshot?.revision ?? ''}`;
+  const lastIdentity = useRef<{ scope: string; revision: string } | null>(null);
   useEffect(() => {
     if (!selected || !speakerWorkflow.roster || !speakerWorkflow.snapshot) return;
     const scope = `${selected.id}:${selected.transcript_version}:${selectionRevision}`;
