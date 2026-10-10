@@ -1,5 +1,14 @@
 # Проверки Secretary V1
 
+## Повторная проверка — 2026-10-10, 05:09 МСК
+
+- Полный guarded offline backend/audit suite: `scripts/run_offline_tests.py tests audit/tests -q --tb=short` — **5 232 passed, 0 failed**, одно известное предупреждение Starlette/httpx (`TestClient`), 32:33. Frontend — **296 passed**; API/OpenAPI focused — **63 passed**; `typecheck`, `lint` и scratch Vite production build — PASS.
+- Повторно подтверждён лимит импорта: `GET /api/v1/config` возвращает read-only `max_upload_bytes=2 147 483 648`; авторизованный `PATCH` попытки изменить поле отвечает `422`, значение сохраняется. В изолированном scratch UI видны `до 4 часов · максимум 2 ГиБ`; основной runtime не перезапускался и пока остаётся на старой версии.
+- `doctor.ps1`: процесс основного runtime идентифицирован; `/health=ok`, `/ready=local_ok`, SQLite/storage/worker/FFmpeg/FFprobe/frontend healthy. `production_qualified=false`, cloud disabled, backup/log rotation `not_checked`, publication worker `not_configured`.
+- Read-only сводка рабочей БД: 68 failed `transcribe` HTTP 400 jobs в 2 встречах за 2026-10-02 09:00–09:50 UTC; позднее 105 `transcribe` jobs succeeded до 2026-10-06 15:39 UTC. Сырые ошибки, встречи и IDs не выводились, автоматический повтор не запускался. Точная причина старых 400 этой агрегацией не устанавливается.
+- Windows перечислил 2 microphone и 2 system/WASAPI endpoints; реальные потоки и слышимость ещё не проверялись. В `data` около 0,96 GB; C: и D: — разные NVMe, оба полностью расшифрованы BitLocker. Защищённая цель для production backup не найдена.
+- Тестовая Team fixture остаётся отдельным disposable HTTP-контуром `HTTP_SYNTHETIC_UI_ONLY`; она не подтверждает TLS/MAX, Polza, внешний Vikunja или production. Короткий реальный capture ожидает согласия/участия владельца; платных вызовов не было.
+
 ## Сверка результатов и runtime — 2026-10-10, 04:01 МСК
 
 - Свежая frontend-проверка: `npm.cmd run test:processing` — **293 passed**, release-manifest production build — **1 passed**, `typecheck` и `lint` — exit 0. Backend/audit offline-набор выше — 5 231 passed.
