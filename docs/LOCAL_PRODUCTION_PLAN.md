@@ -1,12 +1,14 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
-## Progress checkpoint — 2026-10-10, 06:09 МСК
+## Progress checkpoint — 2026-10-10, 06:22 МСК
 
 Свежая guarded полная backend/audit проверка `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершилась: **5 232 passed, 0 failed**, одно upstream-предупреждение `StarletteDeprecationWarning`, **1 859,65 с (30:59)**. Runner запрещал сетевые подключения, доступ к рабочим данным/аудиоустройствам, реальные Polza/MAX credentials и запуск live lifecycle.
 
-Frontend: `npm.cmd run test:processing` — **296/296**; `test:release-manifest` — **1/1**; `typecheck`, `lint` и production build в `.runtime/qa-build-goal-20261010` — exit 0. Vite собрал 1 777 модулей; build выдавал только ожидаемое предупреждение, что внешний scratch `outDir` не очищается автоматически. `frontend/dist` не был целью сборки.
+Frontend после исправления пустого состояния вкладки «Задачи»: `npm.cmd run test:processing` — **297/297**, включая новую регрессию; `test:release-manifest` — **1/1**; `typecheck`, `lint` и production build в `.runtime/qa-build-goal-20261010-r2` — exit 0. Целевой тест сначала воспроизвёл старое неверное сообщение, затем прошёл после исправления. Vite собрал 1 777 модулей; scratch `outDir` не очищается автоматически. `frontend/dist` и основной запущенный runtime не заменялись.
 
-После прогона основной процесс повторно проверен: `/health=ok`, `/ready=local_ok`, `production_qualified=false`; cloud выключен, device capture не квалифицирован, backup не проверен. Новая [synthetic Team fixture](http://secretary-t9.localhost:56971/fixture) и [Team UI](http://secretary-t9.localhost:56971/team/) отвечают HTTP 200 и открыты в Codex In-app Browser примерно до 06:39 МСК. Ручной вход владельца остаётся незавершённым; TLS, MAX, рабочие данные, Polza, аппаратный capture и телефонные сценарии этой проверкой не покрыты.
+После прогона основной процесс повторно проверен: `/health=ok`, `/ready=local_ok`, `production_qualified=false`; cloud выключен, device capture не квалифицирован, backup не проверен. Новая [synthetic Team fixture](http://secretary-t9.localhost:56971/fixture) и [Team UI](http://secretary-t9.localhost:56971/team/) отвечают HTTP 200 и оставлены в Codex In-app Browser примерно до 06:39 МСК для ручной проверки. Chrome не пропускает HTTPS-предупреждение, а его HTTP-вкладку блокирует расширение; настройки TLS не менялись. Используйте две HTTP-ссылки во встроенном браузере Codex: создайте свежий код у Анны и введите только локально в Team UI, не присылая код в чат. Ручная приёмка владельца остаётся незавершённой; TLS, MAX, рабочие данные, Polza, аппаратный capture и телефонные сценарии этой проверкой не покрыты.
+
+Небольшой UI-дефект исправлен: пустая вкладка «Задачи» теперь сообщает, что задачи появятся после полной расшифровки и итогов; при ошибке остаётся прежнее точное сообщение об ошибке итогов.
 
 ## Progress checkpoint — 2026-10-10, 05:09 МСК
 

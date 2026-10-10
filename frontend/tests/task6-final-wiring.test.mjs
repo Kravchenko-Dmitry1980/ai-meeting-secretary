@@ -33,9 +33,20 @@ test('summary evidence requests its own transcript version; missing summary reta
   const calls = []; const props = { summary: summary(3, 2), status: 'succeeded', tab: 'Задачи', onSource: (...args) => calls.push(args), assignments: { meetingId: 'A', roster: [] } };
   let tree = results(props); get(tree, (node) => node.type === 'button' && node.props.className === 'source-link').props.onClick();
   assert.deepEqual(calls, [['source', 2]]);
-  tree = results({ ...props, summary: null }); assert.match(text(tree), /Итоги ещё не сформированы/);
+  tree = results({ ...props, summary: null }); assert.match(text(tree), /Задачи ещё не сформированы/);
   assert.equal(walk(tree).some((node) => node.type === 'AssignmentReviewPanel'), false);
   assert.equal(walk(tree).some((node) => node.type === 'TaskPublicationPanel'), false);
+});
+
+test('empty Tasks tab explains that tasks await transcription and summary', () => {
+  const props = { summary: null, status: 'waiting_config', tab: 'Задачи', onSource() {} };
+  let tree = results(props);
+  assert.match(text(tree), /Задачи ещё не сформированы/);
+  assert.doesNotMatch(text(tree), /Итоги ещё не сформированы/);
+  assert.match(text(tree), /после полной расшифровки/i);
+  tree = results({ ...props, status: 'failed' });
+  assert.match(text(tree), /Обработка итогов завершилась ошибкой/);
+  assert.doesNotMatch(text(tree), /задачи.*ожидают/i);
 });
 
 test('App passes meeting roster and refreshes compatibility summary after identity revisions and assignment changes', async () => {
