@@ -1,5 +1,11 @@
 # Текущее тестирование Secretary Team
 
+## Свежая HTTP fixture — 2026-10-10, 05:14 МСК
+
+Пользователь не смог пройти локальное TLS-предупреждение; обход сертификата и изменение trust store не выполнялись. Для ручного synthetic smoke открыты отдельные вкладки Codex: [страница синтетической фикстуры](http://secretary-t9.localhost:49702/fixture) и [Team UI](http://secretary-t9.localhost:49702/team/). Проверенные GET `/fixture`, `/team/`, `/fixture/status` ответили HTTP 200; статус сообщает `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, provider `httpx.MockTransport`, `tls_qualification=not_tested`. Стенд временный, ожидаемый TTL — около 30 минут с момента запуска.
+
+На fixture показаны три синтетических участника; при ручном входе нажмите «Новый синтетический код» у Анны и введите свежий код в открытой вкладке Team UI. Код действует 5 минут и остаётся только в локальном браузере. Team UI показывает вход по коду; отсутствие MAX Bridge вне MAX WebView ожидаемо. Внешняя Vikunja, MAX, Polza, рабочие задачи и записи не подключены. Это позволяет проверить только синтетическую Team UI и не квалифицирует TLS, телефон, production-интеграцию или ручную приёмку.
+
 ## Свежая HTTP fixture — 2026-10-10, 04:01 МСК
 
 Пользователь не смог пройти локальное TLS-предупреждение; обход сертификата и изменение trust store не выполнялись. Для ручного synthetic smoke открыт loopback HTTP стенд: [страница синтетической фикстуры](http://secretary-t9.localhost:57500/fixture) и [Team UI](http://secretary-t9.localhost:57500/team/). Свежие GET `/fixture`, `/team/`, `/fixture/status` ответили HTTP 200; статус сообщает `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, provider `httpx.MockTransport`, `tls_qualification=not_tested`. Примерный срок жизни — до 04:26 МСК. Использовать именно `http://`; прежний `https://…:53124` не является актуальной ссылкой.
