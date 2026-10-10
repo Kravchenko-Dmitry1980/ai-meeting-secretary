@@ -38,7 +38,8 @@ class Settings(BaseSettings):
         return bool(self.polza_api_key.get_secret_value().strip())
 
     def public(self) -> dict:
-        return {"key_configured": self.key_configured, **{k: getattr(self, k) for k in EDITABLE_CONFIG}}
+        return {"key_configured": self.key_configured, "max_upload_bytes": self.max_upload_bytes,
+                **{k: getattr(self, k) for k in EDITABLE_CONFIG}}
 
 
 EDITABLE_CONFIG = {"stt_model", "summary_model", "chunk_seconds", "request_timeout_seconds", "meeting_budget_rub", "local_cost_limits_enabled", "allow_unknown_price", "unknown_request_reservation_rub", "cloud_enabled", "stt_price_rub_per_minute", "summary_input_rub_per_million", "summary_output_rub_per_million", "summary_max_output_tokens", "summary_batch_chars"}

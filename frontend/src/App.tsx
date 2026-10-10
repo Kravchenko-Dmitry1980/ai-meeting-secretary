@@ -19,7 +19,7 @@ import { api, errorMessage } from './services/api';
 import { speakersApi } from './services/speakers';
 import type { AddParticipant } from './services/speakers';
 import type { Meeting, ProcessingMode, TranscriptSegment } from './types/api';
-import { timeOffset } from './utils/format';
+import { formatBinaryBytes, importLimitHint, timeOffset } from './utils/format';
 import { buildProcessingState, requiresTranscriptionRetry } from './utils/processing';
 
 const meetingStatusText: Record<string, string> = {
@@ -209,7 +209,7 @@ function App() {
         <div className={`drop-zone ${dragging ? 'dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); chooseFile(event.dataTransfer.files[0]); }}>
           <span className="upload-icon"><UploadCloud size={28} /></span>
           <h3 className="mt-4 text-lg font-medium">{file ? file.name : 'Перетащите запись встречи'}</h3>
-          <p className="mt-2 text-sm text-slate-400">{file ? `${(file.size / 1024 / 1024).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} МБ · исходный файл сохранится локально` : 'Аудио или видео · до 4 часов'}</p>
+          <p className="mt-2 text-sm text-slate-400">{file ? `${formatBinaryBytes(file.size)} · лимит ${model.config ? formatBinaryBytes(model.config.max_upload_bytes) : 'не получен'} · исходный файл сохранится локально` : importLimitHint(model.config?.max_upload_bytes)}</p>
           <input ref={fileInput} id="audio-file" type="file" className="sr-only" accept="audio/*,video/*,.m4a,.mkv,.webm,.ogg,.flac" onChange={(event) => chooseFile(event.target.files?.[0])} aria-label="Выбрать аудио или видео встречи" />
           <Button variant="ghost" className="mt-5" onClick={() => fileInput.current?.click()} disabled={model.busy}>{file ? 'Выбрать другой файл' : 'Выбрать файл'}</Button>
           <p className="mt-4 text-[11px] text-slate-500">WAV, MP3, M4A, FLAC, MP4, MKV, WEBM и другие форматы FFmpeg</p>

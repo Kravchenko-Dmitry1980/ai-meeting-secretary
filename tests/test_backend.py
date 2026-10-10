@@ -109,6 +109,17 @@ def test_local_api_security_and_no_secret(settings):
         assert api.patch("/api/v1/config", headers=auth(api), json={"polza_api_key": "new-secret"}).status_code == 422
 
 
+def test_config_exposes_server_upload_limit_as_read_only(settings):
+    settings.max_upload_bytes = 3 * 1024**3
+    with client(settings) as api:
+        response = api.get("/api/v1/config")
+        assert response.status_code == 200
+        assert response.json()["max_upload_bytes"] == settings.max_upload_bytes
+        rejected = api.patch("/api/v1/config", headers=auth(api), json={"max_upload_bytes": 1024})
+        assert rejected.status_code == 422
+        assert api.get("/api/v1/config").json()["max_upload_bytes"] == 3 * 1024**3
+
+
 def test_local_readiness_reports_safe_component_states_without_qualifying_production(settings):
     with client(settings) as api:
         response = api.get("/ready")

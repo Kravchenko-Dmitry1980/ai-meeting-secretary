@@ -163,6 +163,7 @@ class UsageResponse(BaseModel):
 
 class ConfigurationResponse(BaseModel):
     key_configured: bool
+    max_upload_bytes: int
     stt_model: str
     summary_model: str
     chunk_seconds: int

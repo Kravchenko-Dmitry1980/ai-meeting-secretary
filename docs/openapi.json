@@ -4409,6 +4409,10 @@
             "type": "boolean",
             "title": "Key Configured"
           },
+          "max_upload_bytes": {
+            "type": "integer",
+            "title": "Max Upload Bytes"
+          },
           "stt_model": {
             "type": "string",
             "title": "Stt Model"
@@ -4497,6 +4501,7 @@
         "type": "object",
         "required": [
           "key_configured",
+          "max_upload_bytes",
           "stt_model",
           "summary_model",
           "chunk_seconds",

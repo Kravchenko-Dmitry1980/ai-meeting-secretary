@@ -1318,6 +1318,8 @@ export interface components {
         ConfigurationResponse: {
             /** Key Configured */
             key_configured: boolean;
+            /** Max Upload Bytes */
+            max_upload_bytes: number;
             /** Stt Model */
             stt_model: string;
             /** Summary Model */
