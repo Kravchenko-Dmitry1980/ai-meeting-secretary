@@ -1,5 +1,11 @@
 # Secretary Team: сквозная приёмка T13
 
+## Checkpoint 2026-10-10 06:09 МСК: guarded offline suite PASS; owner gates open
+
+Свежий полный guarded запуск `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short`: **5 232 passed, 0 failed**, одно `StarletteDeprecationWarning`, 1 859,65 с. Включены backend, API/OpenAPI contracts, Team E2E/load tests и audit tests; runner запрещал внешнюю сеть, real audio devices, рабочие базы и provider credentials. Frontend: 296 processing tests + 1 release-manifest test, typecheck/lint и scratch production build — PASS. Это закрывает offline test slice T13, но не весь T13/root acceptance.
+
+Свежие `[Team fixture](http://secretary-t9.localhost:56971/fixture)` и `[Team UI](http://secretary-t9.localhost:56971/team/)` открыты в Codex In-app Browser; ручной владелец ещё не вошёл. Chrome блокирует HTTP fixture с `ERR_BLOCKED_BY_CLIENT`, а HTTPS остаётся на локальном certificate warning; ни обход предупреждения, ни изменение trust store не выполнялись. Внешний HTTPS, MAX WebView/phone, native voice, реальный Vikunja/Polza, actual budget/receipts, owner recovery/reconciliation, 24-hour pilot и release compliance остаются незакрытыми.
+
 ## Checkpoint 2026-10-08 00:36 МСК: T9 handoff and R4 diagnostic
 
 Свежая локальная fixture `HTTP_SYNTHETIC_UI_ONLY`, run `t9-http-ui-646d3fcae28448058e141daa7942f740`, готова на порту53230 до примерно01:03:32 МСК; `/fixture` и `/team/` возвращают200 и открыты в Chrome. Коды не вводились, ручная приёмка остаётся у владельца. Веб-сборка взята из `.runtime/qa-build-20261007`, локальные assets проверены, один MAX SDK tag удалён только в disposable copy.

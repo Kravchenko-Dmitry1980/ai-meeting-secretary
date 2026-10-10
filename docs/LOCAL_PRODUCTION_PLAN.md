@@ -1,5 +1,13 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Progress checkpoint — 2026-10-10, 06:09 МСК
+
+Свежая guarded полная backend/audit проверка `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short` завершилась: **5 232 passed, 0 failed**, одно upstream-предупреждение `StarletteDeprecationWarning`, **1 859,65 с (30:59)**. Runner запрещал сетевые подключения, доступ к рабочим данным/аудиоустройствам, реальные Polza/MAX credentials и запуск live lifecycle.
+
+Frontend: `npm.cmd run test:processing` — **296/296**; `test:release-manifest` — **1/1**; `typecheck`, `lint` и production build в `.runtime/qa-build-goal-20261010` — exit 0. Vite собрал 1 777 модулей; build выдавал только ожидаемое предупреждение, что внешний scratch `outDir` не очищается автоматически. `frontend/dist` не был целью сборки.
+
+После прогона основной процесс повторно проверен: `/health=ok`, `/ready=local_ok`, `production_qualified=false`; cloud выключен, device capture не квалифицирован, backup не проверен. Новая [synthetic Team fixture](http://secretary-t9.localhost:56971/fixture) и [Team UI](http://secretary-t9.localhost:56971/team/) отвечают HTTP 200 и открыты в Codex In-app Browser примерно до 06:39 МСК. Ручной вход владельца остаётся незавершённым; TLS, MAX, рабочие данные, Polza, аппаратный capture и телефонные сценарии этой проверкой не покрыты.
+
 ## Progress checkpoint — 2026-10-10, 05:09 МСК
 
 Повторный `scripts/doctor.ps1` подтвердил для основного процесса проверенную идентичность, `/health=ok`, `/ready=local_ok`; SQLite, запись в data, worker, FFmpeg, FFprobe и frontend build healthy. `production_qualified=false`, cloud выключен, backup/log rotation не проверены, publication worker не настроен. `/api/v1/audio/devices` перечислил 4 устройства — 2 microphone и 2 system/WASAPI; потоки не открывались.
