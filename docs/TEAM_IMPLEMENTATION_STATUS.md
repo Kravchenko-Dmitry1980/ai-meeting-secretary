@@ -1,5 +1,15 @@
 # Secretary Team: журнал реализации
 
+## Completion audit — 2026-10-14, 00:47 МСК: Polza contract и UI workflow
+
+Владелец подтвердил, что на synthetic Team UI после входа и выбора «Проект 7» видны карточки. Проверены только вход/список; preview/confirm/receipt ещё ожидают отдельной проверки. До истечения fixture `localhost:54804` все три страницы `/fixture`, `/team/`, `/fixture/status` отвечали HTTP 200. Fixture использует только синтетические данные и mock Vikunja.
+
+Повторные offline проверки: Polza/price-rejection/Team fixture API — **97 passed** (22,03 с; 1 существующее Starlette/httpx deprecation warning); frontend workflow — **302 passed**; release-manifest — **1 passed**; TypeScript и lint — exit 0. Официальный Polza контракт допускает JSON/base64 data URI; Aiesa async transcription сохраняет job ID и продолжается GET polling, а speaker labels возвращаются в segments. Адаптер и тесты этим контрактам соответствуют. Документация Polza указывает для `aiesa/transcribe` тариф 0,12 ₽/мин с оплатой полных минут, минимум одна минута; поэтому потолок `stt_per_minute=0,10` ниже тарифа и закономерно отклоняется. Живой Polza вызов не выполнялся. В текущем изолированном offline runtime ключ не настроен, облако выключено, ценовые потолки не заданы; это не проверка рабочей конфигурации владельца.
+
+## Completion audit — 2026-10-14, 00:41 МСК: исходный app и Windows audio gate
+
+Основной Secretary отвечает на loopback `/health` и `/ready` (`local_ok`, production false); локальная конфигурация сообщает `key_configured=false` и `cloud_enabled=false`. В `GET /api/v1/audio/devices` обнаружено 2 microphone и 2 system loopback устройства, но потоки не открывались. Targeted offline проверки прошли: `tests/test_audio.py` **19/19**, recording/capture backend API — **4/4**. Требуется короткий ручной capture test выбранного microphone + loopback; его может безопасно запустить только владелец явным действием. Team UI на основном Secretary runtime не смонтирован (`/team/` → 404), остаётся отдельный synthetic fixture. Подробности и ограничения внесены в [VALIDATION.md](VALIDATION.md).
+
 ## Offline regression checkpoint — 2026-10-14, 00:34 МСК: повторно проверен import path
 
 `tests/test_backend.py -k upload` через изолированный offline runner — **9 passed / 52 deselected / 1 существующее предупреждение Starlette/httpx / 4,12 с**; синтетический WAV проходит подготовку аудио и ожидает настройку Polza (`waiting_config`). Frontend byte-cap/import limits — **3/3 passed**. Это не ручной browser upload и не live STT: AIPex вернул `Not allowed`, а текущая offline база содержит существующие данные, поэтому синтетический файл туда не отправлялся. Ручной UI импорт требует отдельной пустой базы. Пользователь отдельно подтвердил только отображение списка карточек после входа и выбора «Проект 7».

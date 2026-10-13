@@ -1,5 +1,19 @@
 # Проверки Secretary V1
 
+## Повторная проверка — 2026-10-14, 00:47 МСК
+
+- Владелец подтвердил, что после входа и выбора «Проект 7» карточки в synthetic Team UI видны. Это ручной PASS только для входа/списка. Проверка preview/confirm/receipt запрошена отдельно и ещё не завершена. Временная fixture `localhost:54804`: `/fixture`, `/team/`, `/fixture/status` — HTTP 200; только синтетические карточки и mock Vikunja.
+- Offline контрактные тесты `tests/test_polza.py`, `tests/test_price_rejection.py`, `tests/test_team_ui_http_fixture.py` — **97 passed / 0 failed / 1 существующее предупреждение Starlette/httpx / 22,03 с**. Frontend `npm run test:processing` — **302/302**; `test:release-manifest` — **1/1**; `typecheck` и `lint` — exit 0. Релизный build прошёл через release-manifest test.
+- Сверка с [официальной документацией Polza по Audio Transcriptions](https://polza.ai/docs/api-reference/audio/transcriptions): JSON с base64/data URI допустим; `aiesa/transcribe` возвращает job ID и опрашивается GET по тому же ID, сегменты включают `speaker`. Существующий адаптер покрывает эти формы offline тестами. Документация указывает цену Aiesa 0,12 ₽/мин и тарификацию полными минутами с минимумом 1 мин; настройка потолка 0,10 ₽/мин будет ниже неё. Для активного summary ID есть [карточка модели Polza](https://polza.ai/models/qwen/qwen3-30b-a3b-instruct-2507); цена в кабинете/маршруте может отличаться.
+- В изолированном offline runtime `127.0.0.1:8767` нет API-ключа, облако отключено, STT выбран `openai/whisper-large-v3-turbo`, STT/summary price caps не заданы, локальный лимит встречи — 100 ₽. Это read-only снимок scratch runtime, а не подтверждение текущих настроек рабочей БД. Платные Polza обращения и отправка аудио не выполнялись.
+
+## Текущий completion-audit — 2026-10-14, 00:41 МСК
+
+- Основной локальный Secretary на `127.0.0.1:8767`: `/health` — HTTP 200, `/ready` — HTTP 200 с `local_ok` и `production_qualified=false`; `GET /api/v1/config` показывает `key_configured=false`, `cloud_enabled=false`. Модельные настройки читаются из локального runtime; ключ не выводился. `/team/` на этом процессе — HTTP 404: Team UI/Gateway остаётся отдельным synthetic fixture, не включённым в основной app.
+- `GET /api/v1/audio/devices` — `available=true`, видны 2 microphone и 2 system loopback устройства. Перечисление не открывало потоки и не доказывает рабочую запись.
+- Offline regressions: `tests/test_audio.py` — **19 passed**; `tests/test_backend.py -k "recording or capture"` — **4 passed / 57 deselected / 1 существующее Starlette/httpx deprecation warning**. Проверяются fake capture, start/stop API, bounded queue, recovery/partial files и storage pressure, не физические устройства.
+- Следующий требуемый owner test — 10–15 секунд явной записи выбранного microphone и loopback при выключенном облаке; подтвердить сохранение обоих каналов и остановку без ошибок. Никакой capture не запускался автоматически. Для этой проверки пользователь должен нажать start/stop в UI и не передавать запись в чат.
+
 ## Продление ручного Team smoke — 2026-10-13, 11:39 МСК
 
 Истёкшую в ближайшие минуты Team fixture заменил новым loopback-only synthetic run `t9-http-ui-fd0047fac0284b629cad9d0d94ec8f11` на порту `62920` (старт 11:38:47, TTL 30 минут). [Fixture](http://localhost:62920/fixture), [Team UI](http://localhost:62920/team/) → HTTP 200; `/fixture/status` подтверждает `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, анонимный `/api/team/v1/me` → 401. Старый адрес истекает сам; новый запуск не затрагивает основной app.
