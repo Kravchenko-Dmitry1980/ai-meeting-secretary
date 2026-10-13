@@ -22,6 +22,12 @@ from urllib.parse import quote
 from uuid import UUID
 
 from secretary.infrastructure.team_process_identity import DeadProcessProof, verify_dead_identity
+from .team_maintenance import (
+    _EVENT_IMMUTABLE_TRIGGERS,
+    _MAINTENANCE_REGISTRY_TABLES_V1,
+    _MAINTENANCE_REGISTRY_TABLES_V2,
+    _TICKET_COMMITMENT_TRIGGERS,
+)
 
 
 class RuntimeEvidenceError(ValueError):
@@ -34,15 +40,6 @@ _SHA = re.compile(r'[0-9a-f]{64}\Z')
 _NAME = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
 _ROLES = {'secretary', 'team', 'billing', 'vikunja'}
 _IDENTITY = {'pid', 'creation_time', 'executable_sha256', 'argv_sha256'}
-_TABLES = {
-    'maintenance_state': ('id', 'deployment_id', 'mode', 'fence', 'barrier_id', 'owner_id', 'native_evidence'),
-    'maintenance_participants': ('participant_id', 'run_id', 'identity', 'guard_version'),
-    'maintenance_sources': ('role', 'path'),
-    'maintenance_tickets': ('id', 'participant_id', 'run_id', 'kind', 'operation_id', 'fence', 'state', 'created_at'),
-    'maintenance_events': ('id', 'kind', 'barrier_id', 'fence', 'created_at'),
-    'maintenance_recovery_checkpoints': ('id', 'payload', 'recovery_ticket_id', 'dead_proof', 'created_at'),
-    'maintenance_native_containment': ('participant_id', 'run_id', 'identity', 'containment_version', 'recorded_at'),
-}
 _FILE_LIMIT = 64 * 1024 * 1024
 _JSON_LIMIT = 128 * 1024
 _TOTAL_LIMIT = 16 * 1024 * 1024
@@ -174,11 +171,29 @@ def _read_control(path, *, immutable):
         conn.execute('PRAGMA busy_timeout=200')
         conn.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
         conn.execute('BEGIN')
+        version = conn.execute('PRAGMA user_version').fetchone()[0]
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if tables != set(_TABLES):
+        if version in (0, 1) and tables == set(_MAINTENANCE_REGISTRY_TABLES_V1):
+            registry_version, registry_tables = 1, _MAINTENANCE_REGISTRY_TABLES_V1
+        elif version == 2 and tables == set(_MAINTENANCE_REGISTRY_TABLES_V2):
+            registry_version, registry_tables = 2, _MAINTENANCE_REGISTRY_TABLES_V2
+        else:
             _fail('restore_runtime_registry_invalid')
+        triggers = {row[0]: ' '.join(row[1].split()).casefold()
+                    for row in conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='maintenance_events'")}
+        expected_triggers = {name: ' '.join(sql.split()).casefold()
+                             for name, sql in _EVENT_IMMUTABLE_TRIGGERS.items()}
+        if triggers != expected_triggers:
+            _fail('restore_runtime_registry_invalid')
+        if registry_version == 2:
+            triggers = {row[0]: ' '.join(row[1].split()).casefold()
+                        for row in conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='maintenance_ticket_commitments'")}
+            expected_triggers = {name: ' '.join(sql.split()).casefold()
+                                 for name, sql in _TICKET_COMMITMENT_TRIGGERS.items()}
+            if triggers != expected_triggers:
+                _fail('restore_runtime_registry_invalid')
         result, size = {}, 0
-        for table, columns in _TABLES.items():
+        for table, columns in registry_tables.items():
             if tuple(row[1] for row in conn.execute('PRAGMA table_info(' + table + ')')) != columns:
                 _fail('restore_runtime_registry_invalid')
             rows = []
@@ -192,7 +207,56 @@ def _read_control(path, *, immutable):
                     _fail('restore_runtime_evidence_bounded')
                 rows.append(value)
             result[table] = rows
+        result['_registry_version'] = registry_version
+        _validate_ticket_commitments(result)
         return result
+
+
+def _validate_ticket_commitments(data):
+    """Check persisted commitment integrity and ticket scope, never freshness or permission."""
+    if data['_registry_version'] != 2:
+        return
+    from .restore_admission_binding import MaintenanceTicketV1, R4AdmissionBindingV1
+
+    tickets = {row['id']: row for row in data['maintenance_tickets']}
+    states = data['maintenance_state']
+    if len(states) != 1:
+        _fail('restore_runtime_registry_invalid')
+    deployment_id = states[0]['deployment_id']
+    ticket_keys = {'protocol', 'ticket_id', 'deployment_id', 'participant_id', 'run_id',
+                   'kind', 'operation_id', 'fence', 'admission_binding', 'ticket_sha256'}
+    binding_keys = {'protocol', 'deployment_id', 'restore_id', 'r3_id', 'epoch_id',
+                    'source_generation_sha256', 'decision_id', 'decision_sha256', 'action',
+                    'participant_id', 'run_id', 'operation_id', 'barrier_fence'}
+    for row in data['maintenance_ticket_commitments']:
+        try:
+            raw = row['record']
+            record = _json(raw)
+            if (type(raw) is not str or set(record) != ticket_keys
+                    or type(record['admission_binding']) is not dict
+                    or set(record['admission_binding']) != binding_keys
+                    or _canonical(record).decode('utf-8') != raw
+                    or _hash(raw.encode('utf-8')) != row['record_sha256']
+                    or record['ticket_id'] != row['ticket_id']):
+                _fail('restore_runtime_registry_invalid')
+            binding = R4AdmissionBindingV1(**record['admission_binding'])
+            ticket = MaintenanceTicketV1(
+                ticket_id=record['ticket_id'], deployment_id=record['deployment_id'],
+                participant_id=record['participant_id'], run_id=record['run_id'],
+                kind=record['kind'], operation_id=record['operation_id'],
+                fence=record['fence'], admission_binding=binding, protocol=record['protocol'],
+            )
+            lifecycle = tickets.get(ticket.ticket_id)
+            if (ticket.ticket_sha256 != record['ticket_sha256'] or lifecycle is None
+                    or (ticket.deployment_id, ticket.participant_id, ticket.run_id, ticket.kind,
+                        ticket.operation_id, ticket.fence)
+                    != (deployment_id, lifecycle['participant_id'], lifecycle['run_id'], lifecycle['kind'],
+                        lifecycle['operation_id'], lifecycle['fence'])):
+                _fail('restore_runtime_registry_invalid')
+        except RuntimeEvidenceError:
+            raise
+        except (KeyError, TypeError, ValueError, UnicodeError):
+            _fail('restore_runtime_registry_invalid')
 
 
 def _identity(value):
@@ -216,6 +280,86 @@ def _proof(value, identity):
     if at.tzinfo is None or at.utcoffset() is None or not -2 <= (datetime.now(timezone.utc) - at).total_seconds() <= 30:
         _fail('restore_runtime_process_unverified')
     return _hash(_canonical(identity))
+
+
+def _maintenance_fence_lineage(data, archive_manifest, state):
+    """Bind the archived barrier to a coherent immutable old-generation log."""
+    barrier_id = _uuid(archive_manifest.get('barrier_id'))
+    barrier_fence = archive_manifest.get('barrier_fence')
+    if type(barrier_fence) is not int or not 1 <= barrier_fence < 2**63:
+        _fail('restore_runtime_archive_invalid')
+    native = archive_manifest.get('native_quiescence')
+    if (type(native) is not dict or native.get('barrier_id') != barrier_id
+            or native.get('barrier_fence') != barrier_fence):
+        _fail('restore_runtime_archive_invalid')
+
+    commitment = archive_manifest.get('maintenance_fence_history')
+    if type(commitment) is not dict:
+        _fail('restore_runtime_fence_history_missing')
+    if (set(commitment) != {'schema_version', 'deployment_id', 'barrier_id', 'barrier_fence',
+                            'event_count', 'events_sha256'}
+            or type(commitment['schema_version']) is not int or commitment['schema_version'] != 1
+            or commitment['deployment_id'] != archive_manifest.get('deployment_id')
+            or commitment['barrier_id'] != barrier_id
+            or type(commitment['barrier_fence']) is not int or commitment['barrier_fence'] != barrier_fence
+            or type(commitment['event_count']) is not int
+            or not 1 <= commitment['event_count'] <= 10000
+            or type(commitment['events_sha256']) is not str
+            or not _SHA.fullmatch(commitment['events_sha256'])):
+        _fail('restore_runtime_fence_history_invalid')
+
+    events = data['maintenance_events']
+    if not events or len(events) > 10000 or commitment['event_count'] > len(events):
+        _fail('restore_runtime_fence_history_invalid')
+    archived_events = events[:commitment['event_count']]
+    if (_hash(_canonical(archived_events)) != commitment['events_sha256']
+            or archived_events[-1]['kind'] != 'freeze'
+            or (archived_events[-1]['barrier_id'], archived_events[-1]['fence']) != (barrier_id, barrier_fence)):
+        _fail('restore_runtime_fence_history_invalid')
+    mode, active, high_water = 'open', None, 0
+    archive_barrier_seen = False
+    for expected_id, event in enumerate(events, start=1):
+        event_id = event.get('id')
+        kind = event.get('kind')
+        event_barrier_id = event.get('barrier_id')
+        fence = event.get('fence')
+        created_at = event.get('created_at')
+        if (type(event_id) is not int or event_id != expected_id
+                or kind not in ('begin', 'freeze', 'release')
+                or type(fence) is not int or not 1 <= fence < 2**63):
+            _fail('restore_runtime_fence_history_invalid')
+        _uuid(event_barrier_id)
+        try:
+            stamp = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            if stamp.tzinfo is None or stamp.utcoffset() is None:
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            _fail('restore_runtime_fence_history_invalid')
+
+        if kind == 'begin':
+            if mode != 'open' or fence != high_water + 1:
+                _fail('restore_runtime_fence_history_invalid')
+            mode, active, high_water = 'draining', (event_barrier_id, fence), fence
+            if (event_barrier_id, fence) == (barrier_id, barrier_fence):
+                archive_barrier_seen = True
+        elif kind == 'freeze':
+            if mode != 'draining' or active != (event_barrier_id, fence):
+                _fail('restore_runtime_fence_history_invalid')
+            mode = 'frozen'
+        else:
+            if mode not in ('draining', 'frozen') or active != (event_barrier_id, fence):
+                _fail('restore_runtime_fence_history_invalid')
+            mode, active = 'open', None
+
+    if (not archive_barrier_seen or state['fence'] != high_water
+            or state['mode'] not in ('draining', 'frozen', 'restore_blocked')
+            or active is None or state['barrier_id'] != active[0]
+            or state['fence'] != active[1]
+            or (state['mode'] in ('draining', 'frozen') and state['mode'] != mode)):
+        _fail('restore_runtime_fence_history_invalid')
+    return dict(archive_barrier_id=barrier_id, archive_barrier_fence=barrier_fence,
+        archive_event_count=commitment['event_count'], archive_events_sha256=commitment['events_sha256'],
+        high_water_fence=high_water, event_count=len(events), events_sha256=_hash(_canonical(events)))
 
 
 def _record(record, run):
@@ -293,6 +437,7 @@ def _verify(*, project_root, archive_manifest, maintenance_path, lifecycle_path,
                     or state['mode'] not in ('draining', 'frozen', 'restore_blocked')
                     or type(state['fence']) is not int or state['fence'] < 1):
                 _fail('restore_runtime_admission_open')
+            fence_lineage = _maintenance_fence_lineage(data, archive_manifest, state)
             if any(row['state'] != 'finished' for row in data['maintenance_tickets']):
                 _fail('restore_runtime_tickets_active')
             sources = data['maintenance_sources']
@@ -343,7 +488,8 @@ def _verify(*, project_root, archive_manifest, maintenance_path, lifecycle_path,
                 control_sha256=_hash(_canonical(data)), physical_files_sha256=_hash(_canonical(before)),
                 lifecycle_sha256=before['lifecycle'], source_bindings_sha256=_hash(_canonical(bindings)),
                 process_identities_sha256=_hash(_canonical(sorted(proofs))), participant_count=len(participants),
-                lifecycle_process_count=4, active_ticket_count=0)
+                lifecycle_process_count=4, active_ticket_count=0,
+                maintenance_fence_lineage=fence_lineage)
             result['evidence_sha256'] = _hash(_canonical(result))
             return result
     except RuntimeEvidenceError:

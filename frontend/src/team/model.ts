@@ -53,6 +53,12 @@ export function matrixKey(task: TaskSnapshot): MatrixKey {
   return `${task.important ? 'important' : 'not-important'}-${task.urgent ? 'urgent' : 'not-urgent'}` as MatrixKey;
 }
 
+export function taskMovementOptions(task: TaskSnapshot, matrix: boolean, role: Actor['role']) {
+  if (matrix) return MATRIX_KEYS.filter(key => key !== 'unclassified' && key !== matrixKey(task));
+  return BUCKETS.filter(bucket => bucket !== task.bucket
+    && (role === 'owner' || bucket !== 'inbox' && bucket !== 'cancelled'));
+}
+
 const active = (task: TaskSnapshot) => task.bucket !== 'done' && task.bucket !== 'cancelled';
 const moscowDay = (timestamp: number) => new Date(timestamp + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 

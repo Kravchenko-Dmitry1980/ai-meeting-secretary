@@ -13,26 +13,30 @@ RESTORE_GUARD_DDL = '''CREATE TABLE IF NOT EXISTS maintenance_restore_guard(
     reconciliation_required INTEGER NOT NULL CHECK(reconciliation_required=1),manifest_sha256 TEXT NOT NULL)'''
 
 
-def assert_paid_billing_allowed(path):
-    """Read the restored authority without creating or migrating a database."""
-    from secretary.infrastructure.maintenance_binding import readonly_authority_uri
+def assert_paid_billing_allowed(path, *, authority_paths=None):
+    """Read every configured restore authority without creating or migrating a database."""
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
 
-    if path is None:
+    if path is None and (authority_paths is None or
+            type(authority_paths) in (tuple, list) and not authority_paths):
         return
-    path = Path(path).resolve()
-    if not path.exists():
-        return
-    connection = None
     try:
-        connection = sqlite3.connect(readonly_authority_uri(path), uri=True, timeout=.2)
-        present = connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='maintenance_restore_guard'").fetchone()
-        if present and connection.execute('SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1').fetchone():
+        if authority_paths is None:
+            authorities = ()
+        elif type(authority_paths) in (tuple, list) and len(authority_paths) <= 4:
+            authorities = tuple(value for value in authority_paths if value is not None)
+        else:
+            raise ValueError('billing_restore_authorities_invalid')
+        values = (() if path is None else (path,)) + authorities
+        paths = tuple(dict.fromkeys(Path(value).resolve() for value in values))
+        if not paths:
+            raise ValueError('billing_restore_authorities_missing')
+        if restore_guard_present(paths):
             raise BudgetError('maintenance_restore_blocked')
-    except sqlite3.Error:
+    except BudgetError:
+        raise
+    except (OSError, sqlite3.Error, TypeError, ValueError):
         raise BudgetError('maintenance_billing_unavailable') from None
-    finally:
-        if connection is not None:
-            connection.close()
 
 
 class BudgetRepository:

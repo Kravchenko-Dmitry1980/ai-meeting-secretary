@@ -61,6 +61,95 @@ class RecoveryCheckpoint:
 
 _AMBIENT=ContextVar('team_maintenance_admissions',default=())
 _HASH=re.compile(r'[0-9a-f]{64}\Z')
+_MAINTENANCE_REGISTRY_TABLES_V1={
+    'maintenance_state':('id','deployment_id','mode','fence','barrier_id','owner_id','native_evidence'),
+    'maintenance_participants':('participant_id','run_id','identity','guard_version'),
+    'maintenance_sources':('role','path'),
+    'maintenance_tickets':('id','participant_id','run_id','kind','operation_id','fence','state','created_at'),
+    'maintenance_events':('id','kind','barrier_id','fence','created_at'),
+    'maintenance_recovery_checkpoints':('id','payload','recovery_ticket_id','dead_proof','created_at'),
+    'maintenance_native_containment':('participant_id','run_id','identity','containment_version','recorded_at'),
+}
+_MAINTENANCE_REGISTRY_TABLES_V2={**_MAINTENANCE_REGISTRY_TABLES_V1,
+    'maintenance_ticket_commitments':('ticket_id','record','record_sha256','created_at')}
+_MAINTENANCE_REGISTRY_VERSION=2
+_TICKET_COMMITMENT_TABLE="""CREATE TABLE maintenance_ticket_commitments(
+    ticket_id TEXT PRIMARY KEY NOT NULL CHECK(length(ticket_id)=36),
+    record TEXT NOT NULL CHECK(length(record) BETWEEN 2 AND 131072),
+    record_sha256 TEXT NOT NULL CHECK(length(record_sha256)=64 AND record_sha256 NOT GLOB '*[^0-9a-f]*'),
+    created_at TEXT NOT NULL)"""
+_TICKET_COMMITMENT_TRIGGERS={
+    'maintenance_ticket_commitment_no_update':"""CREATE TRIGGER maintenance_ticket_commitment_no_update
+        BEFORE UPDATE ON maintenance_ticket_commitments
+        BEGIN SELECT RAISE(ABORT,'maintenance_ticket_commitment_immutable'); END""",
+    'maintenance_ticket_commitment_no_delete':"""CREATE TRIGGER maintenance_ticket_commitment_no_delete
+        BEFORE DELETE ON maintenance_ticket_commitments
+        BEGIN SELECT RAISE(ABORT,'maintenance_ticket_commitment_immutable'); END""",
+    'maintenance_ticket_commitment_no_replace':"""CREATE TRIGGER maintenance_ticket_commitment_no_replace
+        BEFORE INSERT ON maintenance_ticket_commitments
+        WHEN EXISTS(SELECT 1 FROM maintenance_ticket_commitments WHERE ticket_id=NEW.ticket_id)
+        BEGIN SELECT RAISE(ABORT,'maintenance_ticket_commitment_immutable'); END""",
+    'maintenance_ticket_commitment_ticket_exists':"""CREATE TRIGGER maintenance_ticket_commitment_ticket_exists
+        BEFORE INSERT ON maintenance_ticket_commitments
+        WHEN NOT EXISTS(SELECT 1 FROM maintenance_tickets WHERE id=NEW.ticket_id)
+        BEGIN SELECT RAISE(ABORT,'maintenance_ticket_commitment_ticket_missing'); END""",
+}
+_TICKET_IMMUTABLE_TRIGGER_V1="""CREATE TRIGGER maintenance_ticket_immutable BEFORE UPDATE ON maintenance_tickets
+    WHEN NEW.id!=OLD.id OR NEW.participant_id!=OLD.participant_id OR NEW.run_id!=OLD.run_id
+    OR NEW.kind!=OLD.kind OR NEW.operation_id IS NOT OLD.operation_id OR NEW.fence!=OLD.fence
+    OR NEW.created_at!=OLD.created_at OR OLD.state='finished'
+    BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END"""
+_TICKET_IMMUTABLE_TRIGGER="""CREATE TRIGGER maintenance_ticket_immutable BEFORE UPDATE ON maintenance_tickets
+    WHEN NEW.id!=OLD.id OR NEW.participant_id!=OLD.participant_id OR NEW.run_id!=OLD.run_id
+    OR NEW.kind!=OLD.kind OR (NEW.operation_id IS NOT OLD.operation_id AND NOT
+        (OLD.operation_id IS NULL AND NEW.operation_id IS NOT NULL
+         AND OLD.state='active' AND NEW.state='active')) OR NEW.fence!=OLD.fence
+    OR NEW.created_at!=OLD.created_at OR OLD.state='finished'
+    BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END"""
+_EVENT_IMMUTABLE_TRIGGERS={
+    'maintenance_event_no_update': """CREATE TRIGGER maintenance_event_no_update BEFORE UPDATE ON maintenance_events
+        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END""",
+    'maintenance_event_no_delete': """CREATE TRIGGER maintenance_event_no_delete BEFORE DELETE ON maintenance_events
+        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END""",
+    'maintenance_event_no_replace': """CREATE TRIGGER maintenance_event_no_replace BEFORE INSERT ON maintenance_events
+        WHEN EXISTS(SELECT 1 FROM maintenance_events WHERE id=NEW.id)
+        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END""",
+}
+
+
+def _validate_registry_layout(conn):
+    """Validate the fixed schema before any journal pragma or migration write."""
+    version=conn.execute('PRAGMA user_version').fetchone()[0]
+    tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if version in (0,1):
+        if (tables-set(_MAINTENANCE_REGISTRY_TABLES_V1)
+                or version==1 and not tables):
+            raise MaintenanceError('maintenance_database_invalid')
+        expected=_MAINTENANCE_REGISTRY_TABLES_V1
+        result_version=1
+    elif version==_MAINTENANCE_REGISTRY_VERSION:
+        if tables!=set(_MAINTENANCE_REGISTRY_TABLES_V2):
+            raise MaintenanceError('maintenance_database_invalid')
+        expected=_MAINTENANCE_REGISTRY_TABLES_V2
+        result_version=2
+    else:
+        raise MaintenanceError('maintenance_database_invalid')
+    required={'maintenance_state','maintenance_participants','maintenance_tickets','maintenance_events'}
+    if tables and not required.issubset(tables):
+        raise MaintenanceError('maintenance_database_invalid')
+    for table in tables:
+        if tuple(row[1] for row in conn.execute('PRAGMA table_info('+table+')'))!=expected[table]:
+            raise MaintenanceError('maintenance_database_invalid')
+    if result_version==2:
+        triggers={row[0]:' '.join(row[1].split()).casefold() for row in
+            conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='maintenance_events'")}
+        expected_events={name:' '.join(sql.split()).casefold() for name,sql in _EVENT_IMMUTABLE_TRIGGERS.items()}
+        commitment_triggers={row[0]:' '.join(row[1].split()).casefold() for row in
+            conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='maintenance_ticket_commitments'")}
+        expected_commitments={name:' '.join(sql.split()).casefold() for name,sql in _TICKET_COMMITMENT_TRIGGERS.items()}
+        if triggers!=expected_events or commitment_triggers!=expected_commitments:
+            raise MaintenanceError('maintenance_database_invalid')
+    return result_version
 
 
 def _uuid(value):
@@ -101,6 +190,7 @@ class MaintenanceRepository:
         # Identify an existing file before WAL pragmas or write transactions.
         if self.path.exists():
             with closing(sqlite3.connect('file:'+quote(self.path.as_posix(),safe='/:')+'?mode=ro',uri=True,timeout=.2)) as probe:
+                _validate_registry_layout(probe)
                 tables={row[0] for row in probe.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if tables and 'maintenance_state' not in tables:
                     raise MaintenanceError('maintenance_database_invalid')
@@ -110,6 +200,7 @@ class MaintenanceRepository:
                         raise MaintenanceError('maintenance_deployment_mismatch')
         self.path.parent.mkdir(parents=True,exist_ok=True)
         with self._transaction() as conn:
+            registry_version=_validate_registry_layout(conn)
             tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if tables and 'maintenance_state' not in tables:
                 raise MaintenanceError('maintenance_database_invalid')
@@ -125,27 +216,28 @@ class MaintenanceRepository:
                         state TEXT NOT NULL CHECK(state IN('active','finished')),created_at TEXT NOT NULL)''',
                     '''CREATE TABLE maintenance_events(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,
                         barrier_id TEXT,fence INTEGER NOT NULL,created_at TEXT NOT NULL)''',
-                    '''CREATE TRIGGER maintenance_ticket_immutable BEFORE UPDATE ON maintenance_tickets
-                        WHEN NEW.id!=OLD.id OR NEW.participant_id!=OLD.participant_id OR NEW.run_id!=OLD.run_id
-                        OR NEW.kind!=OLD.kind OR NEW.operation_id IS NOT OLD.operation_id OR NEW.fence!=OLD.fence
-                        OR NEW.created_at!=OLD.created_at OR OLD.state='finished'
-                        BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END''',
+                    _TICKET_IMMUTABLE_TRIGGER,
                     '''CREATE TRIGGER maintenance_ticket_no_delete BEFORE DELETE ON maintenance_tickets
                         BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END''',
                     '''CREATE TRIGGER maintenance_ticket_no_replace BEFORE INSERT ON maintenance_tickets
                         WHEN EXISTS(SELECT 1 FROM maintenance_tickets WHERE id=NEW.id)
                         BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END''',
-                    '''CREATE TRIGGER maintenance_event_no_update BEFORE UPDATE ON maintenance_events
-                        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END''',
-                    '''CREATE TRIGGER maintenance_event_no_delete BEFORE DELETE ON maintenance_events
-                        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END''',
-                    '''CREATE TRIGGER maintenance_event_no_replace BEFORE INSERT ON maintenance_events
-                        WHEN EXISTS(SELECT 1 FROM maintenance_events WHERE id=NEW.id)
-                        BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END''',
+                    *_EVENT_IMMUTABLE_TRIGGERS.values(),
                 )
                 for statement in statements:
                     conn.execute(statement)
                 conn.execute("INSERT INTO maintenance_state VALUES(1,?,'open',0,NULL,NULL,NULL)",(self.deployment_id,))
+            trigger=conn.execute("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='maintenance_ticket_immutable'").fetchone()
+            if not trigger:
+                raise MaintenanceError('maintenance_database_invalid')
+            stored_sql=' '.join(trigger[0].split()).casefold()
+            expected_sql=' '.join(_TICKET_IMMUTABLE_TRIGGER.split()).casefold()
+            legacy_sql=' '.join(_TICKET_IMMUTABLE_TRIGGER_V1.split()).casefold()
+            if stored_sql==legacy_sql:
+                conn.execute('DROP TRIGGER IF EXISTS maintenance_ticket_immutable')
+                conn.execute(_TICKET_IMMUTABLE_TRIGGER)
+            elif stored_sql!=expected_sql:
+                raise MaintenanceError('maintenance_database_invalid')
             if conn.execute('SELECT deployment_id FROM maintenance_state WHERE id=1').fetchone()[0]!=self.deployment_id:
                 raise MaintenanceError('maintenance_deployment_mismatch')
             conn.execute('''CREATE TABLE IF NOT EXISTS maintenance_recovery_checkpoints(
@@ -177,6 +269,13 @@ class MaintenanceRepository:
             conn.execute('''CREATE TRIGGER IF NOT EXISTS maintenance_containment_no_replace BEFORE INSERT ON maintenance_native_containment
                 WHEN EXISTS(SELECT 1 FROM maintenance_native_containment WHERE participant_id=NEW.participant_id AND run_id=NEW.run_id)
                 BEGIN SELECT RAISE(ABORT,'maintenance_containment_immutable'); END''')
+            if registry_version==1:
+                conn.execute(_TICKET_COMMITMENT_TABLE)
+                for statement in _TICKET_COMMITMENT_TRIGGERS.values():
+                    conn.execute(statement)
+                conn.execute('PRAGMA user_version=2')
+            if _validate_registry_layout(conn)!=_MAINTENANCE_REGISTRY_VERSION:
+                raise MaintenanceError('maintenance_database_invalid')
 
     def _now(self):
         value=self.clock()
@@ -308,16 +407,108 @@ class MaintenanceRepository:
         if not isinstance(ticket,MaintenanceTicket) or ticket.deployment_id!=self.deployment_id:
             raise MaintenanceError('maintenance_ticket_invalid')
         row=conn.execute('SELECT * FROM maintenance_tickets WHERE id=?',(ticket.id,)).fetchone()
-        if not row or self._ticket_value(row)!=ticket:
+        if not row or self._ticket_value(conn,row)!=ticket:
             raise MaintenanceError('maintenance_ticket_invalid')
         return row
 
-    def _ticket_value(self,row):
+    def _ticket_value(self,conn,row):
         return MaintenanceTicket(row['id'],self.deployment_id,row['participant_id'],row['run_id'],row['kind'],row['operation_id'],row['fence'])
+
+    def bind_current_operation(self,participant_id,operation_id):
+        """Bind the current outbound lifetime to its claimed business operation once."""
+        _name(participant_id);_uuid(operation_id)
+        key=(str(self.path),self.deployment_id,participant_id)
+        ticket=next((ticket for stored,ticket in reversed(_AMBIENT.get()) if stored==key),None)
+        if ticket is None or ticket.participant_id!=participant_id or not ticket.kind.startswith('outbound'):
+            raise MaintenanceBlocked('maintenance_operation_admission_required')
+        if ticket.operation_id is not None:
+            if ticket.operation_id==operation_id:
+                return ticket
+            raise MaintenanceBlocked('maintenance_operation_mismatch')
+        try:
+            with self._transaction() as conn:
+                row=self._ticket(conn,ticket)
+                if row['state']!='active':
+                    raise MaintenanceBlocked('maintenance_operation_admission_invalid')
+                if row['operation_id'] is not None:
+                    if row['operation_id']!=operation_id:
+                        raise MaintenanceBlocked('maintenance_operation_mismatch')
+                else:
+                    changed=conn.execute("UPDATE maintenance_tickets SET operation_id=? WHERE id=? AND state='active' AND operation_id IS NULL",
+                                         (operation_id,ticket.id)).rowcount
+                    if changed!=1:
+                        raise MaintenanceBlocked('maintenance_operation_admission_invalid')
+                current=conn.execute('SELECT * FROM maintenance_tickets WHERE id=?',(ticket.id,)).fetchone()
+                bound=self._ticket_value(conn,current)
+            values=list(_AMBIENT.get())
+            for index in range(len(values)-1,-1,-1):
+                stored,current=values[index]
+                if stored==key and current.id==ticket.id:
+                    values[index]=(stored,bound)
+                    break
+            else:
+                raise MaintenanceBlocked('maintenance_operation_admission_invalid')
+            _AMBIENT.set(tuple(values))
+            return bound
+        except MaintenanceBlocked:
+            raise
+        except MaintenanceError:
+            raise MaintenanceBlocked('maintenance_operation_admission_invalid') from None
+        except Exception:
+            raise MaintenanceBlocked('maintenance_authority_unavailable') from None
+
+    def assert_dispatch_admission(self,participant_id,*,allowed_kinds,operation_id):
+        """Require a live owner ticket and clear bound restore authorities at a dispatch seam.
+
+        This final read is not atomic with an external HTTP mutation; the shared
+        R4 interlock must still prevent source-generation changes during dispatch.
+        """
+        _name(participant_id)
+        if operation_id is None:
+            raise MaintenanceBlocked('maintenance_operation_required')
+        _uuid(operation_id)
+        if (type(allowed_kinds) is not tuple or not allowed_kinds
+                or any(not isinstance(kind,str) for kind in allowed_kinds)):
+            raise MaintenanceError('maintenance_dispatch_invalid')
+        for kind in allowed_kinds:_name(kind)
+        key=(str(self.path),self.deployment_id,participant_id)
+        ticket=next((ticket for stored,ticket in reversed(_AMBIENT.get()) if stored==key),None)
+        if ticket is None or ticket.participant_id!=participant_id or ticket.kind not in allowed_kinds:
+            raise MaintenanceBlocked('maintenance_admission_required')
+        if ticket.operation_id!=operation_id:
+            raise MaintenanceBlocked('maintenance_operation_mismatch')
+        try:
+            with self._transaction() as conn:
+                row=self._ticket(conn,ticket)
+                member=conn.execute('SELECT run_id FROM maintenance_participants WHERE participant_id=?',
+                                    (participant_id,)).fetchone()
+                sources=dict(conn.execute('SELECT role,path FROM maintenance_sources'))
+                if (row['state']!='active' or not member or member['run_id']!=ticket.run_id
+                        or set(sources)!={'secretary','team','billing','vikunja'}):
+                    raise MaintenanceBlocked('maintenance_admission_invalid')
+            from .maintenance_binding import restore_guard_present
+            if restore_guard_present(tuple(sources[role] for role in ('secretary','team','billing','vikunja'))):
+                raise MaintenanceBlocked('maintenance_restore_blocked')
+        except MaintenanceBlocked:
+            raise
+        except MaintenanceError:
+            raise MaintenanceBlocked('maintenance_admission_invalid') from None
+        except Exception:
+            raise MaintenanceBlocked('maintenance_authority_unavailable') from None
 
     def leave(self,ticket):
         with self._transaction() as conn:
-            row=self._ticket(conn,ticket)
+            if not isinstance(ticket,MaintenanceTicket) or ticket.deployment_id!=self.deployment_id:
+                raise MaintenanceError('maintenance_ticket_invalid')
+            row=conn.execute('SELECT * FROM maintenance_tickets WHERE id=?',(ticket.id,)).fetchone()
+            if row is None:
+                raise MaintenanceError('maintenance_ticket_invalid')
+            current=self._ticket_value(conn,row)
+            same_scope=(current.id,current.deployment_id,current.participant_id,current.run_id,current.kind,current.fence)==(
+                ticket.id,ticket.deployment_id,ticket.participant_id,ticket.run_id,ticket.kind,ticket.fence)
+            stale_unbound=ticket.operation_id is None and current.operation_id is not None
+            if not same_scope or current!=ticket and not stale_unbound:
+                raise MaintenanceError('maintenance_ticket_invalid')
             if row['state']=='active':
                 conn.execute("UPDATE maintenance_tickets SET state='finished' WHERE id=?",(ticket.id,))
 
@@ -388,7 +579,7 @@ class MaintenanceRepository:
     def active_tickets(self,claim):
         with self._transaction() as conn:
             self._held(conn,claim)
-            return tuple(self._ticket_value(row) for row in conn.execute("SELECT * FROM maintenance_tickets WHERE state='active' ORDER BY rowid"))
+            return tuple(self._ticket_value(conn,row) for row in conn.execute("SELECT * FROM maintenance_tickets WHERE state='active' ORDER BY rowid"))
 
     def active_operations(self,participant_id=None):
         """Read-only recovery inventory; this never expires or retires a ticket.
@@ -401,7 +592,7 @@ class MaintenanceRepository:
             sql="SELECT * FROM maintenance_tickets WHERE state='active'"
             args=()
             if participant_id is not None:sql+=' AND participant_id=?';args=(participant_id,)
-            return tuple(self._ticket_value(row) for row in conn.execute(sql+' ORDER BY rowid',args))
+            return tuple(self._ticket_value(conn,row) for row in conn.execute(sql+' ORDER BY rowid',args))
 
     def retire_dead_participant(self,checkpoint,*,proof):
         """Trusted recovery orchestration only, after its durable source commits.
@@ -486,6 +677,26 @@ class MaintenanceRepository:
     def assert_held(self,claim):
         with self._transaction() as conn:
             return self._held(conn,claim)
+
+    def fence_history_commitment(self,claim):
+        """Capture the frozen barrier's exact maintenance-event prefix for a backup manifest."""
+        with self._transaction() as conn:
+            state=self._held(conn,claim)
+            events=[dict(row) for row in conn.execute(
+                'SELECT id,kind,barrier_id,fence,created_at FROM maintenance_events ORDER BY id')]
+            triggers={row[0]:' '.join(row[1].split()).casefold() for row in conn.execute(
+                "SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name='maintenance_events'")}
+            expected={name:' '.join(sql.split()).casefold()
+                      for name,sql in _EVENT_IMMUTABLE_TRIGGERS.items()}
+            if (state['mode']!='frozen' or state['active_tickets'] or not events or len(events)>10000
+                    or events[-1]['kind']!='freeze'
+                    or (events[-1]['barrier_id'],events[-1]['fence'])!=(claim.barrier_id,claim.fence)
+                    or [event['id'] for event in events]!=list(range(1,len(events)+1))
+                    or triggers!=expected):
+                raise MaintenanceError('maintenance_fence_history_invalid')
+            return dict(schema_version=1,deployment_id=self.deployment_id,
+                barrier_id=claim.barrier_id,barrier_fence=claim.fence,event_count=len(events),
+                events_sha256=hashlib.sha256(_canonical(events).encode('utf-8')).hexdigest())
 
     def release(self,claim):
         with self._transaction() as conn:

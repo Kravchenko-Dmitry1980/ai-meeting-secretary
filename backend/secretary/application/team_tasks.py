@@ -139,21 +139,22 @@ class TeamTaskService:
     def _dispatch(self, command, task_id, step, etag):
         kind = step['kind']
         if kind == 'create':
-            return self.client.create_task(command, step['marker'])
+            return self.client.create_task(command, step['marker'], operation_id=command.operation_id)
         if kind == 'patch':
-            self.client.apply_task_change(task_id, step['fields'], expected_etag=etag)
+            self.client.apply_task_change(task_id, step['fields'], expected_etag=etag,
+                operation_id=command.operation_id)
         elif kind == 'move':
-            self.client.move_task(task_id, step['bucket'])
+            self.client.move_task(task_id, step['bucket'], operation_id=command.operation_id)
         elif kind == 'add_label':
-            self.client.add_label(task_id, step['label_id'])
+            self.client.add_label(task_id, step['label_id'], operation_id=command.operation_id)
         elif kind == 'remove_label':
-            self.client.remove_label(task_id, step['label_id'])
+            self.client.remove_label(task_id, step['label_id'], operation_id=command.operation_id)
         elif kind == 'add_assignee':
-            self.client.add_assignee(task_id, step['member_id'])
+            self.client.add_assignee(task_id, step['member_id'], operation_id=command.operation_id)
         elif kind == 'remove_assignee':
-            self.client.remove_assignee(task_id, step['provider_id'])
+            self.client.remove_assignee(task_id, step['provider_id'], operation_id=command.operation_id)
         elif kind == 'comment':
-            return self.client.add_comment(task_id, step['text'])
+            return self.client.add_comment(task_id, step['text'], operation_id=command.operation_id)
         else:
             raise VikunjaError('unknown_remote_step')
         return None

@@ -23,6 +23,8 @@ SAFE_PARENT_ENV = {
     "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATHEXT", "COMSPEC",
     "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 }
+_MAX_LOG_BYTES = 5 * 1024 * 1024
+_MAX_LOG_BACKUPS = 3
 
 
 def _canonical_run_id(value: str) -> str:
@@ -36,6 +38,7 @@ def _canonical_run_id(value: str) -> str:
 
 
 def build_server_command(root: Path, *, data_dir: Path, port: int, run_id: str,
+                         log_directory: Path,
                          python_executable: Path | None = None,
                          parent_env: dict[str, str] | None = None) -> tuple[list[str], dict[str, str]]:
     """Build a child launch that cannot inherit provider credentials or data paths."""
@@ -44,6 +47,10 @@ def build_server_command(root: Path, *, data_dir: Path, port: int, run_id: str,
     run_id = _canonical_run_id(run_id)
     root = Path(root).resolve()
     data_dir = Path(data_dir).resolve()
+    log_directory = Path(log_directory).resolve()
+    runtime_root = (root / ".runtime").resolve()
+    if log_directory == runtime_root or not log_directory.is_relative_to(runtime_root):
+        raise ValueError("lifecycle_log_directory_outside_runtime")
     python = str(python_executable or sys.executable)
     source_env = os.environ if parent_env is None else parent_env
     child_env = {key: value for key, value in source_env.items()
@@ -57,7 +64,8 @@ def build_server_command(root: Path, *, data_dir: Path, port: int, run_id: str,
     })
     command = [python, "-B", str(root / "scripts" / "run_server.py"),
                "--port", str(port), "--run-id", run_id,
-               "--offline", "--isolated-offline"]
+               "--offline", "--isolated-offline",
+               "--log-directory", str(log_directory)]
     return command, child_env
 
 
@@ -93,6 +101,26 @@ def _wait_ready(process: subprocess.Popen, port: int) -> None:
     raise RuntimeError("isolated_server_readiness_timeout")
 
 
+def rotating_logs_are_bounded(log_directory: Path) -> bool:
+    """Verify both Uvicorn logs exist and retain only bounded generations."""
+    directory = Path(log_directory)
+    try:
+        for basename in ("secretary.error.log", "secretary.access.log"):
+            files = list(directory.glob(basename + "*"))
+            if not any(path.name == basename for path in files) or len(files) > _MAX_LOG_BACKUPS + 1:
+                return False
+            for path in files:
+                if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_LOG_BYTES:
+                    return False
+                if path.name != basename:
+                    suffix = path.name[len(basename) + 1:]
+                    if (not suffix.isdigit() or not 1 <= int(suffix) <= _MAX_LOG_BACKUPS):
+                        return False
+    except OSError:
+        return False
+    return True
+
+
 def _stop_server(root: Path, handle: dict) -> None:
     process = handle["process"]
     if process.poll() is None:
@@ -121,8 +149,10 @@ def _stop_server(root: Path, handle: dict) -> None:
 
 def _start_server(root: Path, run_root: Path, data_dir: Path, port: int) -> dict:
     run_id = str(uuid4())
+    log_directory = run_root / "logs"
     command, child_env = build_server_command(root, data_dir=data_dir, port=port,
-        run_id=run_id, python_executable=root / ".venv" / "Scripts" / "python.exe")
+        run_id=run_id, log_directory=log_directory,
+        python_executable=root / ".venv" / "Scripts" / "python.exe")
     stdout_path = run_root / f"server-{run_id}.stdout.log"
     stderr_path = run_root / f"server-{run_id}.stderr.log"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
@@ -130,9 +160,12 @@ def _start_server(root: Path, run_root: Path, data_dir: Path, port: int) -> dict
         process = subprocess.Popen(command, cwd=root, env=child_env,
             stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
             creationflags=flags)
-    handle = {"process": process, "port": port, "run_id": run_id}
+    handle = {"process": process, "port": port, "run_id": run_id,
+              "log_directory": log_directory}
     try:
         _wait_ready(process, port)
+        if not rotating_logs_are_bounded(log_directory):
+            raise RuntimeError("isolated_rotating_logs_not_verified")
     except Exception:
         try:
             _stop_server(root, handle)
@@ -251,6 +284,7 @@ def run_check(root: Path) -> dict:
             "meeting_persisted_after_restart": True,
             "readiness_report_verified_after_start_and_restart": True,
             "storage_write_probe_cleaned_after_start_and_restart": True,
+            "bounded_rotating_logs_verified": True,
             "test_meetings": 1,
             "test_servers_stopped": True,
         }

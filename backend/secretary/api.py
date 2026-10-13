@@ -150,6 +150,12 @@ class StatusResponse(BaseModel):
     error: str | None = None
 
 
+class FrontendBuildRequiredResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["frontend_build_required"]
+    message: str
+
+
 class ErrorResponse(BaseModel):
     detail: str
 
@@ -355,6 +361,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     if provider_factory is None:
         from secretary.infrastructure.polza import build_polza_client
         provider_factory = lambda configuration: build_polza_client(configuration.model_copy(update={'cloud_enabled': False}) if not outbound_enabled else configuration, billing_path=billing_path,
+            restore_authority_paths=(secretary_path, billing_path),
             maintenance=maintenance, participant_id=participant_id)
     from secretary.infrastructure.cloud_budget_factory import build_monthly_budget
     cloud_budget = build_monthly_budget(settings, billing_path=billing_path, maintenance=maintenance, participant_id=participant_id)
@@ -1298,7 +1305,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     if frontend.exists():
         app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
     else:
-        @app.get("/")
+        @app.get("/", response_model=FrontendBuildRequiredResponse, status_code=503,
+                 response_description="Frontend build required")
         async def build_required():
-            return JSONResponse({"status": "frontend_build_required", "message": "Build frontend with npm run build"}, status_code=503)
+            return {"status": "frontend_build_required", "message": "Build frontend with npm run build"}
     return app

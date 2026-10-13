@@ -2,8 +2,8 @@
 
 This is not a production launcher and does not qualify TLS, MAX WebView, or
 production cookie security. It maps only the exact local HTTP origin to the
-synthetic fixture's HTTPS-origin contract; the real Gateway and Secure cookies
-remain unchanged.
+synthetic fixture's HTTPS-origin contract. The real Gateway cookie is renamed
+per fixture only at this local boundary, then restored before reaching the Gateway.
 """
 from __future__ import annotations
 
@@ -31,7 +31,11 @@ from starlette.responses import Response
 ROOT = Path(__file__).resolve().parents[2]
 SCRATCH = ROOT / '.runtime/team-rollout'
 SCRIPT = Path(__file__).resolve()
-HOSTNAME = 'secretary-t9.localhost'
+HOSTNAME = 'secretary-t9.localhost'  # Inner HTTPS origin used by the real Gateway fixture.
+DEFAULT_HTTP_HOSTNAME = 'localhost'  # Loopback host; per-run cookie names isolate local fixtures.
+LOCAL_HOSTNAMES = (DEFAULT_HTTP_HOSTNAME, HOSTNAME)
+_RUN_ID = re.compile(r'^t9-http-ui-([0-9a-f]{32})$')
+_SESSION_COOKIE_NAME = b'__Host-secretary-team'
 MAX_LIFETIME_SECONDS = 1800
 MODE = 'HTTP_SYNTHETIC_UI_ONLY'
 _MAX_BRIDGE_TAG = '<script id="team-max-bridge" async src="https://st.max.ru/js/max-web-app.js"></script>'
@@ -46,6 +50,39 @@ class FixtureFailure(ValueError):
 def require(condition, code):
     if not condition:
         raise FixtureFailure(code)
+
+
+def session_cookie_name_for_run(run_id):
+    """Give each HTTP fixture a browser cookie name that cannot collide by port."""
+    match = _RUN_ID.fullmatch(run_id) if isinstance(run_id, str) else None
+    require(match is not None, 'fixture_run_id_invalid')
+    return _SESSION_COOKIE_NAME + b'-t9-' + match.group(1).encode('ascii')
+
+
+def _rewrite_request_cookie(value, fixture_cookie_name):
+    kept, session_value = [], None
+    for raw_pair in value.split(b';'):
+        pair = raw_pair.strip()
+        name, separator, cookie_value = pair.partition(b'=')
+        if not separator:
+            continue
+        if name == fixture_cookie_name:
+            if session_value is None:
+                session_value = cookie_value
+        elif name != _SESSION_COOKIE_NAME:
+            kept.append(pair)
+    if session_value is not None:
+        kept.append(_SESSION_COOKIE_NAME + b'=' + session_value)
+    return b'; '.join(kept)
+
+
+def _rewrite_response_cookie(value, fixture_cookie_name):
+    pair, separator, attributes = value.partition(b';')
+    name, equals, cookie_value = pair.partition(b'=')
+    if equals and name == _SESSION_COOKIE_NAME:
+        pair = fixture_cookie_name + b'=' + cookie_value
+        return pair + (separator + attributes if separator else b'')
+    return value
 
 
 def _base_module():
@@ -63,25 +100,27 @@ _base = _base_module()
 
 def _origin_parts(value, scheme):
     parsed = urlsplit(value)
-    require(parsed.scheme == scheme and parsed.hostname == HOSTNAME and parsed.port is not None
+    require(parsed.scheme == scheme and parsed.hostname in LOCAL_HOSTNAMES and parsed.port is not None
             and parsed.username is None and parsed.password is None and not parsed.path
             and not parsed.query and not parsed.fragment,
             'fixture_origin_invalid')
-    require(parsed.netloc == f'{HOSTNAME}:{parsed.port}', 'fixture_origin_invalid')
+    require(parsed.netloc == f'{parsed.hostname}:{parsed.port}', 'fixture_origin_invalid')
     return parsed
 
 
 class LocalHttpSyntheticAdapter:
     """Fail-closed ASGI wrapper; no forwarding headers or non-loopback peers."""
 
-    def __init__(self, app, *, http_origin, secure_origin):
+    def __init__(self, app, *, http_origin, secure_origin, run_id):
         self.app = app
         external = _origin_parts(http_origin, 'http')
         internal = _origin_parts(secure_origin, 'https')
         require(external.port == internal.port, 'fixture_origin_invalid')
         self.http_origin = http_origin
         self.secure_origin = secure_origin
+        self.fixture_cookie_name = session_cookie_name_for_run(run_id)
         self.authority = external.netloc.encode('ascii')
+        self.secure_authority = internal.netloc.encode('ascii')
         self.http_origin_bytes = http_origin.encode('ascii')
         self.secure_origin_bytes = secure_origin.encode('ascii')
         self.port = external.port
@@ -127,12 +166,27 @@ class LocalHttpSyntheticAdapter:
         for name, value in headers:
             if name.lower() == b'origin':
                 translated.append((name, self.secure_origin_bytes))
+            elif name.lower() == b'host':
+                translated.append((name, self.secure_authority))
+            elif name.lower() == b'cookie':
+                translated.append((name, _rewrite_request_cookie(value, self.fixture_cookie_name)))
             else:
                 translated.append((name, value))
         forwarded_scope = dict(scope)
         forwarded_scope['scheme'] = 'https'
         forwarded_scope['headers'] = translated
-        return await self.app(forwarded_scope, receive, send)
+
+        async def rewrite_session_cookie(message):
+            if message.get('type') == 'http.response.start':
+                rewritten_headers = []
+                for name, value in message.get('headers', ()):
+                    if name.lower() == b'set-cookie':
+                        value = _rewrite_response_cookie(value, self.fixture_cookie_name)
+                    rewritten_headers.append((name, value))
+                message = {**message, 'headers': rewritten_headers}
+            await send(message)
+
+        return await self.app(forwarded_scope, receive, rewrite_session_cookie)
 
 
 def build_http_fixture(run_root, *, frontend_dist, http_origin):
@@ -146,7 +200,8 @@ def build_http_fixture(run_root, *, frontend_dist, http_origin):
     fixture_root.mkdir()
     fixture = _base.build_fixture(fixture_root, frontend_dist=frontend_dist, origin=secure_origin)
     fixture.app.mode = MODE
-    app = LocalHttpSyntheticAdapter(fixture.app, http_origin=http_origin, secure_origin=secure_origin)
+    app = LocalHttpSyntheticAdapter(fixture.app, http_origin=http_origin, secure_origin=secure_origin,
+        run_id=run_root.name)
     return fixture, app
 
 
@@ -244,10 +299,12 @@ def _owner_process(root, data):
 
 def _ready(root, data):
     port = int(data['port'])
+    hostname = data.get('host', HOSTNAME)
+    require(hostname in LOCAL_HOSTNAMES, 'fixture_manifest_invalid')
     require(1 <= port <= 65535, 'fixture_manifest_invalid')
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
     try:
-        connection.request('GET', '/fixture/status', headers={'Host': f'{HOSTNAME}:{port}'})
+        connection.request('GET', '/fixture/status', headers={'Host': f'{hostname}:{port}'})
         response = connection.getresponse()
         body = response.read(8192)
         payload = json.loads(body)
@@ -278,10 +335,11 @@ def _stop_requested(root):
     return marker.read_text(encoding='ascii') == root.name
 
 
-async def _serve(root, dist):
+async def _serve(root, dist, http_hostname=DEFAULT_HTTP_HOSTNAME):
     import uvicorn
 
     root = _validate_run_root(root)
+    require(http_hostname in LOCAL_HOSTNAMES, 'fixture_hostname_invalid')
     require(root.is_dir() and all(item.name == 'lifecycle.log' for item in root.iterdir()),
             'fresh_fixture_directory_required')
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -294,8 +352,8 @@ async def _serve(root, dist):
         sock.listen(128)
         data = {'version': 1, 'run_id': root.name, 'pid': os.getpid(),
                 'create_time': psutil.Process().create_time(), 'state': 'starting',
-                'mode': MODE, 'host': HOSTNAME, 'port': port,
-                'origin': f'http://{HOSTNAME}:{port}',
+                'mode': MODE, 'host': http_hostname, 'port': port,
+                'origin': f'http://{http_hostname}:{port}',
                 'max_lifetime_seconds': MAX_LIFETIME_SECONDS}
         _write_manifest(root, data)
         fixture, app = build_http_fixture(root, frontend_dist=dist, http_origin=data['origin'])
@@ -344,13 +402,14 @@ async def _serve(root, dist):
             _write_manifest(root, data)
 
 
-def start(frontend_dist):
+def start(frontend_dist, *, http_hostname=DEFAULT_HTTP_HOSTNAME):
     prepared = prepare_dist(frontend_dist)
     dist = Path(prepared['frontend_dist'])
     root = _validate_run_root(SCRATCH / ('t9-http-ui-' + uuid4().hex))
+    require(http_hostname in LOCAL_HOSTNAMES, 'fixture_hostname_invalid')
     root.mkdir()
     args = [sys.executable, '-B', str(SCRIPT), 'serve', '--run-root', str(root),
-            '--frontend-dist', str(dist)]
+            '--frontend-dist', str(dist), '--http-hostname', http_hostname]
     with (root / 'lifecycle.log').open('xb') as output:
         process = subprocess.Popen(args, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=output,
             stderr=output, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
@@ -384,15 +443,16 @@ def main():
     parser.add_argument('action', choices=('start', 'serve', 'status', 'stop'))
     parser.add_argument('--run-root', type=Path)
     parser.add_argument('--frontend-dist', type=Path, default=ROOT / 'frontend/dist')
+    parser.add_argument('--http-hostname', choices=LOCAL_HOSTNAMES, default=DEFAULT_HTTP_HOSTNAME)
     args = parser.parse_args()
     try:
         if args.action == 'start':
-            value = start(args.frontend_dist)
+            value = start(args.frontend_dist, http_hostname=args.http_hostname)
         else:
             require(args.run_root is not None, 'fixture_run_root_required')
             root = _validate_run_root(args.run_root)
             if args.action == 'serve':
-                asyncio.run(_serve(root, args.frontend_dist))
+                asyncio.run(_serve(root, args.frontend_dist, args.http_hostname))
                 return 0
             if args.action == 'stop':
                 value = _request_stop(root)

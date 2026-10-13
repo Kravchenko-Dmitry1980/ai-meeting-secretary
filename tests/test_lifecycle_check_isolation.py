@@ -24,6 +24,7 @@ def test_lifecycle_child_uses_only_scratch_data_and_synthetic_offline_configurat
 
     root = tmp_path / "project with spaces"
     data_dir = tmp_path / "scratch data" / "sqlite"
+    log_directory = root / ".runtime" / "lifecycle-isolated" / "run-test" / "logs"
     parent_env = {
         "PATH": "C:\\Windows\\System32",
         "SYSTEMROOT": "C:\\Windows",
@@ -38,6 +39,7 @@ def test_lifecycle_child_uses_only_scratch_data_and_synthetic_offline_configurat
         data_dir=data_dir,
         port=49152,
         run_id=RUN_ID,
+        log_directory=log_directory,
         python_executable=Path("C:/Secretary/.venv/Scripts/python.exe"),
         parent_env=parent_env,
     )
@@ -52,6 +54,8 @@ def test_lifecycle_child_uses_only_scratch_data_and_synthetic_offline_configurat
         RUN_ID,
         "--offline",
         "--isolated-offline",
+        "--log-directory",
+        str(log_directory.resolve()),
     ]
     assert child_env["DATA_DIR"] == str(data_dir.resolve())
     assert child_env["POLZA_BASE_URL"] == "https://polza.invalid/api/v1"
@@ -73,6 +77,22 @@ def test_lifecycle_stop_marker_is_scoped_to_its_run_id(tmp_path):
 
     assert marker_path(root, RUN_ID) == expected
     assert marker_path(root, other_run) != expected
+
+
+def test_lifecycle_requires_bounded_error_and_access_log_generations(tmp_path):
+    check = load_check()
+    verify = getattr(check, "rotating_logs_are_bounded", None)
+    assert callable(verify), "lifecycle check must verify bounded runtime logs"
+    log_directory = tmp_path / "logs"
+    log_directory.mkdir()
+    (log_directory / "secretary.error.log").write_text("", encoding="utf-8")
+    (log_directory / "secretary.access.log").write_text("", encoding="utf-8")
+    (log_directory / "secretary.access.log.3").write_text("bounded", encoding="utf-8")
+
+    assert verify(log_directory) is True
+
+    (log_directory / "secretary.access.log.4").write_text("excess generation", encoding="utf-8")
+    assert verify(log_directory) is False
 
 
 class ReadyResponse:

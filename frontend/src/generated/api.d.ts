@@ -1560,6 +1560,16 @@ export interface components {
             /** Retry After */
             retry_after?: number | null;
         };
+        /** FrontendBuildRequiredResponse */
+        FrontendBuildRequiredResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "frontend_build_required";
+            /** Message */
+            message: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5110,13 +5120,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Frontend build required */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["FrontendBuildRequiredResponse"];
                 };
             };
         };

@@ -213,7 +213,8 @@ def test_interruption_between_decision_and_nonce_inserts_rolls_back_both(tmp_pat
     assert reopened['activation_supported'] is False and reopened['outbound_enabled'] is False
 
 
-def test_concurrent_exact_nonce_replay_appends_only_one_decision(tmp_path):
+def test_concurrent_exact_nonce_replay_appends_only_one_decision(tmp_path, monkeypatch):
+    import threading
     target = implementation()
     from secretary.infrastructure.restore_operator import create_private_directory
     from secretary.infrastructure.restore_business_owner import VerifiedBusinessOwnerConsent
@@ -232,10 +233,40 @@ def test_concurrent_exact_nonce_replay_appends_only_one_decision(tmp_path):
     consent = VerifiedBusinessOwnerConsent('1' * 64, 'f' * 64, '2' * 64, '3' * 64,
         int(time.time()) + 300)
     blockers = tuple(sorted(target._FIXED_BLOCKERS))
-    def append():
-        return ledger._append_blocked(consent, bound, blockers, precommit=lambda replay: None)
+    writer_transaction = threading.Event()
+    release_writer = threading.Event()
+    concurrent_journal_check = threading.Event()
+    original_check = target.ActivationDecisionLedger._check_file
+    def observe_check(store):
+        if (writer_transaction.is_set()
+                and Path(str(path) + '-journal').exists()):
+            concurrent_journal_check.set()
+        return original_check(store)
+    monkeypatch.setattr(target.ActivationDecisionLedger, '_check_file', observe_check)
+    def append_first():
+        def hold_write_transaction(replay):
+            if not replay:
+                writer_transaction.set()
+                if not release_writer.wait(5):
+                    raise RuntimeError('synthetic writer release timed out')
+        return ledger._append_blocked(
+            consent, bound, blockers, precommit=hold_write_transaction)
+    def append_replay():
+        replay_ledger = target.ActivationDecisionLedger.open_existing(path, ledger_binding)
+        return replay_ledger._append_blocked(
+            consent, bound, blockers, precommit=lambda replay: None)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = tuple(pool.map(lambda _: append(), range(2)))
+        first = pool.submit(append_first)
+        assert writer_transaction.wait(5), 'first append did not enter its write transaction'
+        second = pool.submit(append_replay)
+        try:
+            concurrent_journal_check.wait(1)
+        finally:
+            release_writer.set()
+        first_result = first.result(timeout=5)
+        assert not concurrent_journal_check.is_set(), (
+            'a concurrent file check observed the application-owned SQLite rollback journal')
+        results = (first_result, second.result(timeout=5))
     assert results[0] == results[1]
     snapshot = target.ActivationDecisionLedger.open_existing(path, ledger_binding).snapshot()
     assert len(snapshot['decisions']) == 1 and len(snapshot['used_owner_nonce_hashes']) == 1
@@ -345,3 +376,115 @@ def test_corrupt_schema_and_journal_sidecar_are_refused_without_repair(tmp_path)
     with pytest.raises(target.ActivationDecisionError):
         target.ActivationDecisionLedger.open_existing(path, ledger_binding)
     assert sidecar.read_bytes() == b'synthetic incomplete journal' and path.read_bytes() == before
+
+
+def _runtime_settings_for_current_decision(case):
+    sample, target, _, _, arguments = case
+    from secretary.team_settings import load_team_settings
+    config = json.loads(arguments['config_path'].read_text(encoding='utf-8'))
+    config['control_database_path'] = str(arguments['maintenance_path'])
+    config_path = sample.tmp / 'runtime-config-current-decision.json'
+    config_path.write_text(json.dumps(config), encoding='utf-8')
+    current_arguments = {**arguments, 'config_path': config_path}
+    settings = load_team_settings(config_path)
+    return sample, target, settings, current_arguments, config_path
+
+
+def test_fixed_reader_returns_only_current_blocked_decision_and_does_not_write(decision_case):
+    sample, target, authority, _, arguments = decision_case
+    sample, target, settings, arguments, _ = _runtime_settings_for_current_decision(decision_case)
+    assert tuple(inspect.signature(target.read_current_blocked_activation_decision).parameters) == ('settings',)
+    commitment = target.current_activation_consent_commitment(**arguments)
+    receipt = issue(authority, commitment)
+    recorded = target.record_blocked_activation_decision(**arguments, owner_receipt=receipt)
+    path = _decision_path(sample, commitment)
+    before = path.read_bytes()
+
+    result = target.read_current_blocked_activation_decision(settings)
+
+    snapshot = target.ActivationDecisionLedger.open_existing(
+        path, target._ledger_binding(commitment)).snapshot()
+    assert result == {
+        'state': 'activation_blocked',
+        'restore_id': recorded['decision']['restore_id'],
+        'epoch_id': recorded['decision']['epoch_id'],
+        'decision_id': recorded['decision_id'],
+        'decision_record_sha256': snapshot['decisions'][-1]['record_sha256'],
+        'blockers': tuple(recorded['blockers']),
+        'activation_supported': False,
+        'outbound_enabled': False,
+    }
+    assert path.read_bytes() == before
+
+
+def test_fixed_r4_path_resolver_derives_the_post_preparation_source_context(decision_case):
+    sample, _, settings, _, _ = _runtime_settings_for_current_decision(decision_case)
+    runtime_context = importlib.import_module('secretary.infrastructure.restore_runtime_context')
+    resolver = runtime_context.resolve_fixed_runtime_restore_inputs
+
+    assert tuple(inspect.signature(resolver).parameters) == ('settings',)
+    result = resolver(settings)
+
+    assert result.project_root == sample.tmp
+    assert result.backup_dir == sample.backup
+    assert result.restore_dir == sample.restored.destination
+    assert result.maintenance_path == sample.tmp / 'original-control.sqlite3'
+    assert result.lifecycle_path == sample.tmp / 'original-lifecycle.json'
+    assert result.restore_id == sample.restored.restore_id
+    assert result.activation_supported is False and result.outbound_enabled is False
+
+
+def test_fixed_reader_missing_ledger_does_not_create_store_or_parent(decision_case):
+    sample, target, _, _, _ = decision_case
+    sample, target, settings, _, _ = _runtime_settings_for_current_decision(decision_case)
+    metadata_path = Path(settings.team_database_path).parent.parent / 'restore.json'
+    restore_id = json.loads(metadata_path.read_text(encoding='utf-8'))['restore_id']
+    directory = sample.tmp / '.runtime' / 'team-operator' / 'activations' / restore_id / 'decisions-v1'
+    path = directory / 'decision.sqlite3'
+    assert not directory.exists() and not path.exists()
+
+    with pytest.raises(target.ActivationDecisionError, match='activation_decision_missing'):
+        target.read_current_blocked_activation_decision(settings)
+
+    assert not directory.exists() and not path.exists()
+
+
+def test_fixed_reader_rejects_stale_current_config_without_rewriting_decision(decision_case):
+    sample, target, authority, _, arguments = decision_case
+    sample, target, settings, arguments, config_path = _runtime_settings_for_current_decision(decision_case)
+    commitment = target.current_activation_consent_commitment(**arguments)
+    receipt = issue(authority, commitment)
+    target.record_blocked_activation_decision(**arguments, owner_receipt=receipt)
+    path = _decision_path(sample, commitment)
+    before = path.read_bytes()
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    config['polza_api_key'] = 'synthetic-rotated-polza-token'
+    config_path.write_text(json.dumps(config), encoding='utf-8')
+    from secretary.team_settings import load_team_settings
+    stale_settings = load_team_settings(config_path)
+    current_commitment = target.current_activation_consent_commitment(**arguments)
+    assert current_commitment != commitment
+
+    with pytest.raises(target.ActivationDecisionError, match='activation_decision_source_changed'):
+        target.read_current_blocked_activation_decision(stale_settings)
+
+    assert path.read_bytes() == before
+
+
+def test_fixed_reader_rejects_expired_owner_decision_without_rewriting_ledger(decision_case, monkeypatch):
+    from types import SimpleNamespace
+    sample, target, authority, _, arguments = decision_case
+    sample, target, settings, arguments, _ = _runtime_settings_for_current_decision(decision_case)
+    commitment = target.current_activation_consent_commitment(**arguments)
+    receipt = issue(authority, commitment)
+    recorded = target.record_blocked_activation_decision(**arguments, owner_receipt=receipt)
+    path = _decision_path(sample, commitment)
+    before = path.read_bytes()
+    real_time = target.time
+    monkeypatch.setattr(target, 'time', SimpleNamespace(
+        time=lambda: recorded['decision']['expires_at'], monotonic=real_time.monotonic))
+
+    with pytest.raises(target.ActivationDecisionError, match='activation_decision_source_changed'):
+        target.read_current_blocked_activation_decision(settings)
+
+    assert path.read_bytes() == before

@@ -4,7 +4,7 @@ import { createTeamApi } from './api';
 import type { Actor, TaskChange, TaskSnapshot } from './api';
 import { useTeamAuth } from './useTeamAuth';
 import { useTeamTasks } from './useTeamTasks';
-import { BUCKETS, BUCKET_LABELS, MATRIX_KEYS, MATRIX_LABELS, emptyDraft, taskViews } from './model';
+import { BUCKETS, BUCKET_LABELS, MATRIX_KEYS, MATRIX_LABELS, emptyDraft, taskMovementOptions, taskViews } from './model';
 import type { AssigneeBinding, Bucket, MatrixKey, PublicAction, TeamDraft } from './model';
 import { TeamTaskForm } from './TeamTaskForm';
 import { TeamCommandPreview } from './TeamCommandPreview';
@@ -19,6 +19,10 @@ const actionLabels: Record<string, string> = { create: 'Создание зад�
 const fieldLabels: Record<string, string> = { title: 'название', description: 'описание', assignee_id: 'ответственный', bucket: 'статус', important: 'важность', urgent: 'срочность', classification_confirmed: 'подтверждение приоритетов', due_at: 'срок', due_confirmed: 'подтверждение срока', due_phrase: 'фраза о сроке', due_timezone: 'часовой пояс', remote_fingerprint: 'версия', comment: 'комментарий', result: 'результат', reason: 'причина' };
 const errorLabels: Record<string, string> = {
   team_session_expired: 'Сеанс завершён. Войдите снова.', team_session_lost: 'Сеанс завершён. Войдите снова.',
+  team_authentication_required: 'Не удалось войти. Код неверен, уже использован или истёк. Запросите новый одноразовый код и попробуйте снова.',
+  team_login_rate_limited: 'Слишком много попыток входа. Подождите немного и запросите новый код.',
+  team_auth_unavailable: 'Сервис входа временно недоступен. Попробуйте позже.',
+  team_csrf_forbidden: 'Не удалось проверить вход. Обновите страницу и запросите новый код.',
   team_request_failed: 'Не удалось выполнить запрос.', team_read_failed: 'Не удалось обновить задачи.',
   external_change_detected: 'Задача изменена вне приложения. Обновите её и подготовьте новую команду.',
   actor_revision_conflict: 'Права участника изменились. Войдите снова.',
@@ -69,8 +73,7 @@ function TaskCard({ task, actor, members, onSelect, onMove, onDrag, onDragEnd, n
   const assignee = members.find((member) => member.id === task.assignee_id)?.display_name
     ?? (task.assignee_id === actor.id ? actor.display_name : task.assignee_id ? 'Участник команды' : 'Без исполнителя');
   const enabled = matrix ? actor.role === 'owner' : safeAction(task, actor);
-  const movementOptions = matrix ? MATRIX_KEYS.filter((key) => key !== 'unclassified')
-    : BUCKETS.filter((bucket) => actor.role === 'owner' || bucket !== 'inbox' && bucket !== 'cancelled');
+  const movementOptions = taskMovementOptions(task, matrix, actor.role);
   return <article className="team-card" draggable={enabled} onDragEnd={onDragEnd}
     onDragStart={(event) => { if (!enabled) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.task_id); onDrag(task, matrix); }}>
     <button className="team-card-title" onClick={() => onSelect(task)}>{task.title}</button>
@@ -180,8 +183,9 @@ export function TeamApp({ maxSource = null, lifecycleSignal, bridgeUnavailable =
     <p>Откройте приложение из бота MAX. Для входа на компьютере запросите в боте кнопку «Вход на компьютере» и введите одноразовый код.</p>
     {bridgeUnavailable && <p className="team-notice">Не удалось подключить MAX Bridge. Вход по одноразовому коду доступен; для входа через MAX закройте и заново откройте приложение.</p>}
     {authState.status === 'checking' && <p role="status"><LoaderCircle size={18} className="team-spinner" aria-hidden="true" /> Проверяем сеанс…</p>}
-    {authState.error && <div className="team-notice error" role="alert">{authState.error.message}<br /><small>Код: {authState.error.code}</small></div>}
+    {authState.error && <div className="team-notice error" role="alert">{message(authState.error.code)}<details className="team-technical"><summary>Технические детали</summary><small>Код: {authState.error.code}</small></details></div>}
     <form onSubmit={(event) => { void submitCode(event); }}><label className="team-field">Одноразовый код<input type="password" autoComplete="off" value={code} maxLength={80} onChange={(event) => setCode(event.target.value)} required /></label>
+      <p className="team-muted">Код действует пять минут и используется один раз. Если вход отклонён, запросите новый код у владельца.</p>
       <button className="team-primary" disabled={authState.status === 'checking' || !code.trim()}>Войти</button></form>
     {authState.status === 'uncertain' && <p>Ответ на вход не получен. Сначала проверьте сеанс; повторно использованный код может быть уже погашен.</p>}
     {(authState.status === 'error' || authState.status === 'uncertain') && <button onClick={() => { void auth.bootstrap({ max: maxSource }); }}>Проверить сеанс</button>}

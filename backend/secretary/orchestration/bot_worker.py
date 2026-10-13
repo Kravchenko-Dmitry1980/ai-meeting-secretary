@@ -10,15 +10,21 @@ from secretary.orchestration.team_worker import TeamWorker
 
 
 class _BotWorker:
-    def __init__(self, repository, *, worker_id, lease_seconds=60, poll_seconds=1.0):
+    def __init__(self, repository, *, worker_id, lease_seconds=60, poll_seconds=1.0,
+                 maintenance=None, participant_id=None):
         if not isinstance(worker_id, str) or not worker_id.strip() or len(worker_id) > 128:
             raise ValueError('bot_worker_id_invalid')
         if type(lease_seconds) is not int or not 3 <= lease_seconds <= 3600:
             raise ValueError('bot_lease_invalid')
         if isinstance(poll_seconds, bool) or not isinstance(poll_seconds, (int, float)) or not 0.01 <= poll_seconds <= 60:
             raise ValueError('bot_poll_invalid')
+        if ((maintenance is None) != (participant_id is None)
+                or maintenance is not None and (not isinstance(participant_id, str) or not participant_id.strip()
+                    or not callable(getattr(maintenance, 'bind_current_operation', None)))):
+            raise ValueError('bot_maintenance_binding_invalid')
         self.repository, self.worker_id = repository, worker_id
         self.lease_seconds, self.poll_seconds = lease_seconds, poll_seconds
+        self.maintenance, self.participant_id = maintenance, participant_id
         self._stop = asyncio.Event()
         self._busy = asyncio.Lock()
 
@@ -99,6 +105,8 @@ class BotOutboxWorker(_BotWorker):
     def _execute(self, claim):
         started = False
         try:
+            if self.maintenance is not None:
+                self.maintenance.bind_current_operation(self.participant_id, claim.id)
             current = self.repository.authorize_reply(claim)
             text, sensitive = current.reply.text, current.reply.sensitive_action == 'desktop_code'
             if sensitive:
@@ -116,9 +124,13 @@ class BotOutboxWorker(_BotWorker):
         except (BotError, TeamConflict, TeamForbidden, AuthError):
             receipt = SendReceipt(claim.id, 'uncertain' if started else 'rejected',
                 error_code='bot_send_uncertain' if started else 'bot_send_forbidden')
-        except Exception:
-            receipt = SendReceipt(claim.id, 'uncertain' if started else 'rejected',
-                error_code='bot_send_uncertain' if started else 'bot_send_unavailable')
+        except Exception as error:
+            code = getattr(error, 'code', None)
+            if isinstance(code, str) and code.startswith('maintenance_'):
+                receipt = SendReceipt(claim.id, 'rejected', error_code=code)
+            else:
+                receipt = SendReceipt(claim.id, 'uncertain' if started else 'rejected',
+                    error_code='bot_send_uncertain' if started else 'bot_send_unavailable')
         try:
             self.repository.finish_reply(claim, receipt)
         except (BotError, TeamConflict, TeamForbidden):

@@ -68,6 +68,30 @@ def test_install_is_declarative_and_full_catalogue(tmp_path):
     assert m.catalogue_metadata()['native_catalogue']=='OBSERVED_EXACT_PINNED_NATIVE_DUMP'
 
 
+def test_restore_hold_is_control_metadata_outside_native_business_fingerprint(tmp_path):
+    m,path,_=make_source(tmp_path)
+    backup=importlib.import_module('secretary.infrastructure.team_backup')
+    restore_id=str(uuid4());manifest_hash='c'*64
+    with closing(sqlite3.connect(path)) as conn:
+        before=m.native_schema_descriptor(conn)
+        backup._restore_guard(conn,restore_id,manifest_hash)
+        conn.commit()
+        after=m.native_schema_descriptor(conn)
+    assert after==before
+
+
+def test_native_reader_rejects_partial_restore_hold_protocol(tmp_path):
+    m,path,_=make_source(tmp_path)
+    backup=importlib.import_module('secretary.infrastructure.team_backup')
+    with closing(sqlite3.connect(path)) as conn:
+        backup._restore_guard(conn,str(uuid4()),'d'*64)
+        conn.execute('DROP TRIGGER backup_restore_no_update')
+        conn.commit()
+        with pytest.raises(m.NativeHistoryError) as error:
+            m.native_schema_descriptor(conn)
+    assert error.value.reason=='native_restore_guard_invalid'
+
+
 def test_empty_history_reopens_without_sidecars_or_changes(tmp_path):
     m,path,binding,plan,snapshot=install(tmp_path)
     before=tree_bytes(tmp_path)

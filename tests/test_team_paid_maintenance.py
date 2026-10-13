@@ -243,3 +243,37 @@ async def test_explicit_billing_path_override_preserves_restore_authority(tmp_pa
     with pytest.raises(ProviderError, match="maintenance_restore_blocked"):
         await post(api)
     assert api.budget.repository.path == path
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["secretary", "team", "billing", "vikunja"])
+async def test_paid_polza_dispatch_checks_each_restore_authority_before_transport(tmp_path, role):
+    ledger = budget(tmp_path)
+    billing_path = ledger.repository.path
+    paths = {
+        "secretary": tmp_path / "secretary.sqlite3",
+        "team": tmp_path / "team.sqlite3",
+        "billing": billing_path,
+        "vikunja": tmp_path / "vikunja.sqlite3",
+    }
+    if role != "billing":
+        with sqlite3.connect(paths[role]) as conn:
+            conn.execute("""CREATE TABLE maintenance_restore_guard(
+                id INTEGER PRIMARY KEY CHECK(id=1), restore_id TEXT NOT NULL,
+                reconciliation_required INTEGER NOT NULL CHECK(reconciliation_required=1),
+                manifest_sha256 TEXT NOT NULL)""")
+    restore_guard(paths[role])
+    requests = []
+    api = PolzaClient(config(tmp_path), httpx.MockTransport(
+        lambda request: (requests.append(request), httpx.Response(200, json={"id": "unexpected"}))[1]),
+        budget=ledger, charge_context={"key_tag": KEY_TAG}, price_reader=Prices(),
+        billing_path=billing_path,
+        restore_authority_paths=tuple(paths[name] for name in ("secretary", "team", "billing", "vikunja")))
+
+    with pytest.raises(ProviderError) as failure:
+        await post(api)
+
+    assert failure.value.code == "maintenance_restore_blocked"
+    assert requests == []
+    with ledger.repository.transaction() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM billing_charges").fetchone()[0] == 0

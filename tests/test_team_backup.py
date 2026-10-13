@@ -2,6 +2,7 @@
 import asyncio
 import importlib
 import importlib.util
+import multiprocessing
 import sqlite3
 import hashlib
 import json
@@ -47,6 +48,45 @@ def registered(tmp_path):
         'pid':123,'creation_time':'2026-10-04T00:00:00Z',
         'executable_sha256':'a'*64,'argv_sha256':'b'*64})
     return m,gate
+
+
+def _cross_process_outbound(path, deployment_id, participant_id, operation_id,
+                            start_event, dispatch_event, release_event, result_queue,
+                            hold_ticket):
+    from secretary.infrastructure.team_maintenance import MaintenanceBlocked, MaintenanceRepository
+    try:
+        gate = MaintenanceRepository(Path(path), deployment_id)
+        if not start_event.wait(10):
+            result_queue.put(('error', 'start_timeout'))
+            return
+        with gate.admission(participant_id, 'outbound_task'):
+            ticket = gate.bind_current_operation(participant_id, operation_id)
+            if not hold_ticket:
+                result_queue.put(('unexpected_admission', ticket.id, ticket.operation_id))
+                return
+            result_queue.put(('ticket_bound', ticket.id, ticket.operation_id))
+            if not dispatch_event.wait(10):
+                result_queue.put(('error', 'dispatch_timeout'))
+                return
+            gate.assert_dispatch_admission(participant_id,
+                allowed_kinds=('outbound_task',), operation_id=operation_id)
+            result_queue.put(('dispatch_allowed', ticket.id))
+            if not release_event.wait(10):
+                result_queue.put(('error', 'release_timeout'))
+    except MaintenanceBlocked as error:
+        result_queue.put(('blocked', error.code))
+    except BaseException as error:
+        result_queue.put(('error', type(error).__name__, getattr(error, 'code', None)))
+
+
+def _bound_four_synthetic_sources(gate, tmp_path):
+    sources = {role: tmp_path / (role + '.sqlite3')
+               for role in ('secretary', 'team', 'billing', 'vikunja')}
+    for path in sources.values():
+        with sqlite3.connect(path) as connection:
+            connection.execute('CREATE TABLE synthetic_source(value INTEGER)')
+    gate.bind_sources(sources)
+    return sources
 
 
 def test_active_capture_defers_backup_without_interrupting_audio(tmp_path):
@@ -165,6 +205,36 @@ def test_backup_barrier_prevents_publication_and_charge_between_snapshots(tmp_pa
         manifest=json.loads((result.destination/'manifest.json').read_text())
         assert set(manifest['databases'])=={'secretary','team','billing','vikunja'}
         assert manifest['barrier_id']==manifest['native_quiescence']['barrier_id']
+        history=manifest['maintenance_fence_history']
+        assert history['schema_version']==1
+        assert history['deployment_id']==manifest['deployment_id']
+        assert history['barrier_id']==manifest['barrier_id']
+        assert history['barrier_fence']==manifest['barrier_fence']
+        assert 1<=history['event_count']<=10000
+        assert len(history['events_sha256'])==64
+        with sqlite3.connect(gate.path) as connection:
+            columns=('id','kind','barrier_id','fence','created_at')
+            events=[dict(zip(columns,row)) for row in connection.execute(
+                'SELECT id,kind,barrier_id,fence,created_at FROM maintenance_events ORDER BY id')]
+        snapshot=events[:history['event_count']]
+        assert snapshot[-1]['kind']=='freeze'
+        assert hashlib.sha256(b._json(snapshot).encode('utf-8')).hexdigest()==history['events_sha256']
+
+
+def test_successive_backup_generations_advance_fence_within_bound_deployment(tmp_path):
+    with full_fixture(tmp_path) as (_,gate,service,fixture,_):
+        first=service.backup(tmp_path/'backups'/'generation-one')
+        second=service.backup(tmp_path/'backups'/'generation-two')
+        assert first.state==second.state=='complete'
+        manifests=[json.loads((result.destination/'manifest.json').read_text(encoding='utf-8'))
+            for result in (first,second)]
+        assert manifests[0]['deployment_id']==manifests[1]['deployment_id']==gate.deployment_id
+        assert manifests[0]['barrier_id']!=manifests[1]['barrier_id']
+        assert manifests[1]['barrier_fence']>manifests[0]['barrier_fence']
+        for manifest in manifests:
+            assert manifest['barrier_id']==manifest['native_quiescence']['barrier_id']
+        assert gate.status()['mode']=='open'
+        assert fixture.controller.children['vikunja'][1].alive()
 
 
 def test_partial_snapshot_failure_never_becomes_restorable_and_resumes_owned_native(tmp_path,monkeypatch):
@@ -306,6 +376,212 @@ def test_partial_restore_prior_authorities_already_blocked(tmp_path,monkeypatch)
         assert not (tmp_path/'restore'/'restore.json').exists()
 
 
+def test_restore_partial_marker_blocks_crash_before_first_source_copy(tmp_path,monkeypatch):
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        result=service.backup(tmp_path/'backups'/'full');assert result.full_recovery
+        def interrupt_before_first_copy(source,target,deadline):
+            raise b.BackupError('backup_test_interruption')
+        monkeypatch.setattr(b,'_copy',interrupt_before_first_copy)
+        destination=tmp_path/'restore'
+        with pytest.raises(b.BackupError,match='backup_test_interruption'):
+            b.restore_backup(result.destination,destination,restore_root=tmp_path)
+        assert (destination/'restore.partial.json').is_file()
+        assert not (destination/'restore.json').exists()
+        assert restore_guard_present((destination/'databases'/'team.sqlite3',)) is True
+
+
+def test_restore_crash_after_each_copy_keeps_partial_hold_authoritative(tmp_path,monkeypatch):
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        archive=service.backup(tmp_path/'backups'/'full');assert archive.full_recovery
+        manifest=json.loads((archive.destination/'manifest.json').read_text(encoding='utf-8'))
+        copy_stages=len(manifest['assets'])+len(manifest['databases'])
+        original=b._copy
+        for stop_after in range(1,copy_stages+1):
+            calls=[]
+            def copy_then_crash(source,target,deadline):
+                result=original(source,target,deadline)
+                calls.append((source,target))
+                if len(calls)==stop_after:
+                    raise b.BackupError('backup_test_interruption')
+                return result
+            monkeypatch.setattr(b,'_copy',copy_then_crash)
+            destination=tmp_path/('restore-after-copy-'+str(stop_after))
+            with pytest.raises(b.BackupError,match='backup_test_interruption'):
+                b.restore_backup(archive.destination,destination,restore_root=tmp_path)
+            assert len(calls)==stop_after
+            assert (destination/'restore.partial.json').is_file(),stop_after
+            assert not (destination/'restore.json').exists(),stop_after
+            authorities=tuple(
+                destination/'assets'/'secretary_data'/manifest['databases']['secretary']['original_basename']
+                if role=='secretary' else destination/'databases'/(role+'.sqlite3')
+                for role in b.ROLES)
+            assert restore_guard_present(authorities) is True,stop_after
+            guarded_before_interruption=max(0,stop_after-len(manifest['assets'])-1)
+            for role,path in zip(b.ROLES[:guarded_before_interruption],authorities[:guarded_before_interruption]):
+                with sqlite3.connect(path) as connection:
+                    assert connection.execute(
+                        'SELECT reconciliation_required FROM maintenance_restore_guard WHERE id=1'
+                    ).fetchone()==(1,), (stop_after,role)
+
+
+def test_restore_crash_before_final_metadata_keeps_partial_hold_authoritative(tmp_path,monkeypatch):
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        archive=service.backup(tmp_path/'backups'/'full');assert archive.full_recovery
+        manifest=json.loads((archive.destination/'manifest.json').read_text(encoding='utf-8'))
+        original=b._write
+        def fail_final_marker(path,value):
+            if Path(path).name=='restore.json':
+                raise b.BackupError('backup_test_interruption')
+            return original(path,value)
+        monkeypatch.setattr(b,'_write',fail_final_marker)
+        destination=tmp_path/'restore-before-final-marker'
+        with pytest.raises(b.BackupError,match='backup_test_interruption'):
+            b.restore_backup(archive.destination,destination,restore_root=tmp_path)
+        assert (destination/'restore.partial.json').is_file()
+        assert not (destination/'restore.json').exists()
+        authorities=tuple(
+            destination/'assets'/'secretary_data'/manifest['databases']['secretary']['original_basename']
+            if role=='secretary' else destination/'databases'/(role+'.sqlite3')
+            for role in b.ROLES)
+        assert restore_guard_present(authorities) is True
+        for role,path in zip(b.ROLES,authorities):
+            with sqlite3.connect(path) as connection:
+                assert connection.execute('SELECT reconciliation_required FROM maintenance_restore_guard WHERE id=1').fetchone()==(1,),role
+
+
+def test_completed_restore_holds_all_four_authorities(tmp_path):
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        result=service.backup(tmp_path/'backups'/'full')
+        assert result.state=='complete' and result.full_recovery
+        restored=b.restore_backup(result.destination,tmp_path/'restore',restore_root=tmp_path)
+        expected_manifest_hash=b._hash(result.destination/'manifest.json')
+        assert set(restored.databases)==set(b.ROLES)
+        for role,path in restored.databases.items():
+            with sqlite3.connect(path) as connection:
+                guard=connection.execute('''SELECT restore_id,reconciliation_required,manifest_sha256
+                    FROM maintenance_restore_guard WHERE id=1''').fetchone()
+                assert guard==(restored.restore_id,1,expected_manifest_hash),role
+
+
+def test_legacy_archive_without_fence_commitment_remains_restorable_but_guarded(tmp_path):
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        result=service.backup(tmp_path/'backups'/'legacy-compatible')
+        assert result.state=='complete'
+        path=result.destination/'manifest.json'
+        manifest=json.loads(path.read_text(encoding='utf-8'))
+        manifest.pop('maintenance_fence_history')
+        path.write_text(json.dumps(manifest),encoding='utf-8')
+
+        restored=b.restore_backup(result.destination,tmp_path/'legacy-restore',restore_root=tmp_path)
+
+        assert restored.outbound_enabled is False
+        for database in restored.databases.values():
+            with sqlite3.connect(database) as connection:
+                assert connection.execute(
+                    'SELECT reconciliation_required FROM maintenance_restore_guard WHERE id=1').fetchone()==(1,)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('event_count',0), ('schema_version',True), ('barrier_fence',True), ('events_sha256','A'*64),
+])
+def test_archive_with_malformed_fence_commitment_is_rejected_before_restore(tmp_path,field,value):
+    with full_fixture(tmp_path) as (b,_,service,_,_):
+        result=service.backup(tmp_path/'backups'/'malformed-history')
+        assert result.state=='complete'
+        path=result.destination/'manifest.json'
+        manifest=json.loads(path.read_text(encoding='utf-8'))
+        manifest['maintenance_fence_history'][field]=value
+        path.write_text(json.dumps(manifest),encoding='utf-8')
+        target=tmp_path/'malformed-restore'
+
+        with pytest.raises(b.BackupError,match='backup_manifest_invalid'):
+            b.restore_backup(result.destination,target,restore_root=tmp_path)
+
+        assert not target.exists()
+
+
+def test_restored_generation_cannot_be_backed_up_before_reconciliation(tmp_path):
+    from secretary.infrastructure.maintenance_binding import restore_guard_present
+    with full_fixture(tmp_path) as (b,gate,service,fixture,_):
+        first=service.backup(tmp_path/'backups'/'generation-one')
+        assert first.full_recovery
+        restored=b.restore_backup(first.destination,tmp_path/'restored-generation-one',restore_root=tmp_path)
+        assert restore_guard_present(tuple(restored.databases.values())) is True
+        control_root=tmp_path/'next-generation-control'
+        control_root.mkdir()
+        new_control=maintenance().MaintenanceRepository(control_root/'maintenance.sqlite3',str(uuid4()))
+        next_service=b.BackupService(new_control,dict(restored.databases),
+            backup_root=tmp_path/'generation-two-backups',asset_roots=dict(restored.asset_roots),
+            lifecycle=service.lifecycle,manifest_path=service.manifest_path,
+            required_participants=['synthetic'],config_versions=service.versions,native_storage=service.native_storage)
+        destination=tmp_path/'generation-two-backups'/'backup'
+        old_pid=fixture.controller.children['vikunja'][2]['pid']
+        result=next_service.backup(destination)
+        assert result.state=='deferred'
+        assert result.code=='backup_source_reconciliation_required'
+        assert not destination.exists()
+        assert not destination.parent.exists()
+        assert fixture.controller.children['vikunja'][1].alive()
+        assert fixture.controller.children['vikunja'][2]['pid']==old_pid
+        assert gate.status()['mode']=='open'
+
+
+@pytest.mark.parametrize('marker',('guard_row','restore_trigger','restore_metadata'))
+def test_archive_with_historical_restore_hold_is_rejected_before_new_generation(tmp_path,marker):
+    b=backup_module()
+    with full_fixture(tmp_path) as (_,_,service,_,_):
+        archive=service.backup(tmp_path/'backups'/'first-generation')
+        assert archive.full_recovery,archive
+        source_db=archive.destination/'databases'/'secretary.sqlite3'
+        connection=sqlite3.connect(source_db)
+        try:
+            if marker=='guard_row':
+                connection.execute(b.RESTORE_GUARD_DDL)
+                connection.execute('INSERT INTO maintenance_restore_guard VALUES(1,?,1,?)',
+                    (str(uuid4()),'a'*64))
+            elif marker=='restore_trigger':
+                connection.execute('CREATE TABLE historical_source(value TEXT)')
+                connection.execute('''CREATE TRIGGER backup_restore_no_update BEFORE UPDATE ON historical_source
+                    BEGIN SELECT RAISE(ABORT,'maintenance_restore_blocked'); END''')
+            connection.commit()
+        finally:
+            connection.close()
+        if marker=='restore_metadata':
+            (archive.destination/'restore.json').write_text(
+                json.dumps({'state':'restored_for_reconciliation'}),encoding='utf-8')
+        manifest_path=archive.destination/'manifest.json'
+        manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest['databases']['secretary']['bytes']=source_db.stat().st_size
+        manifest['databases']['secretary']['sha256']=hashlib.sha256(source_db.read_bytes()).hexdigest()
+        manifest_path.write_text(json.dumps(manifest,sort_keys=True),encoding='utf-8')
+
+        destination=tmp_path/'second-generation'
+        with pytest.raises(b.BackupError,match='backup_source_reconciliation_required'):
+            b.restore_backup(archive.destination,destination,restore_root=tmp_path)
+        assert not destination.exists()
+
+
+@pytest.mark.parametrize(('marker_name','document'),(
+    ('restore.json',{'schema_version':1,'state':'restored_for_reconciliation',
+        'restore_id':str(uuid4()),'outbound_enabled':False}),
+    ('restore.partial.json',{'state':'copying','outbound_enabled':False}),
+))
+def test_backup_refuses_next_generation_when_only_root_restore_hold_remains(tmp_path,marker_name,document):
+    with full_fixture(tmp_path) as (_,_,service,_,_):
+        marker=tmp_path/marker_name
+        marker.write_text(json.dumps(document))
+        original=marker.read_bytes()
+        destination=tmp_path/'backups'/'next-generation'
+        result=service.backup(destination)
+        assert result.state=='deferred'
+        assert result.code=='backup_source_reconciliation_required'
+        assert not destination.exists()
+        assert marker.read_bytes()==original
+
+
 def test_outside_root_chunk_is_never_opened(tmp_path,monkeypatch):
     from secretary.infrastructure.database import Database
     with full_fixture(tmp_path) as (b,_,service,_,sources):
@@ -388,6 +664,185 @@ def test_owned_executor_ticket_context_drains_and_rejects_finished_ticket(tmp_pa
     with pytest.raises(m.MaintenanceError,match='ticket_finished'):
         with gate.ticket_context(ticket):pytest.fail('stale thread context')
     gate.release(claim)
+
+
+def test_owner_outbound_ticket_binds_once_and_dispatch_requires_the_same_operation(tmp_path):
+    m, gate = registered(tmp_path)
+    sources = {role: tmp_path / (role + '.sqlite')
+               for role in ('secretary', 'team', 'billing', 'vikunja')}
+    for path in sources.values():
+        with sqlite3.connect(path) as conn:
+            conn.execute('CREATE TABLE synthetic_source(value INTEGER)')
+    gate.bind_sources(sources)
+    operation_id, different_operation_id = str(uuid4()), str(uuid4())
+
+    with gate.admission('synthetic', 'outbound_task') as original:
+        bound = gate.bind_current_operation('synthetic', operation_id)
+        assert bound.id == original.id and bound.operation_id == operation_id
+        assert gate.active_operations('synthetic') == (bound,)
+        gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_task',),
+                                       operation_id=operation_id)
+        with pytest.raises(m.MaintenanceBlocked, match='operation_mismatch'):
+            gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_task',),
+                                           operation_id=different_operation_id)
+        with pytest.raises(m.MaintenanceBlocked, match='operation_mismatch'):
+            gate.bind_current_operation('synthetic', different_operation_id)
+        with gate._transaction() as conn:
+            with pytest.raises(sqlite3.IntegrityError, match='maintenance_ticket_immutable'):
+                conn.execute('UPDATE maintenance_tickets SET operation_id=? WHERE id=?',
+                             (different_operation_id, original.id))
+        assert gate.active_operations('synthetic') == (bound,)
+
+
+def test_ticket_first_operation_binding_remains_owned_while_barrier_drains(tmp_path):
+    m, gate = registered(tmp_path)
+    sources = {role: tmp_path / (role + '.sqlite')
+               for role in ('secretary', 'team', 'billing', 'vikunja')}
+    for path in sources.values():
+        with sqlite3.connect(path) as conn:
+            conn.execute('CREATE TABLE synthetic_source(value INTEGER)')
+    gate.bind_sources(sources)
+    operation_id = str(uuid4())
+
+    with gate.admission('synthetic', 'outbound_task'):
+        barrier = gate.begin_barrier(owner_id='synthetic-backup')
+        bound = gate.bind_current_operation('synthetic', operation_id)
+        assert bound.operation_id == operation_id
+        assert gate.active_tickets(barrier) == (bound,)
+        gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_task',),
+                                       operation_id=operation_id)
+        with pytest.raises(m.MaintenanceBlocked, match='maintenance_blocked'):
+            gate.enter('synthetic', 'outbound_task', str(uuid4()))
+        with pytest.raises(m.MaintenanceError, match='active_operations'):
+            gate.freeze(barrier, native_evidence={})
+
+    assert gate.active_tickets(barrier) == ()
+    gate.release(barrier)
+
+
+def test_barrier_first_blocks_admission_from_a_second_process(tmp_path):
+    _, gate = registered(tmp_path)
+    _bound_four_synthetic_sources(gate, tmp_path)
+    barrier = gate.begin_barrier(owner_id='synthetic-backup')
+    context = multiprocessing.get_context('spawn')
+    start_event, dispatch_event, release_event = (context.Event(), context.Event(), context.Event())
+    result_queue = context.Queue()
+    process = context.Process(target=_cross_process_outbound, args=(
+        str(gate.path), gate.deployment_id, 'synthetic', str(uuid4()),
+        start_event, dispatch_event, release_event, result_queue, False))
+    try:
+        process.start()
+        start_event.set()
+        assert result_queue.get(timeout=15) == ('blocked', 'maintenance_blocked')
+        process.join(timeout=15)
+        assert process.exitcode == 0
+        assert gate.active_operations() == ()
+        gate.release(barrier)
+    finally:
+        start_event.set()
+        release_event.set()
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def test_ticket_first_cross_process_dispatch_drains_before_barrier_release(tmp_path):
+    _, gate = registered(tmp_path)
+    _bound_four_synthetic_sources(gate, tmp_path)
+    context = multiprocessing.get_context('spawn')
+    start_event, dispatch_event, release_event = (context.Event(), context.Event(), context.Event())
+    result_queue = context.Queue()
+    operation_id = str(uuid4())
+    worker = context.Process(target=_cross_process_outbound, args=(
+        str(gate.path), gate.deployment_id, 'synthetic', operation_id,
+        start_event, dispatch_event, release_event, result_queue, True))
+    contender_start, contender_dispatch, contender_release = (context.Event(), context.Event(), context.Event())
+    contender_queue = context.Queue()
+    contender = context.Process(target=_cross_process_outbound, args=(
+        str(gate.path), gate.deployment_id, 'synthetic', str(uuid4()),
+        contender_start, contender_dispatch, contender_release, contender_queue, False))
+    try:
+        worker.start()
+        start_event.set()
+        bound = result_queue.get(timeout=15)
+        assert bound[0] == 'ticket_bound' and bound[2] == operation_id
+
+        barrier = gate.begin_barrier(owner_id='synthetic-backup')
+        active = gate.active_operations('synthetic')
+        assert len(active) == 1 and active[0].id == bound[1] and active[0].operation_id == operation_id
+
+        # A ticket admitted before draining may finish its owned operation,
+        # while a different process cannot add a new ticket after the barrier.
+        dispatch_event.set()
+        assert result_queue.get(timeout=15) == ('dispatch_allowed', bound[1])
+        contender.start()
+        contender_start.set()
+        assert contender_queue.get(timeout=15) == ('blocked', 'maintenance_blocked')
+        assert gate.active_operations('synthetic') == active
+
+        release_event.set()
+        worker.join(timeout=15)
+        contender.join(timeout=15)
+        assert worker.exitcode == 0 and contender.exitcode == 0
+        assert gate.active_operations('synthetic') == ()
+        gate.release(barrier)
+    finally:
+        start_event.set()
+        dispatch_event.set()
+        release_event.set()
+        contender_start.set()
+        contender_release.set()
+        for process in (worker, contender):
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+        result_queue.close()
+        result_queue.join_thread()
+        contender_queue.close()
+        contender_queue.join_thread()
+
+
+def test_existing_maintenance_ticket_trigger_migrates_for_one_operation_binding(tmp_path):
+    m, original_gate = registered(tmp_path)
+    original_gate.bind_sources({role: tmp_path / (role + '.sqlite3')
+        for role in ('secretary', 'team', 'billing', 'vikunja')})
+    with sqlite3.connect(original_gate.path) as conn:
+        conn.execute('DROP TRIGGER maintenance_ticket_immutable')
+        conn.execute('''CREATE TRIGGER maintenance_ticket_immutable BEFORE UPDATE ON maintenance_tickets
+            WHEN NEW.id!=OLD.id OR NEW.participant_id!=OLD.participant_id OR NEW.run_id!=OLD.run_id
+            OR NEW.kind!=OLD.kind OR NEW.operation_id IS NOT OLD.operation_id OR NEW.fence!=OLD.fence
+            OR NEW.created_at!=OLD.created_at OR OLD.state='finished'
+            BEGIN SELECT RAISE(ABORT,'maintenance_ticket_immutable'); END''')
+    gate = m.MaintenanceRepository(original_gate.path, original_gate.deployment_id)
+    operation_id = str(uuid4())
+    with gate.admission('synthetic', 'outbound_task') as original:
+        bound = gate.bind_current_operation('synthetic', operation_id)
+        assert bound.id == original.id and bound.operation_id == operation_id
+        gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_task',),
+            operation_id=operation_id)
+    assert gate.active_operations('synthetic') == ()
+
+
+@pytest.mark.parametrize('trigger_kind', ('unknown', 'missing'))
+def test_unknown_or_missing_maintenance_ticket_trigger_is_rejected_without_replacement(tmp_path, trigger_kind):
+    m, original_gate = registered(tmp_path)
+    original_gate.bind_sources({role: tmp_path / (role + '.sqlite3')
+        for role in ('secretary', 'team', 'billing', 'vikunja')})
+    with sqlite3.connect(original_gate.path) as conn:
+        conn.execute('DROP TRIGGER maintenance_ticket_immutable')
+        if trigger_kind == 'unknown':
+            conn.execute('''CREATE TRIGGER maintenance_ticket_immutable BEFORE UPDATE ON maintenance_tickets
+                BEGIN SELECT RAISE(ABORT,'custom_ticket_policy'); END''')
+        original_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='maintenance_ticket_immutable'").fetchone()
+
+    with pytest.raises(m.MaintenanceError, match='maintenance_database_invalid'):
+        m.MaintenanceRepository(original_gate.path, original_gate.deployment_id)
+
+    with sqlite3.connect(original_gate.path) as conn:
+        current_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='maintenance_ticket_immutable'").fetchone()
+    assert current_sql == original_sql
 
 
 def test_deployment_sources_immutable_before_any_new_source_is_opened(tmp_path):

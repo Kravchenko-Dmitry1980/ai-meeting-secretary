@@ -321,6 +321,7 @@ class FixtureApp:
                     return await Response(status_code=400)(scope, receive, send)
             body = '<!doctype html><meta charset="utf-8"><title>Синтетический Team UI</title><h1>СИНТЕТИЧЕСКИЙ СТЕНД</h1>'
             body += '<p>Реальные Gateway, сессии и CSRF. Vikunja — локальный HTTP-симулятор. Нет MAX, Polza, записей или данных владельца.</p>'
+            body += '<p><strong>Код для входа в этот стенд показан здесь; код из MAX-бота не подойдёт.</strong></p>'
             if self.mode == 'HTTP_SYNTHETIC_UI_ONLY':
                 body += '<p><strong>HTTP_SYNTHETIC_UI_ONLY:</strong> TLS и MAX WebView не проверяются.</p>'
             else:
@@ -328,11 +329,23 @@ class FixtureApp:
             body += '<a href="/team/">Открыть Team UI</a>'
             for index, owner in enumerate(self.fixture.owners):
                 body += '<h2>' + html.escape(owner.display_name) + '</h2><p>Одноразовый синтетический код, 5 минут:</p><code>' + html.escape(self.fixture.codes[index]) + '</code>'
-                body += '<form method="post" action="/fixture"><input type="hidden" name="owner" value="' + str(index) + '"><button>Новый синтетический код</button></form>'
+                body += '<form method="post" action="/fixture" data-fixture-post><input type="hidden" name="owner" value="' + str(index) + '"><button>Новый синтетический код</button></form>'
             body += '<h2>Внешние изменения в HTTP-симуляторе</h2><p>Первая задача: ' + self.fixture.task_ids[0] + '. После изменения запускается настоящий цикл чтения и синхронизации.</p>'
             for key, title in (('external_title', 'Внешнее изменение названия'), ('external_due', 'Внешний неподтверждённый срок'),
                                ('restore_due', 'Восстановить подтверждённый срок')):
-                body += '<form method="post" action="/fixture"><input type="hidden" name="scenario" value="' + key + '"><button>' + title + '</button></form>'
+                body += '<form method="post" action="/fixture" data-fixture-post><input type="hidden" name="scenario" value="' + key + '"><button>' + title + '</button></form>'
+            body += '<p id="fixture-action-status" aria-live="polite"></p>'
+            body += ('<script>document.querySelectorAll("form[data-fixture-post]").forEach(form => {'
+                     'form.addEventListener("submit", async event => {'
+                     'event.preventDefault(); const status = document.getElementById("fixture-action-status"); '
+                     'const button = form.querySelector("button"); if (button) button.disabled = true; '
+                     'try { const response = await fetch(form.action, {method: "POST", '
+                     'body: new URLSearchParams(new FormData(form)), credentials: "same-origin"}); '
+                     'if (!response.ok) throw new Error("fixture_action_failed"); '
+                     'if (new FormData(form).has("owner")) { window.location.reload(); return; } '
+                     'status.textContent = "Сценарий выполнен (HTTP " + response.status + ")."; '
+                     '} catch { status.textContent = "Не удалось выполнить действие."; '
+                     'if (button) button.disabled = false; } }); });</script>')
             return await HTMLResponse(body, headers=headers)(scope, receive, send)
         target = None
         if request.method in ('GET', 'HEAD') and path in ('/team/', '/team/team.html'):

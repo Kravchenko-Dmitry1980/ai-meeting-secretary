@@ -1,5 +1,41 @@
 # Native read profile: проверка зависимостей
 
+## Последний offline checkpoint 2026-10-12: ужесточение guard
+
+Локальный regression-тест подтвердил, что предыдущий subset-only guard пропускал изменённый `GOFLAGS`, дополнительный `GOCACHEPROG`, `HTTPS_PROXY` и переменную `goproxy` в нижнем регистре (**4 RED**). Исправлен только изолированный candidate: проверяется точный набор ключей из `create_environment()`, канонический регистр и строковые значения; `GOFLAGS` теперь явно закреплён пустым. Объединённый pure-набор candidate — **8/8 PASS**, включая отказ для всех четырёх overrides. Это локальная проверка кода, не отдельный независимый или формальный security review.
+
+Candidate worker/parent SHA256: `d03d86ddf05f5b5deaf3491a8fc97472bafb917310c06cb338e814fe137a1f00` / `16ccf65d6483c34f3ae2f1592dbcff3a1ed3d69dfcb27f2cbe5f968be37bad10`; tests: `b9b88b51440f215d06519894c38e995283b30cac4c1a7cf1ac60348fe58bf592` / `a9d7d026dd8408048bfa095b5fef30f945ab78dcefde5fc672b7d0a70a298212`. Frozen worker and parent remain unchanged. Go/helper `main`, proxy, network, SQL, native API, dependency initialization and launch receipts were not run or regenerated; 319 module paths were not sent anywhere. Owner decision remains offline-only. Candidate is still **NOT LAUNCHABLE / NOT QUALIFIED**; R4 and activation remain incomplete/off pending complete launch evidence and an independent post-repair review.
+
+## Offline checkpoint 2026-10-12 00:58 МСК
+
+Isolated deny-all worker/parent candidate was rerun from its frozen local directory: **7/7 PASS**, exit 0. `go.exe` was not found on PATH; Go/helper launch, cache acquisition, dependency initialization, public proxy and network remained NOT RUN. No module names/versions were transmitted; owner decision remains offline-only. Candidate is still **NOT LAUNCHABLE / NOT QUALIFIED** because complete launch receipts, success-environment contract and independent post-repair review are absent.
+
+## Решение владельца 2026-10-11: продолжать только офлайн
+
+Владелец выбрал offline-only продолжение. Не отправлять 319 module names/versions в `proxy.golang.org` или `sum.golang.org`; external metadata request и Go dependency acquisition остаются запрещены без нового решения. Candidate SHA256 остаётся `f236804a4ed805f2bfdb68173db19d515bcd2c3d159aa00e3a1bc206ae8af966`; в рамках этой работы module paths не передавались. Можно продолжать локальный source review и проверки, не инициирующие сетевое получение зависимостей.
+
+### Повторный source review 2026-10-11 19:39 МСК
+
+Независимо перечитана последовательность `command('mvs-list', ..., online=True)` → `mvs_records(...)`: публичный запрос предшествует проверке транзитивных путей. `validate_pair()` подтверждает формат, но не membership в owner-reviewed candidate. SHA замороженных `check_dependencies.py` и `run_dependencies.py` совпали с pins: `69a1aef1f661e83a82fbbf7971699a44b23e0392cdd23a0c2ac31c11a99266f4` и `e9a8842d66e8745dd91400104221373982e818248ec29f753677f1657e094e12`. Источники не менялись; Go/helper/proxy не запускались; network calls и передача module paths — 0. Требуемый fail-closed egress guard остаётся незакрытым, поэтому карточка остаётся NOT RUN и её launch запрещён.
+
+### Earlier offline deny-all guard candidate snapshot 2026-10-11 — 7-test version
+
+В изолированной карточке `.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134/` созданы новые worker и parent copies; frozen sources и pins не редактировались. Guard отказывает любому `online=True` и любой Go-среде без точного offline environment (`GOENV=off`, `GOAUTH=off`, `GOPROXY=off`, `GOSUMDB=off`, `GOVCS=*:off`, `GOTOOLCHAIN=local`, пустые private/proxy/insecure overrides) — до process/Job inspection и единственного `Popen`. Parent bootstrap запускает worker по пути внутри той же isolated candidate-карточки. RED→GREEN весь объединённый набор — **7/7**, включая worker egress refusal, родительскую обработку failure receipt и проверку пути запуска worker.
+
+Frozen worker/parent SHA: `69a1aef1f661e83a82fbbf7971699a44b23e0392cdd23a0c2ac31c11a99266f4` / `e9a8842d66e8745dd91400104221373982e818248ec29f753677f1657e094e12` (unchanged). Candidate worker/parent SHA: `eb61ec8d79a5784e024e0279e8e5996bcf8f4cf8b9a22d99d42e4d6ba145085b` / `16ccf65d6483c34f3ae2f1592dbcff3a1ed3d69dfcb27f2cbe5f968be37bad10`. Тесты: `120ad1d095c49e0e01e126bfc216268450f44cf912174e2687f852e042865f51` и `a9d7d026dd8408048bfa095b5fef30f945ab78dcefde5fc672b7d0a70a298212`.
+
+Это deny-all режим по текущему решению владельца, а не allowlist для будущего online доступа. Go/helper main, proxy, network, SQL, native API и source initialization не запускались; 319 module paths не передавались. Полный launch-pins/receipt набор и environment success contract не пересобраны; post-repair независимого review нет. Candidate остаётся **NOT LAUNCHABLE / NOT QUALIFIED**, R4 и activation остаются INCOMPLETE/OFF. Для будущего public metadata запроса отдельно нужны точное решение владельца, reviewed path/version egress allowlist и новый exact freeze. См. [`CANDIDATE.md`](../.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134/CANDIDATE.md) и тесты [`test_dependency_egress_guard.py`](../.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134/test_dependency_egress_guard.py), [`test_worker_error_receipt.py`](../.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134/test_worker_error_receipt.py).
+
+## Checkpoint 2026-10-10 08:04 МСК: R4 остановлен до proxy из-за P1 egress gap
+
+Повторный source review текущей R4-карты подтвердил P1: worker запускает online `mvs-list` с `GOPROXY=https://proxy.golang.org` и `GOSUMDB=sum.golang.org` до проверки ответа `mvs_records()`. `validate_pair()` проверяет синтаксис, но не членство пути в 319-путевом owner-review кандидате. Поэтому новый или нежелательный транзитивный module path может быть передан публичному Go proxy до локального отказа; parent проверяет receipt уже после завершения worker и не предотвращает этот запрос. 72 чистых pure/model groups не упражняют Go/proxy границу.
+
+Источник кандидата: закреплённый `go.sum` SHA256 `f2c33d60ce25ccc7212c3b8d6392c9afc3d9222888e0567b6f8a24b7ac345944`; 319 уникальных module paths, candidate SHA256 `f236804a4ed805f2bfdb68173db19d515bcd2c3d159aa00e3a1bc206ae8af966`. Статус остаётся `OWNER_REVIEW_REQUIRED`; ни один path в рамках этой проверки не отправлялся внешнему сервису.
+
+Текущие source-only receipts связывают worker `69a1aef1f661e83a82fbbf7971699a44b23e0392cdd23a0c2ac31c11a99266f4` и parent `e9a8842d66e8745dd91400104221373982e818248ec29f753677f1657e094e12` с контрактом `4db394b9ca80403e31d088e1645e7319df0dcf1516ca98ff7c7b448272081ad6`: 72 PASS, 0 FAIL/ERROR/SKIP. Это не live qualification. `launch-pins.json` — только сохранённый source snapshot; запускать текущую acquisition card нельзя.
+
+До любого public metadata request нужны: явное решение владельца о передаче точного набора module path names и запрашиваемых Go версий сервисам `proxy.golang.org`/`sum.golang.org`; fail-closed egress guard до передачи запроса; регрессионный тест, доказывающий блокировку path вне approved set до передачи; независимый review и новый exact freeze. До закрытия этого gate Go/helper/proxy/download/build остаются NOT RUN, activation/outbound OFF.
+
 ## Checkpoint 2026-10-09 11:43 МСК: hardening после source review, 72 pure groups
 
 В текущей draft-карте исправлены три source-level gaps: Windows Job теперь включает `KILL_ON_JOB_CLOSE` и `ACTIVE_PROCESS` (`LimitFlags=0x2008`, лимит 2 процесса); worker и parent сравнивают `lstat` с `fstat` открытого handle до чтения, повторно проверяют handle/path после и отклоняют нулевую/неизвестную `st_dev` или `st_ino`; parent независимо проверяет семантическую связь online/list/graph/offline environment manifests, а не только hashes.

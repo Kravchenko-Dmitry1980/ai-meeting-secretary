@@ -259,6 +259,12 @@ class BackupService:
         if type(timeout_seconds) not in (int,float) or not 1<=timeout_seconds<=600:raise BackupError('backup_deadline_invalid')
         if any(target.is_relative_to(path) or path.is_relative_to(target) for path in self.roots.values()):
             raise BackupError('backup_destination_overlaps_assets')
+        from .maintenance_binding import restore_guard_present
+        try:
+            if restore_guard_present(tuple(self.sources.values())):
+                return BackupResult('deferred',target,'backup_source_reconciliation_required')
+        except (OSError,sqlite3.Error,TypeError,ValueError):
+            return BackupResult('deferred',target,'backup_source_state_unavailable')
         state=self.maintenance.status()
         participants={p['participant_id']:p for p in state['participants'] if p['guard_version']==1}
         required=self.required
@@ -309,6 +315,14 @@ class BackupService:
                     stack.callback(connection.rollback)
                 self.lifecycle.verify_quiescence(self.manifest_path,proof,maintenance=self.maintenance,claim=claim)
                 self.maintenance.freeze(claim,proof)
+                fence_history=self.maintenance.fence_history_commitment(claim)
+                try:
+                    if restore_guard_present(tuple(self.sources.values())):
+                        raise BackupError('backup_source_reconciliation_required')
+                except BackupError:
+                    raise
+                except (OSError,sqlite3.Error,TypeError,ValueError):
+                    raise BackupError('backup_source_state_unavailable') from None
                 target.mkdir(parents=True,exist_ok=False)
                 _write(target/'manifest.partial.json',{'state':'copying','barrier_id':claim.barrier_id})
                 (target/'databases').mkdir()
@@ -375,6 +389,7 @@ class BackupService:
                 manifest={'schema_version':1,'state':'complete','full_recovery':not issues,
                           'backup_id':str(uuid4()),'deployment_id':self.maintenance.deployment_id,
                           'barrier_id':claim.barrier_id,'barrier_fence':claim.fence,'created_at':now.astimezone(timezone.utc).isoformat(),
+                           'maintenance_fence_history':fence_history,
                           'databases':databases,'asset_roots':{key:str(value) for key,value in self.roots.items()},
                           'assets':files,'issues':sorted(set(issues)),'config_versions':self.versions,
                           'native_quiescence':proof,'required_participants':list(required),
@@ -407,9 +422,24 @@ def _validate_archive(source):
     if not (source/'manifest.json').is_file():raise BackupError('backup_incomplete')
     manifest=_read(source/'manifest.json')
     required={'schema_version','state','full_recovery','backup_id','deployment_id','barrier_id','barrier_fence','created_at','databases','asset_roots','assets','issues','config_versions','native_quiescence','required_participants','native_storage','native_containment_verified'}
-    if (not isinstance(manifest,dict) or set(manifest)!=required or manifest['schema_version']!=1 or manifest['state']!='complete'
+    allowed=required|{'maintenance_fence_history'}
+    fields=set(manifest) if isinstance(manifest,dict) else set()
+    if (not isinstance(manifest,dict) or not required<=fields or not fields<=allowed or manifest['schema_version']!=1 or manifest['state']!='complete'
             or manifest['full_recovery'] is not True or type(manifest['native_containment_verified']) is not bool or manifest['issues']!=[] or set(manifest['databases'])!=set(ROLES)
             or not {'secretary_data','vikunja_files'}<=set(manifest['asset_roots'])):raise BackupError('backup_incomplete')
+    if 'maintenance_fence_history' in manifest:
+        history=manifest['maintenance_fence_history']
+        if (not isinstance(history,dict)
+                or set(history)!={'schema_version','deployment_id','barrier_id','barrier_fence','event_count','events_sha256'}
+                or type(history['schema_version']) is not int or history['schema_version']!=1
+                or history['deployment_id']!=manifest['deployment_id']
+                or history['barrier_id']!=manifest['barrier_id']
+                or type(history['barrier_fence']) is not int
+                or history['barrier_fence']!=manifest['barrier_fence']
+                or type(history['event_count']) is not int or not 1<=history['event_count']<=10000
+                or type(history['events_sha256']) is not str
+                or not re.fullmatch('[0-9a-f]{64}',history['events_sha256'])):
+            raise BackupError('backup_manifest_invalid')
     if any(not re.fullmatch('[a-z][a-z0-9_]{0,63}',key) or not isinstance(value,str) or not Path(value).is_absolute() for key,value in manifest['asset_roots'].items()):
         raise BackupError('backup_manifest_invalid')
     entries=[]
@@ -430,7 +460,17 @@ def _validate_archive(source):
     for role in ROLES:
         # Archives contain hashed main snapshots only. A WAL/journal would be
         # unhashed content; refuse it and avoid creating read-only sidecars.
-        with closing(_ro(source/'databases'/(role+'.sqlite3'),immutable=True)) as conn:_check(conn)
+        path=source/'databases'/(role+'.sqlite3')
+        with closing(_ro(path,immutable=True)) as conn:_check(conn)
+        # A prior restore hold is historical authority. Reject it before any
+        # destination exists rather than discovering it after copying the
+        # first database and leaving a partial next generation behind.
+        from .maintenance_binding import restore_guard_present
+        try:
+            held=restore_guard_present((path,))
+        except (OSError,sqlite3.Error,TypeError,ValueError):
+            raise BackupError('backup_source_state_unavailable') from None
+        if held:raise BackupError('backup_source_reconciliation_required')
     return manifest
 
 
@@ -507,10 +547,9 @@ def restore_backup(backup_dir,destination,*,restore_root):
         entry=manifest['databases'][role]
         if copied!={'sha256':entry['sha256'],'bytes':entry['bytes']}:raise BackupError('backup_hash_mismatch')
         # Each authority is blocked before copying the next database. Interrupted
-        # restores cannot leave an earlier complete Team/Billing copy enabled.
-        if role in ('secretary','team','billing'):
-            with closing(sqlite3.connect(path)) as conn:
-                _restore_guard(conn,restore_id,manifest_hash);conn.commit()
+        # restores cannot leave any earlier complete source enabled.
+        with closing(sqlite3.connect(path)) as conn:
+            _restore_guard(conn,restore_id,manifest_hash);conn.commit()
     _relocate_secretary(paths['secretary'],manifest['asset_roots'],roots)
     _write(target/'restore.json',{'schema_version':1,'state':'restored_for_reconciliation','restore_id':restore_id,
            'source_manifest_sha256':manifest_hash,'outbound_enabled':False,

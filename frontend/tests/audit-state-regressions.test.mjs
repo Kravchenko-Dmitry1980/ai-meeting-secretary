@@ -78,6 +78,17 @@ test('F2: unchanged settings confirm success, and a second synchronous submit is
   assert.ok(walk(tree).some((node) => node.props?.role === 'status' && text(node) === 'Настройки сохранены'));
 });
 
+test('F2: per-request tariff ceilings are distinguished from the monthly Polza account limit', () => {
+  const runtime = hookRuntime();
+  const props = { config: { ...config, local_cost_limits_enabled: true }, catalog: null, busy: false, onClose() {}, onSave: async () => true };
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
+  const tree = runtime.render(() => SettingsPanel(props));
+  const rendered = text(tree);
+  assert.match(rendered, /предел цены одного запроса в Polza/);
+  assert.match(rendered, /остаток месячного лимита не повышает доступный тариф маршрута/);
+  assert.match(rendered, /Лимит расходов на встречу действует отдельно/);
+});
+
 test('F3: global refresh cannot clear a failed meeting read; successful meeting refresh clears its own error', async () => {
   const globalGate = deferred(); let fail = true;
   const runner = secretaryRunner({ meetings: () => globalGate.promise, jobs: async () => { if (fail) throw Error('Synthetic jobs read failure'); return []; } });

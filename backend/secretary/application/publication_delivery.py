@@ -9,11 +9,17 @@ from secretary.infrastructure.publication_bridge import BridgeUncertain
 
 
 class PublicationDispatcher:
-    def __init__(self, repository, bridge, *, validate_dispatch, lease_seconds=60):
+    def __init__(self, repository, bridge, *, validate_dispatch, lease_seconds=60,
+                 maintenance=None, participant_id=None):
         if type(lease_seconds) is not int or not 3 <= lease_seconds <= 3600:
             raise ValueError('invalid_publication_lease')
         self.repository, self.bridge = repository, bridge
         self.validate_dispatch, self.lease_seconds = validate_dispatch, lease_seconds
+        if ((maintenance is None) != (participant_id is None)
+                or maintenance is not None and (not isinstance(participant_id, str) or not participant_id.strip()
+                    or not callable(getattr(maintenance, 'bind_current_operation', None)))):
+            raise ValueError('invalid_maintenance_binding')
+        self.maintenance, self.participant_id = maintenance, participant_id
         self._poll_after = None
         self._poll_pending = []
 
@@ -62,6 +68,8 @@ class PublicationDispatcher:
         claim = self.repository.claim_next(worker_id, lease_seconds=self.lease_seconds)
         if claim is None:
             return polled
+        if self.maintenance is not None:
+            self.maintenance.bind_current_operation(self.participant_id, claim.delivery_operation_id)
         try:
             envelope = GatewayPublication(actor_id=claim.actor_id, scope=claim.scope, item=claim.item)
             digest = gateway_payload_hash(envelope)

@@ -27,6 +27,94 @@ def make_budget(tmp_path, *, cap=CAP, now=NOW):
     return ledger, clock
 
 
+def test_polza_paid_preflight_blocks_residual_restore_marker_without_base_guard(tmp_path):
+    import sqlite3
+
+    billing_path = tmp_path / "billing.sqlite3"
+    with sqlite3.connect(billing_path) as connection:
+        connection.execute("CREATE TABLE secretary_r4_native_prepared_hold(id INTEGER PRIMARY KEY)")
+    settings = SimpleNamespace(data_dir=tmp_path)
+    client = PolzaClient(settings, httpx.MockTransport(lambda _: httpx.Response(200)),
+        billing_path=billing_path)
+
+    with pytest.raises(ProviderError) as error:
+        client._paid_authority()
+
+    assert error.value.code == "maintenance_restore_blocked"
+
+
+@pytest.mark.parametrize("role", ("secretary", "team", "vikunja"))
+def test_polza_paid_preflight_checks_nonbilling_restore_authority(tmp_path, role):
+    import sqlite3
+
+    ledger, _ = make_budget(tmp_path)
+    paths = {name: (ledger.repository.path if name == "billing" else tmp_path / f"{name}.sqlite3")
+        for name in ("secretary", "team", "billing", "vikunja")}
+    with sqlite3.connect(paths[role]) as connection:
+        connection.execute("CREATE TABLE secretary_r4_native_prepared_hold(id INTEGER PRIMARY KEY)")
+    settings = SimpleNamespace(data_dir=tmp_path, polza_api_key=SecretStr(KEY), cloud_enabled=True,
+        polza_base_url="https://polza.ai/api/v1", request_timeout_seconds=5,
+        stt_model="openai/whisper-large-v3-turbo", summary_model="synthetic-model")
+    client = PolzaClient(settings, httpx.MockTransport(lambda _: httpx.Response(200)), budget=ledger,
+        charge_context={"key_tag": TAG}, billing_path=ledger.repository.path,
+        restore_authority_paths=tuple(paths.values()))
+
+    with pytest.raises(ProviderError) as error:
+        client._paid_authority()
+
+    assert error.value.code == "maintenance_restore_blocked"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ("secretary", "team", "vikunja"))
+async def test_polza_final_dispatch_rechecks_nonbilling_restore_authority(tmp_path, role):
+    import sqlite3
+
+    ledger, _ = make_budget(tmp_path)
+    paths = {name: (ledger.repository.path if name == "billing" else tmp_path / f"{name}.sqlite3")
+        for name in ("secretary", "team", "billing", "vikunja")}
+    posts = []
+
+    def provider(request):
+        posts.append(request.method)
+        return httpx.Response(200, json={"id": "synthetic-receipt"})
+
+    class Prices:
+        async def quote(self, _):
+            return {"prompt_per_million": 1, "completion_per_million": 1, "stt_per_minute": .1}
+
+    settings = SimpleNamespace(data_dir=tmp_path, polza_api_key=SecretStr(KEY), cloud_enabled=True,
+        polza_base_url="https://polza.ai/api/v1", request_timeout_seconds=5,
+        stt_model="openai/whisper-large-v3-turbo", summary_model="synthetic-model")
+    client = PolzaClient(settings, httpx.MockTransport(provider), budget=ledger,
+        charge_context={"key_tag": TAG}, price_reader=Prices(), billing_path=ledger.repository.path,
+        restore_authority_paths=tuple(paths.values()))
+    # Model the fixed four-authority scope supplied by TeamRuntime. This second
+    # source begins clean and changes only after the initial paid preflight.
+    target = []
+    not_submitted = []
+
+    def before_submission(info):
+        target.append(info["operation_id"])
+        with sqlite3.connect(paths[role]) as connection:
+            connection.execute("CREATE TABLE secretary_r4_native_prepared_hold(id INTEGER PRIMARY KEY)")
+
+    def rejected_before_submission(info):
+        not_submitted.append(info["error_code"])
+
+    with pytest.raises(ProviderError) as error:
+        await client._request("POST", "chat/completions",
+            payload={"model": "synthetic-model", "messages": [], "max_tokens": 1},
+            before_submission=before_submission,
+            not_submitted_checkpoint=rejected_before_submission)
+
+    assert error.value.code == "maintenance_restore_blocked"
+    assert posts == []
+    assert len(target) == 1
+    assert not_submitted == ["maintenance_restore_blocked"]
+    assert ledger.reservation(target[0]).status == "released"
+
+
 def charge(amount, *, scope_id=None):
     return CloudCharge(str(uuid4()), "voice_intent", "a" * 64, amount, amount, scope_id=scope_id)
 

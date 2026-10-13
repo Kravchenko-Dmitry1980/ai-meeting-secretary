@@ -39,7 +39,9 @@ def binding(directory):
     context = dict(protocol=1, restore_id=str(uuid4()), r3_id=str(uuid4()),
         **{key: h(key) for key in ('r3_decision_sha256', 'r3_binding_sha256',
             'manifest_sha256', 'metadata_sha256', 'inventory_sha256',
-            'source_context_sha256', 'scope_sha256', 'runtime_evidence_sha256')},
+            'source_context_sha256', 'scope_sha256', 'runtime_evidence_sha256',
+            'successor_fence_candidate_sha256')},
+        expected_successor_fence=4,
         sources=tuple(dict(role=role, path=str(directory / (role + '.sqlite3')),
             file_id=(1, index + 1), baseline_file_sha256=h(role + ':baseline'),
             preparation_sha256=h(role + ':r3'), source_commitment_sha256=h(role + ':context'))
@@ -107,6 +109,7 @@ def test_one_proposal_reopens_with_authoritative_binding_without_creation(privat
 @pytest.mark.parametrize('change', ('extra', 'protocol_bool', 'bad_id', 'capability_order',
     'raw_intake', 'context_extra', 'context_hash', 'source_missing', 'source_duplicate',
     'source_extra', 'source_bool_id', 'source_path_relative', 'source_path_remote',
+    'successor_candidate_hash', 'successor_fence_bool', 'successor_fence_overflow',
     'deployment_uuid', 'native_baseline_extra', 'native_schema_hash', 'native_ids_order',
     'native_ids_duplicate', 'native_ids_empty', 'native_rowids_hash'))
 def test_invalid_closed_binding_is_rejected_before_file_creation(private, change):
@@ -124,6 +127,9 @@ def test_invalid_closed_binding_is_rejected_before_file_creation(private, change
     elif change == 'source_bool_id': bound['context']['sources'][0]['file_id'] = (True, 1)
     elif change == 'source_path_relative': bound['context']['sources'][0]['path'] = 'relative.sqlite3'
     elif change == 'source_path_remote': bound['context']['sources'][0]['path'] = r'/\synthetic-server\share\source.sqlite3'
+    elif change == 'successor_candidate_hash': bound['context']['successor_fence_candidate_sha256'] = 'X' * 64
+    elif change == 'successor_fence_bool': bound['context']['expected_successor_fence'] = True
+    elif change == 'successor_fence_overflow': bound['context']['expected_successor_fence'] = 2 ** 63
     elif change == 'deployment_uuid': bound['runtime_deployment_id'] = True
     elif change == 'native_baseline_extra': bound['native_baseline']['grant'] = True
     elif change == 'native_schema_hash': bound['native_baseline']['schema_sha256'] = 'x' * 64
@@ -191,7 +197,7 @@ def test_unverified_or_stale_operator_receipt_cannot_authorize_preparation(priva
     port, path, _, control = create(private)
     if kind == 'dict': incoming = dict(operator_digest=h('operator'), approved=True)
     else:
-        incoming = approval(expires_at=int(time.time()) - 1 if kind == 'expired' else int(time.time()) + 301)
+        incoming = approval(expires_at=int(time.time()) - 1 if kind == 'expired' else int(time.time()) + 600)
         if kind == 'bool_expiry': object.__setattr__(incoming, 'expires_at', True)
     before = file_hash(path)
     with pytest.raises(port.SourcePreparationControlError):

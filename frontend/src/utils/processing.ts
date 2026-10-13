@@ -121,7 +121,7 @@ export type ProcessingState = ReturnType<typeof buildProcessingState>;
 export function processingErrorPresentation(error: string | null) {
   if (!error) return null;
   if (error.includes('заданный предел тарифа ниже')) {
-    return { message: 'Максимальный тариф ниже доступного тарифа Polza. Проверьте допустимый максимум в настройках, затем нажмите «Продолжить обработку».', details: error };
+    return { message: 'Максимальный тариф для одного запроса в настройках Secretary ниже тарифа доступных маршрутов Polza. Остаток месячного лимита Polza на это не влияет. Проверьте максимум для текущей модели; лимит встречи действует отдельно. Затем нажмите «Продолжить обработку».', details: error };
   }
   const diagnosticStart = error.search(/ \[(?:код Polza|параметр|trace_id):/);
   return diagnosticStart < 0 ? { message: error, details: null }

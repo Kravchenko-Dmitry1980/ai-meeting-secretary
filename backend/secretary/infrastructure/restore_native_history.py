@@ -58,6 +58,7 @@ _ERROR_REASONS = frozenset({
     'native_history_invalid', 'native_history_rollback',
     'native_source_journaled', 'native_source_path_invalid',
     'native_source_reparse', 'native_source_missing', 'native_source_bounded',
+    'native_restore_guard_invalid',
     'native_source_changed',
 })
 
@@ -195,12 +196,42 @@ def _schema(conn):
     return result
 
 
+def _restore_guard_schema(conn, schema):
+    """Validate and isolate the exact Team restore hold from native business schema."""
+    table = 'maintenance_restore_guard'
+    trigger_prefix = 'backup_restore_no_'
+    actual = tuple(row for row in schema if row[0] == table or row[2] == table
+                   or row[0].startswith(trigger_prefix))
+    if not actual:
+        return ()
+    try:
+        from .team_backup import _restore_guard
+        with closing(sqlite3.connect(':memory:')) as expected:
+            _restore_guard(expected, '00000000-0000-4000-8000-000000000001', '0' * 64)
+            expected_schema = tuple(row for row in _schema(expected)
+                if row[0] == table or row[2] == table or row[0].startswith(trigger_prefix))
+        if actual != expected_schema:
+            _fail('native_restore_guard_invalid')
+        rows = conn.execute('''SELECT id,restore_id,reconciliation_required,manifest_sha256
+            FROM maintenance_restore_guard LIMIT 2''').fetchall()
+        if (len(rows) != 1 or type(rows[0][0]) is not int or rows[0][0] != 1
+                or not _valid_uuid(rows[0][1]) or type(rows[0][2]) is not int or rows[0][2] != 1
+                or type(rows[0][3]) is not str or not _SHA.fullmatch(rows[0][3])):
+            _fail('native_restore_guard_invalid')
+    except NativeHistoryError:
+        raise
+    except (sqlite3.Error, ValueError, TypeError, AttributeError, OverflowError):
+        _fail('native_restore_guard_invalid')
+    return actual
+
+
 def _descriptor(conn, protocol_schema=()):
     schema = _schema(conn)
     # Exclude only exact approved object records, including SQL. An object with
     # an own-looking name but a changed type/target/body stays in the fingerprint.
     approved = frozenset(protocol_schema)
-    base = tuple(row for row in schema if row not in approved)
+    restore_guard = frozenset(_restore_guard_schema(conn, schema))
+    base = tuple(row for row in schema if row not in approved and row not in restore_guard)
     tables = tuple(sorted(row[0] for row in base if row[1] == 'table' and row[0] != 'sqlite_sequence'))
     if tables != PINNED_REGISTERED_TABLES:
         _fail('native_catalogue_changed')

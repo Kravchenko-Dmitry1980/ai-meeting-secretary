@@ -64,7 +64,7 @@ def case(tmp_path):
     participants = ['secretary', 'gateway:' + run]
     for index, name in enumerate(participants):
         gate.register_participant(name, run_id=run, identity=identity(10 if index == 0 else 22))
-    gate.begin_barrier(owner_id='synthetic-backup')
+    claim = gate.begin_barrier(owner_id='synthetic-backup')
     records = {}
     for index, name in enumerate(('supervisor', 'vikunja', 'gateway', 'proxy')):
         value = identity(20 + index)
@@ -72,19 +72,23 @@ def case(tmp_path):
         records[name].update(executable=str(root / (name + '.exe')), argv_hash=value['argv_sha256'],
                              run_id=run, account='synthetic\\fixture')
     native = records['vikunja']
+    native_quiescence=dict(deployment_id=deployment, run_id=run, component='vikunja',
+        barrier_id=claim.barrier_id, barrier_fence=claim.fence, pid=native['pid'],
+        creation_time=native['creation_time'], executable_sha256=native['executable_sha256'],
+        argv_hash=native['argv_hash'], observed_stopped_at='2026-10-04T00:00:00+00:00')
+    gate.freeze(claim,native_quiescence)
     archive = dict(schema_version=1, state='complete', deployment_id=deployment,
                    required_participants=participants, native_containment_verified=False,
-                   native_quiescence=dict(deployment_id=deployment, run_id=run, component='vikunja',
-                       barrier_id=str(uuid4()), barrier_fence=1, pid=native['pid'],
-                       creation_time=native['creation_time'], executable_sha256=native['executable_sha256'],
-                       argv_hash=native['argv_hash'], observed_stopped_at='2026-10-04T00:00:00+00:00'))
+                   barrier_id=claim.barrier_id, barrier_fence=claim.fence,
+                   maintenance_fence_history=gate.fence_history_commitment(claim),
+                   native_quiescence=native_quiescence)
     lifecycle = dict(schema_version=1, deployment_id=deployment, run_id=run, desired='stopped',
                      phase='stopped', supervisor=records['supervisor'],
                      components={key: records[key] for key in ('vikunja', 'gateway', 'proxy')}, restarts={})
     path = root / 'lifecycle.json'
     path.write_text(json.dumps(lifecycle), encoding='utf-8')
     return SimpleNamespace(root=root, control=control, path=path, archive=archive,
-                           lifecycle=lifecycle, gate=gate, run=run, participants=participants)
+                           lifecycle=lifecycle, gate=gate, claim=claim, run=run, participants=participants)
 
 
 def verify(c, **kwargs):
@@ -113,11 +117,88 @@ def test_valid_stopped_runtime_is_stable_sanitized_and_read_only(case):
     assert first['deployment_id'] == case.archive['deployment_id']
     assert first['participant_count'] == 2 and first['lifecycle_process_count'] == 4
     assert first['active_ticket_count'] == 0
+    assert first['maintenance_fence_lineage'] == {
+        'archive_barrier_id': case.archive['barrier_id'],
+        'archive_barrier_fence': case.archive['barrier_fence'],
+        'high_water_fence': case.archive['barrier_fence'],
+        'archive_event_count': 2,
+        'archive_events_sha256': case.archive['maintenance_fence_history']['events_sha256'],
+        'event_count': 2,
+        'events_sha256': first['maintenance_fence_lineage']['events_sha256'],
+    }
+    assert len(first['maintenance_fence_lineage']['events_sha256']) == 64
     assert len(first['evidence_sha256']) == 64
     encoded = json.dumps(first)
     assert str(case.root) not in encoded and 'synthetic\\fixture' not in encoded
     assert before == {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in before}
     assert not any(Path(str(case.control) + suffix).exists() for suffix in ('-wal', '-shm', '-journal'))
+
+
+def test_stopped_runtime_observes_later_old_generation_fences(case):
+    case.gate.release(case.claim)
+    newer = case.gate.begin_barrier(owner_id='synthetic-later-maintenance')
+
+    result = verify(case)
+
+    assert result['maintenance_fence_lineage']['archive_barrier_id'] == case.archive['barrier_id']
+    assert result['maintenance_fence_lineage']['archive_barrier_fence'] == case.archive['barrier_fence']
+    assert result['maintenance_fence_lineage']['high_water_fence'] == newer.fence
+    assert result['maintenance_fence_lineage']['event_count'] == 4
+
+
+@pytest.mark.parametrize('change', [
+    'archive_barrier_id', 'archive_barrier_fence', 'native_barrier_id', 'native_barrier_fence',
+    'state_fence', 'event_id', 'event_kind', 'event_fence', 'event_barrier_id',
+    'archive_commitment_hash', 'archive_commitment_count', 'archive_commitment_missing',
+])
+def test_unbound_or_inconsistent_maintenance_fence_history_refuses(case, change):
+    if change == 'archive_barrier_id': case.archive['barrier_id'] = str(uuid4())
+    elif change == 'archive_barrier_fence': case.archive['barrier_fence'] += 1
+    elif change == 'native_barrier_id': case.archive['native_quiescence']['barrier_id'] = str(uuid4())
+    elif change == 'native_barrier_fence': case.archive['native_quiescence']['barrier_fence'] += 1
+    elif change == 'archive_commitment_hash': case.archive['maintenance_fence_history']['events_sha256']='f'*64
+    elif change == 'archive_commitment_count': case.archive['maintenance_fence_history']['event_count']+=1
+    elif change == 'archive_commitment_missing': case.archive.pop('maintenance_fence_history')
+    else:
+        statements = {
+            'state_fence': 'UPDATE maintenance_state SET fence=0',
+            'event_id': 'UPDATE maintenance_events SET id=5 WHERE id=1',
+            'event_kind': "UPDATE maintenance_events SET kind='unknown'",
+            'event_fence': 'UPDATE maintenance_events SET fence=2',
+            'event_barrier_id': 'UPDATE maintenance_events SET barrier_id=?',
+        }
+        with edit(case.control) as conn:
+            if change != 'state_fence':
+                for trigger in ('maintenance_event_no_update', 'maintenance_event_no_delete',
+                                'maintenance_event_no_replace'):
+                    conn.execute('DROP TRIGGER ' + trigger)
+            if change == 'event_barrier_id': conn.execute(statements[change], (str(uuid4()),))
+            else: conn.execute(statements[change])
+            if change != 'state_fence':
+                conn.execute("CREATE TRIGGER maintenance_event_no_update BEFORE UPDATE ON maintenance_events BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END")
+                conn.execute("CREATE TRIGGER maintenance_event_no_delete BEFORE DELETE ON maintenance_events BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END")
+                conn.execute("CREATE TRIGGER maintenance_event_no_replace BEFORE INSERT ON maintenance_events WHEN EXISTS(SELECT 1 FROM maintenance_events WHERE id=NEW.id) BEGIN SELECT RAISE(ABORT,'maintenance_event_immutable'); END")
+        if change != 'state_fence':
+            with sqlite3.connect(case.control) as conn:
+                columns=('id','kind','barrier_id','fence','created_at')
+                events=[dict(zip(columns,row)) for row in conn.execute(
+                    'SELECT id,kind,barrier_id,fence,created_at FROM maintenance_events ORDER BY id')]
+            case.archive['maintenance_fence_history']['events_sha256']=hashlib.sha256(
+                json.dumps(events,ensure_ascii=True,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+    reject(case)
+
+
+@pytest.mark.parametrize('tampering', ['missing_update', 'changed_delete', 'extra_trigger'])
+def test_unverified_maintenance_event_immutability_policy_refuses(case, tampering):
+    with edit(case.control) as conn:
+        if tampering == 'missing_update':
+            conn.execute('DROP TRIGGER maintenance_event_no_update')
+        elif tampering == 'changed_delete':
+            conn.execute('DROP TRIGGER maintenance_event_no_delete')
+            conn.execute("CREATE TRIGGER maintenance_event_no_delete BEFORE DELETE ON maintenance_events BEGIN SELECT 1; END")
+        else:
+            conn.execute("CREATE TRIGGER maintenance_event_hidden AFTER INSERT ON maintenance_events BEGIN SELECT 1; END")
+    reject(case)
 
 
 @pytest.mark.parametrize('mode', ['open', 'unknown'])
@@ -130,8 +211,11 @@ def test_open_or_unknown_control_mode_refuses(case, mode):
 
 @pytest.mark.parametrize('mode', ['frozen', 'restore_blocked'])
 def test_supported_closed_control_modes(case, mode):
-    with edit(case.control) as conn:
-        conn.execute('UPDATE maintenance_state SET mode=?', (mode,))
+    if mode == 'frozen':
+        case.gate.freeze(case.claim, case.archive['native_quiescence'])
+    else:
+        with edit(case.control) as conn:
+            conn.execute('UPDATE maintenance_state SET mode=?', (mode,))
     assert verify(case)['deployment_id'] == case.archive['deployment_id']
 
 
@@ -338,3 +422,55 @@ def test_unexpected_sidecar_creation_is_not_normalized_away(case, monkeypatch):
         return dead(value)
     with pytest.raises(implementation().RuntimeEvidenceError, match='restore_runtime_evidence_changed'):
         verify(case, dead_verifier=sidecar)
+
+
+def _insert_ticket_commitment(case, *, digest_override=None, record_changes=None):
+    from secretary.infrastructure.restore_admission_binding import (
+        MaintenanceTicketV1, R4AdmissionBindingV1,
+    )
+
+    ticket_id, operation_id = str(uuid4()), str(uuid4())
+    participant_id, fence = 'synthetic-worker', case.claim.fence
+    binding = R4AdmissionBindingV1(
+        deployment_id=case.archive['deployment_id'], restore_id=str(uuid4()),
+        r3_id=str(uuid4()), epoch_id=str(uuid4()), source_generation_sha256='a' * 64,
+        decision_id=str(uuid4()), decision_sha256='b' * 64, action='max_dispatch',
+        participant_id=participant_id, run_id=case.run, operation_id=operation_id,
+        barrier_fence=fence,
+    )
+    ticket = MaintenanceTicketV1(
+        ticket_id=ticket_id, deployment_id=case.archive['deployment_id'],
+        participant_id=participant_id, run_id=case.run, kind='outbound_bot',
+        operation_id=operation_id, fence=fence, admission_binding=binding,
+    )
+    record_value = ticket.to_record()
+    if record_changes:
+        record_value.update(record_changes)
+    record = json.dumps(record_value, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
+    record_sha256 = digest_override or hashlib.sha256(record.encode('utf-8')).hexdigest()
+    with edit(case.control) as conn:
+        conn.execute('INSERT INTO maintenance_tickets VALUES(?,?,?,?,?,?,?,?)',
+            (ticket_id, participant_id, case.run, 'outbound_bot', operation_id,
+             fence, 'finished', '2026-10-12T00:00:00+00:00'))
+        conn.execute('INSERT INTO maintenance_ticket_commitments VALUES(?,?,?,?)',
+            (ticket_id, record, record_sha256, '2026-10-12T00:00:00+00:00'))
+    return ticket_id
+
+
+def test_ticket_commitment_requires_matching_record_digest(case):
+    _insert_ticket_commitment(case, digest_override='f' * 64)
+    reject(case)
+
+
+def test_ticket_commitment_rejects_unknown_record_fields(case):
+    _insert_ticket_commitment(case, record_changes={'unrecognized': 'value'})
+    reject(case)
+
+
+def test_valid_ticket_commitment_is_in_evidence_without_opening_an_active_lifetime(case):
+    before = verify(case)
+    _insert_ticket_commitment(case)
+    after = verify(case)
+
+    assert after['active_ticket_count'] == 0
+    assert after['evidence_sha256'] != before['evidence_sha256']

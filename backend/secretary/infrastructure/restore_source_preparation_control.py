@@ -42,7 +42,9 @@ _BINDING_KEYS = frozenset(('protocol', 'context', 'ledger_id', 'generation_id',
     'epoch_id', 'capabilities', 'runtime_deployment_id', 'native_baseline'))
 _CONTEXT_KEYS = frozenset(('protocol', 'restore_id', 'r3_id', 'r3_decision_sha256',
     'r3_binding_sha256', 'manifest_sha256', 'metadata_sha256', 'inventory_sha256',
-    'source_context_sha256', 'scope_sha256', 'runtime_evidence_sha256', 'sources'))
+    'source_context_sha256', 'scope_sha256', 'runtime_evidence_sha256',
+    'successor_fence_candidate_sha256', 'expected_successor_fence', 'sources'))
+_MAX_SUCCESSOR_FENCE = 2 ** 63 - 1
 _SOURCE_KEYS = frozenset(('role', 'path', 'file_id', 'baseline_file_sha256',
     'preparation_sha256', 'source_commitment_sha256'))
 _SHA = re.compile('[0-9a-f]{64}')
@@ -116,7 +118,10 @@ def _binding(value):
                 or type(context['protocol']) is not int or context['protocol'] != 1
                 or any(not _is_uuid(context[key]) for key in ('restore_id', 'r3_id'))
                 or any(not _is_sha(context[key]) for key in
-                    _CONTEXT_KEYS - {'protocol', 'restore_id', 'r3_id', 'sources'})):
+                    _CONTEXT_KEYS - {'protocol', 'restore_id', 'r3_id', 'sources',
+                        'expected_successor_fence'})
+                or type(context['expected_successor_fence']) is not int
+                or not 1 <= context['expected_successor_fence'] <= _MAX_SUCCESSOR_FENCE):
             _fail('source_preparation_binding_invalid')
         sources, paths, ids = context['sources'], set(), set()
         if type(sources) not in (tuple, list) or len(sources) != 4:

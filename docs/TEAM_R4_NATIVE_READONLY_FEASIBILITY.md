@@ -1,5 +1,11 @@
 # T12R/R4: возможность native GET под NoWrite для Vikunja 2.7.0
 
+## Повторная проверка официального upstream, 2026-10-11 13:04 МСК
+
+- Официальная страница релизов по-прежнему помечает `v2.7.0` как `Latest`; более нового релиза после выпуска 2026-10-02 на момент проверки нет: [go-vikunja/vikunja releases](https://github.com/go-vikunja/vikunja/releases).
+- Актуальная официальная [справка конфигурации](https://vikunja.io/docs/config-options/) перечисляет для SQLite тип и путь к базе, но не документирует поддерживаемый read-only режим. [Security hardening](https://vikunja.io/docs/security-hardening/) указывает на необходимость миграций при запуске. Отсутствие настройки в документации само по себе не доказывает отсутствие скрытой возможности; локально закреплённый исходник `v2.7.0` ниже остаётся определяющим свидетельством `O_RDWR|O_CREATE` и WAL.
+- Решение не изменилось: не запускать native источник с ослабленной NoWrite custody и не менять закреплённый binary. R4 native GET и активация остаются заблокированы; эта проверка не обращалась к локальной Vikunja, не запускала процессы и не меняла бинарник.
+
 Дата: 2026-10-06. Результат этой карточки — **CONTRACT_BLOCKER_CONFIRMED; ACTIVATION_OFF**. Код приложения и бинарник не менялись; новый native процесс не запускался.
 
 ## Проверенные факты
@@ -24,3 +30,11 @@ Ruling: сохранить закреплённую Vikunja 2.7.0, SQLite author
 Зависимая native GET/activation часть по исходному плану приостановлена fail-closed. Независимые offline задачи T9/T13 продолжаются. Возможные архитектурные изменения — поддерживаемый upstream read-only режим или отдельно согласованный другой database backend; они не внесены в эту карточку. R4 остаётся IN_PROGRESS, R5/R6, owner/provider proof, ручная приёмка и 24h gate остаются открытыми.
 
 Проверки этой карточки — чтение pinned source/config/docs и уже закрытых immutable receipts; никаких owner DB/env/audio/credentials, MAX/Polza calls, рабочей Vikunja, сетевых настроек, trust store или Git state не меняли. Unit tests не запускались, потому что production source не менялся.
+
+## Дополнение — 2026-10-11, 10:43 МСК: повторно проверен статический launch contract
+
+`ManagedNativeProcess` передаёт `DETACHED_PROCESS`, `stdin=DEVNULL`, `stdout=PIPE`, `stderr=STDOUT` и `close_fds=True`. Офлайн-набор `tests/test_restore_native_process.py`, запущенный через `scripts/run_offline_tests.py`, завершился **47 passed**. Тест launch contract заменяет `subprocess.Popen` синтетической функцией; pinned native executable не запускался. Это подтверждает проверку параметров вызова в исходниках, но не доказывает, вызывает ли бинарник Console API или создаёт `conhost.exe` при реальном запуске. Ancestry предыдущего `conhost.exe`, успешный detached native запуск, allowlist expansion и RW fallback остаются неподтверждёнными и не выполнялись.
+
+### Статическая проверка PE imports — 2026-10-11, 10:46 МСК
+
+Прочитан только pinned PE `.runtime/team/vikunja-2.7.0/vikunja-v2.7.0-windows-4.0-amd64.exe`; SHA-256 совпал с `PINNED_NATIVE_BINARY_SHA256` (`e485792c…ad66b6`). PE subsystem равен `3` (Windows console). Import table содержит `KERNEL32.DLL` и `msvcrt.dll`; среди проверенных API нет прямых imports `AllocConsole`, `FreeConsole`, `AttachConsole` или `GetConsoleWindow`. При этом импортирован `GetProcAddress`, а в файле найдены строки `WriteConsoleW` и `GetStdHandle`; поэтому динамический lookup/вызовы не исключены. Этот статический результат не доказывает отсутствие console allocation, не устанавливает происхождение ранее наблюдавшегося `conhost.exe` и не заменяет reviewed runtime observation. Новый native запуск не выполнялся; R4 остаётся открытым.

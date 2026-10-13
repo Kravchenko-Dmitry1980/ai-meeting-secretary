@@ -57,8 +57,30 @@ def observed_files(sample):
     return output
 
 
+def runtime_settings(sample, deployment_id, *, changes=None):
+    from secretary.team_settings import load_team_settings
+    data = dict(schema_version=1, deployment_id=deployment_id, project_dir=str(sample.tmp),
+        secretary_database_path=str(sample.restored.databases['secretary']),
+        team_database_path=str(sample.restored.databases['team']),
+        billing_database_path=str(sample.restored.databases['billing']),
+        vikunja_database_path=str(sample.restored.databases['vikunja']),
+        control_database_path=str(sample.tmp / 'original-control.sqlite3'),
+        restore_blocked=True, outbound_enabled=False)
+    if changes:
+        data.update(changes)
+    path = sample.tmp / 'runtime-config.json'
+    path.write_text(json.dumps(data), encoding='utf-8')
+    return load_team_settings(path), path
+
+
+def runtime_context_module():
+    name = 'secretary.infrastructure.restore_runtime_context'
+    assert importlib.util.find_spec(name), 'fixed R4 runtime-context resolver is missing'
+    return importlib.import_module(name)
+
+
 def test_collector_reads_actual_complete_decision_and_all_four_sources(prepared):
-    sample, _, decision, _ = prepared
+    sample, _, decision, proof = prepared
     before = observed_files(sample)
     snapshot = read(prepared)
     assert snapshot.state == 'prepared_sources_verified_blocked'
@@ -66,6 +88,8 @@ def test_collector_reads_actual_complete_decision_and_all_four_sources(prepared)
     assert snapshot.r3_id == decision['r3_id']
     assert snapshot.r3_decision_sha256 == decision['decision_sha256']
     assert snapshot.r3_binding_sha256 == decision['binding_sha256']
+    assert snapshot.expected_successor_fence == proof['maintenance_fence_lineage']['high_water_fence'] + 1
+    assert len(snapshot.successor_fence_candidate_sha256) == 64
     assert {item.role for item in snapshot.sources} == {'secretary', 'team', 'billing', 'vikunja'}
     assert set(snapshot.ledger_binding) == {'protocol', 'restore_id', 'r3_id',
         'r3_decision_sha256', 'r3_binding_sha256', 'manifest_sha256', 'metadata_sha256',
@@ -80,6 +104,118 @@ def test_collector_reads_actual_complete_decision_and_all_four_sources(prepared)
     assert observed_files(sample) == before
     assert SENSITIVE not in json.dumps(asdict(snapshot))
     assert 'synthetic-key' not in json.dumps(asdict(snapshot))
+
+
+def test_runtime_resolver_derives_paths_from_loaded_config_and_r3_inventory(prepared):
+    sample, _, _, proof = prepared
+    settings, config_path = runtime_settings(sample, proof['deployment_id'])
+    before = observed_files(sample)
+    result = runtime_context_module().resolve_runtime_restore_context(settings)
+    assert result.project_root == sample.tmp
+    assert result.backup_dir == sample.backup
+    assert result.restore_dir == sample.restored.destination
+    assert result.maintenance_path == sample.tmp / 'original-control.sqlite3'
+    assert result.lifecycle_path == sample.tmp / 'original-lifecycle.json'
+    assert result.config_path == config_path
+    assert result.prepared_context == read(prepared)
+    assert result.activation_supported is False and result.outbound_enabled is False
+    assert observed_files(sample) == before
+
+
+@pytest.mark.asyncio
+async def test_team_runtime_reads_r3_context_before_blocked_restore_startup(prepared):
+    from secretary.orchestration.team_runtime import TeamRuntime
+
+    sample, _, _, proof = prepared
+    settings, _ = runtime_settings(sample, proof['deployment_id'])
+    runtime = TeamRuntime(settings, run_id=str(uuid4()),
+        control_dir=sample.tmp / '.runtime' / 'team-control')
+    await runtime.start()
+    try:
+        assert runtime.components.get('restore_context') == {
+            'state': 'not_configured',
+            'error_code': 'team_restore_context_verified_blocked',
+        }
+        assert runtime.components['gateway']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.components['outbound']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.maintenance is None and runtime.team is None and runtime.provider is None
+        assert not runtime._workers and runtime._accepting is False
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_team_runtime_stays_blocked_when_r3_context_cannot_be_verified(prepared):
+    from secretary.orchestration.team_runtime import TeamRuntime
+
+    sample, _, _, proof = prepared
+    settings, _ = runtime_settings(sample, proof['deployment_id'])
+    inventory = (sample.tmp / '.runtime' / 'team-operator' / 'restores' /
+                 sample.restored.restore_id / 'inventory.json')
+    inventory.unlink()
+    runtime = TeamRuntime(settings, run_id=str(uuid4()),
+        control_dir=sample.tmp / '.runtime' / 'team-control-unverified')
+    await runtime.start()
+    try:
+        assert runtime.components.get('restore_context') == {
+            'state': 'not_configured',
+            'error_code': 'team_restore_context_unavailable',
+        }
+        assert runtime.components['gateway']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.components['outbound']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.maintenance is None and runtime.team is None and runtime.provider is None
+        assert not runtime._workers and runtime._accepting is False
+    finally:
+        await runtime.close()
+
+
+def test_runtime_resolver_refuses_unloaded_or_stale_settings(prepared):
+    from secretary.team_settings import TeamRuntimeSettings
+    sample, _, _, proof = prepared
+    settings, config_path = runtime_settings(sample, proof['deployment_id'])
+    target = runtime_context_module()
+    detached = TeamRuntimeSettings.model_validate(settings.model_dump(mode='python'))
+    with pytest.raises(target.ActivationContextError):
+        target.resolve_runtime_restore_context(detached)
+    detached._config_path = config_path
+    with pytest.raises(target.ActivationContextError):
+        target.resolve_runtime_restore_context(detached)
+    config_path.write_text(config_path.read_text(encoding='utf-8').replace(
+        '"restore_blocked": true', '"restore_blocked": false'), encoding='utf-8')
+    with pytest.raises(target.ActivationContextError):
+        target.resolve_runtime_restore_context(settings)
+
+
+def test_runtime_resolver_refuses_configured_sources_that_differ_from_restore(prepared):
+    sample, _, _, proof = prepared
+    settings, _ = runtime_settings(sample, proof['deployment_id'], changes={
+        'team_database_path': str(sample.tmp / 'unrelated-team.sqlite3')})
+    target = runtime_context_module()
+    with pytest.raises(target.ActivationContextError):
+        target.resolve_runtime_restore_context(settings)
+
+
+def test_runtime_resolver_checks_config_scope_before_opening_mutated_path(prepared, monkeypatch):
+    sample, _, _, proof = prepared
+    settings, _ = runtime_settings(sample, proof['deployment_id'])
+    outside = sample.tmp.parent / (sample.tmp.name + '-outside-config.json')
+    outside.write_text('{}', encoding='utf-8')
+    settings._config_path = outside
+    target = runtime_context_module()
+    opened = []
+    original = target._pin_file
+
+    def observed_pin(path, **kwargs):
+        opened.append(Path(path))
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(target, '_pin_file', observed_pin)
+    try:
+        with pytest.raises(target.ActivationContextError):
+            target.resolve_runtime_restore_context(settings)
+        assert opened == []
+    finally:
+        outside.unlink(missing_ok=True)
 
 
 def test_post_preparation_hashes_are_compared_to_r3_not_original_archive(prepared):

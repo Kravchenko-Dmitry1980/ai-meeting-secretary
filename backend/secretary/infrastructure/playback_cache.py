@@ -30,9 +30,14 @@ class PlaybackCache:
         self.max_bytes = max_bytes
         self._lock = RLock()
         self._readers: Counter[Path] = Counter()
-        self._last_used: dict[Path, int] = {}
+        self._last_used: dict[Path, tuple[int, int]] = {}
+        self._use_sequence = 0
 
-    def _entries(self) -> list[tuple[Path, int, int]]:
+    def _touch(self, key: Path) -> None:
+        self._use_sequence += 1
+        self._last_used[key] = (time.time_ns(), self._use_sequence)
+
+    def _entries(self) -> list[tuple[Path, int, tuple[int, int]]]:
         if not self.root.is_dir():
             return []
         entries = []
@@ -47,7 +52,7 @@ class PlaybackCache:
                 except OSError:
                     continue
                 key = path.resolve()
-                entries.append((path, stat.st_size, self._last_used.get(key, stat.st_mtime_ns)))
+                entries.append((path, stat.st_size, self._last_used.get(key, (stat.st_mtime_ns, 0))))
         return entries
 
     def _remove_oldest(self) -> bool:
@@ -96,7 +101,7 @@ class PlaybackCache:
                 key = path.resolve()
                 if actual == expected_bytes and actual <= self.max_bytes:
                     self._readers[key] += 1
-                    self._last_used[key] = time.time_ns()
+                    self._touch(key)
                     try:
                         self._make_room(0)
                     except BaseException:
@@ -125,7 +130,7 @@ class PlaybackCache:
                 raise StorageSpaceError("Размер подготовленного аудиокэша не совпал с расчётом.")
             key = path.resolve()
             self._readers[key] += 1
-            self._last_used[key] = time.time_ns()
+            self._touch(key)
             return PlaybackLease(self, path)
 
     def _release(self, path: Path) -> None:

@@ -220,6 +220,30 @@ class TeamRuntime:
         from secretary.infrastructure.maintenance_binding import restored_runtime_guard_present
         return restored_runtime_guard_present(self.settings)
 
+    def _restore_context_diagnostic(self):
+        """Re-read an inactive restore context for status; never grants runtime access."""
+        try:
+            from secretary.infrastructure.restore_runtime_context import resolve_runtime_restore_context
+            context = resolve_runtime_restore_context(self.settings)
+            if context.activation_supported is False and context.outbound_enabled is False:
+                return 'team_restore_context_verified_blocked'
+        except Exception:
+            # Diagnostic verification cannot weaken the independent restore
+            # guard. Keep the runtime stopped and expose only a fixed code.
+            pass
+        return 'team_restore_context_unavailable'
+
+    def _enter_maintenance_blocked(self, code, *, restore_diagnostic=None):
+        if restore_diagnostic is not None:
+            self._component('restore_context', 'not_configured', restore_diagnostic)
+        self._component('native_containment', 'not_configured', code)
+        self._component('gateway', 'not_configured', code)
+        self._component('outbound', 'not_configured', code)
+        self._started = True
+        self.phase = 'running'
+        self._write_health()
+        self._tasks.append(asyncio.create_task(self._monitor(), name='team-control-monitor'))
+
     async def start(self):
         if self._started:
             return
@@ -227,18 +251,21 @@ class TeamRuntime:
         # runtime store. A restored Vikunja guard alone must stop this entry
         # point just like the Secretary, Team, and Billing guards do.
         if self._restore_guard_present():
-            self._component('native_containment', 'not_configured', 'team_restore_reconciliation_required')
-            self._component('gateway', 'not_configured', 'team_restore_reconciliation_required')
-            self._component('outbound', 'not_configured', 'team_restore_reconciliation_required')
-            self._started = True
-            self.phase = 'running'
-            self._write_health()
-            self._tasks.append(asyncio.create_task(self._monitor(), name='team-control-monitor'))
+            self._enter_maintenance_blocked('team_restore_reconciliation_required',
+                restore_diagnostic=self._restore_context_diagnostic())
             return
         from secretary.infrastructure.team_maintenance import MaintenanceRepository
         from secretary.infrastructure.team_backup import validate_source_roles
         from secretary.infrastructure.team_process_identity import process_identity
         self.maintenance = MaintenanceRepository(self.settings.control_database_path, self.settings.deployment_id, clock=self.clock)
+        mode = self.maintenance.status()['mode']
+        if mode != 'open':
+            if mode == 'restore_blocked':
+                self._enter_maintenance_blocked('team_restore_reconciliation_required',
+                    restore_diagnostic=self._restore_context_diagnostic())
+            else:
+                self._enter_maintenance_blocked('maintenance_blocked')
+            return
         self.maintenance.bind_sources({role: getattr(self.settings, role + '_database_path')
             for role in ('secretary', 'team', 'billing', 'vikunja')},
             validate_new=lambda bound: validate_source_roles(bound, allow_missing=True))
@@ -374,7 +401,8 @@ class TeamRuntime:
             client = httpx.Client(base_url=cfg.vikunja_base_url, headers={'Authorization': 'Bearer ' + cfg.vikunja_token.get_secret_value()},
                 transport=deps.vikunja_transport, trust_env=False, follow_redirects=False, timeout=10)
             self._clients.append(client)
-            native = VikunjaClient(client, binding=ProjectBinding(**value.model_dump()), members=directory, credential_binding=credential)
+            native = VikunjaClient(client, binding=ProjectBinding(**value.model_dump()), members=directory,
+                credential_binding=credential, maintenance=self.maintenance, participant_id=self.participant_id)
             self.native_clients[value.project_id] = native
             self.sync_services[value.project_id] = TeamSyncService(self.sync_repository, native,
                 worker_id=self.participant_id + ':sync:' + value.project_id)
@@ -382,7 +410,8 @@ class TeamRuntime:
         max_http = httpx.Client(transport=deps.max_transport or httpx.HTTPTransport(retries=0),
             trust_env=False, follow_redirects=False, timeout=10)
         self._clients.append(max_http)
-        self.max_client = MaxClient(cfg.max_bot_token.get_secret_value(), bot_id=cfg.max_bot_id, client=max_http)
+        self.max_client = MaxClient(cfg.max_bot_token.get_secret_value(), bot_id=cfg.max_bot_id, client=max_http,
+            maintenance=self.maintenance, participant_id=self.participant_id)
         cloud = secretary_settings(cfg)
         self.account_reader = deps.account_reader or PolzaAccountClient(cloud, transport=deps.polza_transport, clock=self.clock)
         self.budget = build_monthly_budget(cloud, account_reader=self.account_reader, clock=self.clock,
@@ -390,6 +419,8 @@ class TeamRuntime:
         key_tag = self.account_reader.key_tag if cfg.polza_api_key.get_secret_value() else None
         self.provider = PolzaClient(cloud, transport=deps.polza_transport, budget=self.budget,
             charge_context={'key_tag': key_tag}, price_reader=deps.price_reader or PolzaPriceClient(transport=deps.polza_transport, clock=self.clock),
+            restore_authority_paths=tuple(getattr(cfg, role + '_database_path')
+                for role in ('secretary', 'team', 'billing', 'vikunja')),
             maintenance=self.maintenance, participant_id=self.participant_id)
         media = None
         if cfg.ffmpeg_path and cfg.ffprobe_path and cfg.voice_scratch_path:
@@ -406,12 +437,16 @@ class TeamRuntime:
         sender = NotificationSender(self.team, self.native_clients, self.max_client, clock=self.clock, budget_reader=self.budget.snapshot)
         self.scheduler = ReminderScheduler(clock=self.clock)
         self.workers = {
-            'task_worker': (TeamWorker(self.team, _TaskRouter(task_services), worker_id=self.participant_id + ':task'), 'outbound_task'),
+            'task_worker': (TeamWorker(self.team, _TaskRouter(task_services), worker_id=self.participant_id + ':task',
+                maintenance=self.maintenance, participant_id=self.participant_id), 'outbound_task'),
             'bot_inbox': (BotInboxWorker(self.bot, commands, worker_id=self.participant_id + ':inbox'), 'job_bot'),
-            'bot_outbox': (BotOutboxWorker(self.bot, self.max_client, self.auth, worker_id=self.participant_id + ':bot'), 'outbound_bot'),
+            'bot_outbox': (BotOutboxWorker(self.bot, self.max_client, self.auth, worker_id=self.participant_id + ':bot',
+                maintenance=self.maintenance, participant_id=self.participant_id), 'outbound_bot'),
             'voice_worker': (VoiceWorker(self.voices, voice, worker_id=self.participant_id + ':voice'), 'job_voice'),
-            'voice_outbox': (BotOutboxWorker(self.voices, self.max_client, self.auth, worker_id=self.participant_id + ':notice'), 'outbound_bot'),
-            'notification_worker': (NotificationWorker(self.notifications, sender, worker_id=self.participant_id + ':reminder'), 'outbound_notification'),
+            'voice_outbox': (BotOutboxWorker(self.voices, self.max_client, self.auth, worker_id=self.participant_id + ':notice',
+                maintenance=self.maintenance, participant_id=self.participant_id), 'outbound_bot'),
+            'notification_worker': (NotificationWorker(self.notifications, sender, worker_id=self.participant_id + ':reminder',
+                maintenance=self.maintenance, participant_id=self.participant_id), 'outbound_notification'),
         }
         self._workers = [value[0] for value in self.workers.values()]
         reads = TeamReadRepository(self.team, sync=self.sync_repository, budget_reader=self.budget.snapshot)
@@ -589,7 +624,8 @@ class TeamRuntime:
             with self.maintenance.admission(self.participant_id, 'outbound_subscription', operation_id):
                 self.health_repository.begin_subscription_attempt(operation_id)
                 self.health_repository.mark_subscription_submitted(operation_id)
-                receipt = self.max_client.register_own_subscription(MaxSubscription(own_url, types, self.settings.max_webhook_secret.get_secret_value()))
+                receipt = self.max_client.register_own_subscription(MaxSubscription(own_url, types,
+                    self.settings.max_webhook_secret.get_secret_value()), operation_id=operation_id)
                 self.health_repository.complete_subscription_attempt(operation_id, receipt.state)
             if receipt.state != 'verified':
                 raise RuntimeConfigurationError('max_subscription_' + receipt.state)

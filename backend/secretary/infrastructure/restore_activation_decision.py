@@ -17,7 +17,9 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import threading
 import time
+import weakref
 from uuid import UUID, uuid4
 
 from secretary.domain.restore_quarantine import digest
@@ -40,6 +42,8 @@ _MAX_VALUE_BYTES = 32 * 1024
 _TIMEOUT_SECONDS = .2
 _READ_SECONDS = 1.0
 _SHA = re.compile('[0-9a-f]{64}')
+_CUSTODY_LOCKS_GUARD = threading.Lock()
+_CUSTODY_LOCKS = weakref.WeakValueDictionary()
 _ROLES = ('secretary', 'team', 'billing', 'vikunja')
 _FIXED_BLOCKERS = frozenset((
     'shared_permission_predicate_missing',
@@ -124,6 +128,17 @@ def _path(path):
             or any(':' in part for part in parts[1:]) or not path.name):
         _fail('activation_decision_path_invalid')
     return path
+
+
+def _custody_lock(path):
+    """Serialize same-process access while SQLite owns transient sidecars."""
+    key = os.path.normcase(os.path.abspath(str(path)))
+    with _CUSTODY_LOCKS_GUARD:
+        lock = _CUSTODY_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _CUSTODY_LOCKS[key] = lock
+        return lock
 
 
 _LEDGER_BINDING_FIELDS = frozenset((
@@ -319,11 +334,12 @@ class ActivationDecisionLedger:
     @contextmanager
     def _custody(self):
         try:
-            with protected_scope(self._path.parent):
-                try:
-                    yield
-                except ActivationDecisionError as error:
-                    raise _DecisionBodyError(error) from None
+            with _custody_lock(self._path):
+                with protected_scope(self._path.parent):
+                    try:
+                        yield
+                    except ActivationDecisionError as error:
+                        raise _DecisionBodyError(error) from None
         except _DecisionBodyError as error:
             raise error.error from None
         except OperatorError:
@@ -760,6 +776,85 @@ def _fixed_store(root, evidence, binding):
     if not created:
         _fail('activation_decision_missing')
     return ActivationDecisionLedger.create(path, binding)
+
+
+def _existing_fixed_store(root, restore_id, binding):
+    """Open only the exact existing decision ledger; never create its path."""
+    main_dir = root / '.runtime/team-operator/activations' / restore_id
+    directory = main_dir / 'decisions-v1'
+    path = directory / 'decision.sqlite3'
+    try:
+        for parent in (main_dir, directory):
+            info = parent.lstat()
+            if not stat.S_ISDIR(info.st_mode) or ActivationDecisionLedger._unsafe(info):
+                _fail('activation_decision_path_invalid')
+        if not os.path.lexists(_win32_path(path)):
+            _fail('activation_decision_missing')
+    except ActivationDecisionError:
+        raise
+    except FileNotFoundError:
+        _fail('activation_decision_missing')
+    except OSError:
+        _fail('activation_decision_io_failed')
+    return ActivationDecisionLedger.open_existing(path, binding)
+
+
+def read_current_blocked_activation_decision(settings):
+    """Read the fixed, current blocked decision from resolved runtime state.
+
+    The settings object, fixed R3 inventory, current R4 source evidence and
+    config are re-read inside the call. This reports a blocked decision only;
+    it does not evaluate source-generation tickets or grant permission.
+    """
+    try:
+        from .restore_runtime_context import resolve_fixed_runtime_restore_inputs
+        from .restore_activation_context import ActivationContextError
+        try:
+            resolved = resolve_fixed_runtime_restore_inputs(settings)
+        except ActivationContextError:
+            _fail('activation_decision_source_invalid')
+        with _current_context(resolved.project_root, resolved.backup_dir, resolved.restore_dir,
+                maintenance_path=resolved.maintenance_path, lifecycle_path=resolved.lifecycle_path,
+                config_path=resolved.config_path) as current:
+            evidence = current['evidence']
+            if evidence.restore_id != resolved.restore_id:
+                _fail('activation_decision_source_changed')
+            store = _existing_fixed_store(current['root'], evidence.restore_id,
+                _ledger_binding(current['commitment']))
+            snapshot = store.snapshot()
+            record = snapshot['current']
+            if record is None:
+                _fail('activation_decision_missing')
+            record_commitment = _commitment(dict(protocol=1,
+                purpose='restore_activation_consent',
+                **{key: record[key] for key in (
+                    'restore_id', 'epoch_id', 'preparation_id', 'source_snapshot_sha256',
+                    'binding_sha256', 'scope_sha256', 'provider_observations_sha256',
+                    'resource_scope_sha256', 'capabilities', 'owner_policy_sha256')}))
+            if (record_commitment != _commitment(current['commitment'])
+                    or record['expires_at'] <= int(time.time())):
+                _fail('activation_decision_source_changed')
+            if (snapshot['state'] != 'activation_blocked'
+                    or record.get('state') != 'activation_blocked'
+                    or record.get('restore_id') != evidence.restore_id
+                    or record.get('epoch_id') != evidence.epoch_id
+                    or snapshot['activation_supported'] is not False
+                    or snapshot['outbound_enabled'] is not False):
+                _fail('activation_decision_store_invalid')
+            result = dict(state='activation_blocked', restore_id=record['restore_id'],
+                epoch_id=record['epoch_id'], decision_id=record['decision_id'],
+                decision_record_sha256=snapshot['decisions'][-1]['record_sha256'],
+                blockers=tuple(record['blockers']), activation_supported=False,
+                outbound_enabled=False)
+        current_resolved = resolve_fixed_runtime_restore_inputs(settings)
+        if current_resolved != resolved:
+            _fail('activation_decision_source_changed')
+        return result
+    except ActivationDecisionError:
+        raise
+    except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError, sqlite3.Error,
+            UnicodeError, OverflowError, RecursionError):
+        _fail('activation_decision_source_invalid')
 
 
 def current_activation_consent_commitment(project_root, backup_dir, restore_dir, *,

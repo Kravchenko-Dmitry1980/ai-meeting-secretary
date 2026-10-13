@@ -228,6 +228,9 @@ async def test_explicit_runtime_starts_real_scoped_workers_and_paginates_two_pro
         assert native.tasks[current.execution_state.task_id]['project_id'] == 9
         assert runtime.budget.repository.path == runtime.settings.billing_database_path
         assert runtime.provider.budget is runtime.budget
+        assert runtime.provider.restore_authority_paths == tuple(
+            getattr(runtime.settings, role + '_database_path')
+            for role in ('secretary', 'team', 'billing', 'vikunja'))
         assert all(request.method == 'GET' or request.url.path == '/messages' for request in maximum)
     finally:
         await runtime.close()
@@ -274,6 +277,129 @@ async def test_restore_guard_blocks_startup_recovery_intake_and_every_provider_c
         await runtime.close()
 
 
+def _add_late_restore_marker(path):
+    import sqlite3
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as conn:
+        conn.execute('CREATE TABLE secretary_r4_native_late_marker(id INTEGER PRIMARY KEY)')
+
+
+@pytest.mark.asyncio
+async def test_owner_external_mutations_require_current_dispatch_ticket(tmp_path):
+    from secretary.domain.bot import BotSend
+    from secretary.domain.team import TaskChange, TaskCommand
+    from secretary.infrastructure.vikunja import VikunjaError
+    runtime, _, owner, _, maximum = seeded_runtime(tmp_path, outbound=False)
+    await runtime.start()
+    try:
+        receipt = runtime.max_client.send_message(BotSend(
+            operation_id=str(uuid4()), user_id='7001', text='Synthetic ticket check'))
+        assert receipt.state == 'rejected', receipt.error_code
+        assert receipt.error_code == 'maintenance_admission_required'
+        assert maximum == []
+
+        client = runtime.native_clients['7']
+        client.validate_binding()
+        command = TaskCommand(operation_id=str(uuid4()), action='create', project_id='7',
+            values=TaskChange(title='Synthetic ticket check', assignee_id=owner.id))
+        with pytest.raises(VikunjaError) as error:
+            client.create_task(command, 'secretary-origin:' + command.operation_id)
+        assert error.value.code == 'maintenance_admission_required'
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_owner_max_rejects_dispatch_with_a_different_operation_ticket(tmp_path):
+    from secretary.domain.bot import BotSend
+    from secretary.infrastructure.team_maintenance import MaintenanceBlocked
+    runtime, _, _, _, maximum = seeded_runtime(tmp_path, outbound=False)
+    await runtime.start()
+    expected_operation_id, command_operation_id = str(uuid4()), str(uuid4())
+    try:
+        with runtime.maintenance.admission(runtime.participant_id, 'outbound_bot', expected_operation_id):
+            with pytest.raises(MaintenanceBlocked, match='maintenance_operation_mismatch'):
+                runtime.maintenance.assert_dispatch_admission(runtime.participant_id,
+                    allowed_kinds=('outbound_bot',), operation_id=command_operation_id)
+            receipt = runtime.max_client.send_message(BotSend(
+                operation_id=command_operation_id, user_id='7001', text='Wrong operation must be blocked'))
+        assert receipt.state == 'rejected'
+        assert receipt.error_code == 'maintenance_operation_mismatch'
+        assert maximum == []
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_owner_vikunja_rejects_dispatch_with_a_different_operation_ticket(tmp_path):
+    from secretary.domain.team import TaskChange, TaskCommand
+    from secretary.infrastructure.vikunja import VikunjaError
+    runtime, _, owner, native, _ = seeded_runtime(tmp_path, outbound=False)
+    await runtime.start()
+    expected_operation_id, command_operation_id = str(uuid4()), str(uuid4())
+    try:
+        client = runtime.native_clients['7']
+        with runtime.maintenance.admission(runtime.participant_id, 'job_vikunja_binding'):
+            client.validate_binding()
+        before = len(native.requests)
+        command = TaskCommand(operation_id=command_operation_id, action='create', project_id='7',
+            values=TaskChange(title='Wrong operation must be blocked', assignee_id=owner.id))
+        with runtime.maintenance.admission(runtime.participant_id, 'outbound_task', expected_operation_id):
+            with pytest.raises(VikunjaError) as error:
+                client.create_task(command, 'secretary-origin:' + command.operation_id)
+        assert error.value.code == 'maintenance_operation_mismatch'
+        assert native.requests[before:] == [] and native.mutations == []
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('role', ['secretary', 'team', 'billing', 'vikunja'])
+async def test_owner_max_dispatch_rechecks_late_restore_marker_before_post(tmp_path, role):
+    from secretary.domain.bot import BotSend
+    runtime, _, _, _, maximum = seeded_runtime(tmp_path, outbound=False)
+    await runtime.start()
+    try:
+        path = getattr(runtime.settings, role + '_database_path')
+        _add_late_restore_marker(path)
+        before = len(maximum)
+        operation_id = str(uuid4())
+        with runtime.maintenance.admission(runtime.participant_id, 'outbound_bot', operation_id):
+            receipt = runtime.max_client.send_message(BotSend(
+                operation_id=operation_id, user_id='7001', text='Synthetic restore guard check'))
+        assert maximum[before:] == []
+        assert receipt.state == 'rejected', receipt.error_code
+        assert receipt.error_code == 'maintenance_restore_blocked'
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('role', ['secretary', 'team', 'billing', 'vikunja'])
+async def test_owner_vikunja_mutation_rechecks_late_restore_marker_before_post(tmp_path, role):
+    from secretary.domain.team import TaskChange, TaskCommand
+    from secretary.infrastructure.vikunja import VikunjaError
+    runtime, _, owner, native, _ = seeded_runtime(tmp_path, outbound=False)
+    await runtime.start()
+    try:
+        client = runtime.native_clients['7']
+        with runtime.maintenance.admission(runtime.participant_id, 'job_vikunja_binding'):
+            client.validate_binding()
+        before = len(native.requests)
+        _add_late_restore_marker(getattr(runtime.settings, role + '_database_path'))
+        command = TaskCommand(operation_id=str(uuid4()), action='create', project_id='7',
+            values=TaskChange(title='Synthetic late-restore task', assignee_id=owner.id))
+        operation_id = command.operation_id
+        with runtime.maintenance.admission(runtime.participant_id, 'outbound_task', operation_id):
+            with pytest.raises(VikunjaError) as error:
+                client.create_task(command, 'secretary-origin:' + command.operation_id)
+        assert error.value.code == 'maintenance_restore_blocked'
+        assert native.requests[before:] == []
+        assert native.mutations == []
+    finally:
+        await runtime.close()
+
+
 @pytest.mark.asyncio
 async def test_vikunja_restore_guard_blocks_before_new_control_store_or_provider_calls(tmp_path):
     import sqlite3
@@ -297,6 +423,30 @@ async def test_vikunja_restore_guard_blocks_before_new_control_store_or_provider
         assert runtime.team is None and runtime.budget is None
         assert native.requests == [] and maximum == []
         assert not runtime._workers
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_restore_blocked_control_store_stops_before_source_binding_or_participant_registration(tmp_path):
+    import sqlite3
+    from secretary.infrastructure.team_maintenance import MaintenanceRepository
+
+    runtime, _, _, native, maximum = seeded_runtime(tmp_path)
+    MaintenanceRepository(runtime.settings.control_database_path, runtime.settings.deployment_id)
+    with sqlite3.connect(runtime.settings.control_database_path) as conn:
+        conn.execute("UPDATE maintenance_state SET mode='restore_blocked' WHERE id=1")
+
+    await runtime.start()
+    try:
+        assert runtime.maintenance.status()['mode'] == 'restore_blocked'
+        assert runtime.components['gateway']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.components['outbound']['error_code'] == 'team_restore_reconciliation_required'
+        assert runtime.team is None and runtime.budget is None
+        assert native.requests == [] and maximum == []
+        with sqlite3.connect(runtime.settings.control_database_path) as conn:
+            assert conn.execute('SELECT count(*) FROM maintenance_participants').fetchone()[0] == 0
+            assert conn.execute('SELECT count(*) FROM maintenance_sources').fetchone()[0] == 0
     finally:
         await runtime.close()
 

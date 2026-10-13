@@ -335,10 +335,16 @@ def _check_depth(value):
 
 class VikunjaClient:
     def __init__(self, http_client: httpx.Client, *, binding: ProjectBinding, members: MemberDirectory,
-                 credential_binding: ProvisionedTokenBinding | None = None):
+                 credential_binding: ProvisionedTokenBinding | None = None, maintenance=None,
+                 participant_id=None):
         self._http = http_client
         self.binding = binding
         self.members = members
+        if ((maintenance is None) != (participant_id is None)
+                or maintenance is not None and (not isinstance(participant_id, str) or not participant_id.strip()
+                    or not callable(getattr(maintenance, 'assert_dispatch_admission', None)))):
+            raise VikunjaError('invalid_maintenance_binding')
+        self.maintenance, self.participant_id = maintenance, participant_id
         if credential_binding is not None and not isinstance(credential_binding, ProvisionedTokenBinding):
             raise VikunjaError('invalid_credential_binding')
         self.credential_binding = credential_binding
@@ -389,7 +395,8 @@ class VikunjaClient:
         error = VikunjaMutationUncertain if mutation else VikunjaError
         raise error(code, status_code=status) from None
 
-    def _request(self, method, path, expected, *, payload=None, params=None, headers=None, allow_304=False):
+    def _request(self, method, path, expected, *, payload=None, params=None, headers=None, allow_304=False,
+                 operation_id=None):
         self._validate_transport()
         mutation = method != 'GET'
         if allow_304 and method not in ('GET', 'PATCH'):
@@ -403,6 +410,14 @@ class VikunjaClient:
                 raise VikunjaError('invalid_mutation_payload') from None
             if len(encoded) > MAX_BODY:
                 raise VikunjaError('mutation_payload_too_large')
+        if mutation and self.maintenance is not None:
+            try:
+                self.maintenance.assert_dispatch_admission(self.participant_id,
+                    allowed_kinds=('outbound_task',), operation_id=operation_id)
+            except Exception as error:
+                code = getattr(error, 'code', None)
+                raise VikunjaError(code if isinstance(code, str) and code.startswith('maintenance_')
+                    else 'maintenance_authority_unavailable') from None
         try:
             with self._http.stream(method, path.lstrip('/'), json=payload, params=params,
                                    headers=headers, follow_redirects=False) as response:
@@ -728,9 +743,13 @@ class VikunjaClient:
         except (VikunjaError, KeyError, TypeError, ValueError):
             raise VikunjaMutationUncertain('mutation_response_unverified') from None
 
-    def create_task(self, draft: TaskCommand, marker):
+    def create_task(self, draft: TaskCommand, marker, *, operation_id=None):
         """Create literal-text description with a recoverable visible origin marker."""
         draft = TaskCommand.model_validate(draft.model_dump(exclude_unset=True))
+        if operation_id is None:
+            operation_id = draft.operation_id
+        if operation_id != draft.operation_id:
+            raise VikunjaError('operation_id_mismatch')
         marker = _marker(marker)
         if draft.action != 'create' or draft.project_id != self.binding.project_id:
             raise VikunjaError('invalid_create_scope')
@@ -745,11 +764,12 @@ class VikunjaClient:
         if draft.values.due_at is not None:
             payload['due_date'] = draft.values.due_at.isoformat()
         data = self._request('POST', f'/projects/{self.binding.project_id}/tasks', 201,
-                             payload=payload, params={'format': 'html'}, headers={'X-Vikunja-Format': 'html'})[0]
+                             payload=payload, params={'format': 'html'}, headers={'X-Vikunja-Format': 'html'},
+                             operation_id=operation_id)[0]
         self._mutation_result(data, self._task_identity)
         return str(data['id'])
 
-    def apply_task_change(self, task_id, patch: Mapping, expected_etag=None):
+    def apply_task_change(self, task_id, patch: Mapping, expected_etag=None, *, operation_id=None):
         task_id = _local_id(task_id)
         if not isinstance(patch, Mapping) or not patch or set(patch) - {'title', 'due_date', 'done'}:
             raise VikunjaError('invalid_task_patch_fields')
@@ -767,25 +787,26 @@ class VikunjaClient:
                 raise VikunjaError('invalid_etag')
             headers['If-Match'] = expected_etag  # T1 proved this is NOT write CAS.
         data, _, status = self._request('PATCH', f'/tasks/{task_id}', 200,
-                                       payload=payload, headers=headers, allow_304=True)
+                                       payload=payload, headers=headers, allow_304=True, operation_id=operation_id)
         # Pinned runtime returns empty 304 for an unchanged PATCH, even without
         # conditional headers. This is not postcondition proof: the application
         # must still observe and verify the requested target before applying.
         if status != 304:
             self._mutation_result(data, lambda row: self._task_identity(row, task_id))
 
-    def add_assignee(self, task_id, member_id):
+    def add_assignee(self, task_id, member_id, *, operation_id=None):
         task_id = _local_id(task_id)
         provider_id = self._member(member_id).vikunja_user_id
         data = self._request('POST', f'/tasks/{task_id}/assignees', 201,
-                             payload={'user_id': int(provider_id)})[0]
+                             payload={'user_id': int(provider_id)}, operation_id=operation_id)[0]
         def check(row):
             if _remote_id(row.get('user_id')) != provider_id:
                 raise VikunjaError('assignee_response_mismatch')
         self._mutation_result(data, check)
 
-    def remove_assignee(self, task_id, provider_user_id):
-        self._request('DELETE', f'/tasks/{_local_id(task_id)}/assignees/{_local_id(provider_user_id)}', 204)
+    def remove_assignee(self, task_id, provider_user_id, *, operation_id=None):
+        self._request('DELETE', f'/tasks/{_local_id(task_id)}/assignees/{_local_id(provider_user_id)}', 204,
+                      operation_id=operation_id)
 
     def _label(self, label_id):
         label_id = _local_id(label_id)
@@ -793,32 +814,34 @@ class VikunjaClient:
             raise VikunjaError('unmanaged_label')
         return label_id
 
-    def add_label(self, task_id, label_id):
+    def add_label(self, task_id, label_id, *, operation_id=None):
         task_id, label_id = _local_id(task_id), self._label(label_id)
-        data = self._request('POST', f'/tasks/{task_id}/labels', 201, payload={'label_id': int(label_id)})[0]
+        data = self._request('POST', f'/tasks/{task_id}/labels', 201,
+                             payload={'label_id': int(label_id)}, operation_id=operation_id)[0]
         def check(row):
             if _remote_id(row.get('label_id')) != label_id:
                 raise VikunjaError('label_response_mismatch')
         self._mutation_result(data, check)
 
-    def remove_label(self, task_id, label_id):
-        self._request('DELETE', f'/tasks/{_local_id(task_id)}/labels/{self._label(label_id)}', 204)
+    def remove_label(self, task_id, label_id, *, operation_id=None):
+        self._request('DELETE', f'/tasks/{_local_id(task_id)}/labels/{self._label(label_id)}', 204,
+                      operation_id=operation_id)
 
-    def move_task(self, task_id, bucket):
+    def move_task(self, task_id, bucket, *, operation_id=None):
         task_id = _local_id(task_id)
         if bucket not in self.binding.bucket_ids:
             raise VikunjaError('unknown_state_bucket')
         b = self.binding
         bucket_id = b.bucket_ids[bucket]
         data = self._request('PUT', f'/projects/{b.project_id}/views/{b.manual_view_id}/buckets/{bucket_id}/tasks',
-                             200, payload={'task_id': int(task_id)})[0]
+                             200, payload={'task_id': int(task_id)}, operation_id=operation_id)[0]
         def check(row):
             if (_remote_id(row.get('task_id')) != task_id or _remote_id(row.get('bucket_id')) != bucket_id
                     or _remote_id(row.get('project_view_id')) != b.manual_view_id):
                 raise VikunjaError('bucket_response_mismatch')
         self._mutation_result(data, check)
 
-    def add_comment(self, task_id, text):
+    def add_comment(self, task_id, text, *, operation_id=None):
         """Append literal source text, preserving a caller-supplied visible step marker."""
         task_id = _local_id(task_id)
         text = _text(text, nonempty=True, limit=32_000)
@@ -826,7 +849,7 @@ class VikunjaClient:
             raise VikunjaError('invalid_comment_text')
         data = self._request('POST', f'/tasks/{task_id}/comments', 201,
                              payload={'comment': _literal_html(text)}, params={'format': 'html'},
-                             headers={'X-Vikunja-Format': 'html'})[0]
+                             headers={'X-Vikunja-Format': 'html'}, operation_id=operation_id)[0]
         def check(row):
             _remote_id(row.get('id'))
             _text(row.get('comment'), nonempty=True)
@@ -835,5 +858,5 @@ class VikunjaClient:
         self._mutation_result(data, check)
         return str(data['id'])
 
-    def delete_task(self, task_id):
-        self._request('DELETE', f'/tasks/{_local_id(task_id)}', 204)
+    def delete_task(self, task_id, *, operation_id=None):
+        self._request('DELETE', f'/tasks/{_local_id(task_id)}', 204, operation_id=operation_id)

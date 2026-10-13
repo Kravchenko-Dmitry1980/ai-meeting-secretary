@@ -21,6 +21,7 @@ import sqlite3
 from uuid import UUID
 
 from secretary.domain.restore_quarantine import AUTHORITIES, SOURCE_ROLES, digest
+from .restore_admission_binding import MaintenanceFenceLineageV1, R5SuccessorFenceCandidateV1
 from .restore_operator import OperatorAuthority, protected_scope, _local
 from .restore_reconciliation_control import RestoreControl
 from .restore_runtime_evidence import verify_stopped_runtime
@@ -53,6 +54,29 @@ def _sha(value):
     return type(value) is str and _SHA.fullmatch(value) is not None
 
 
+def _successor_fence_candidate(evidence):
+    lineage = evidence.get('maintenance_fence_lineage') if type(evidence) is dict else None
+    keys = {'archive_barrier_id', 'archive_barrier_fence', 'archive_event_count',
+            'archive_events_sha256', 'high_water_fence', 'event_count', 'events_sha256'}
+    if (type(evidence) is not dict or not _sha(evidence.get('evidence_sha256'))
+            or type(lineage) is not dict or set(lineage) != keys):
+        _fail()
+    try:
+        observed = MaintenanceFenceLineageV1(
+            deployment_id=evidence.get('deployment_id'),
+            archive_barrier_id=lineage['archive_barrier_id'],
+            archive_barrier_fence=lineage['archive_barrier_fence'],
+            archive_event_count=lineage['archive_event_count'],
+            archive_events_sha256=lineage['archive_events_sha256'],
+            observed_high_water_fence=lineage['high_water_fence'],
+            observed_event_count=lineage['event_count'],
+            observed_events_sha256=lineage['events_sha256'],
+            stopped_runtime_evidence_sha256=evidence['evidence_sha256'])
+        return R5SuccessorFenceCandidateV1.from_lineage(observed)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        _fail()
+
+
 def _path(value, *, file=False):
     return _safe(_local(value), file=file)
 
@@ -80,6 +104,8 @@ class PreparedActivationContext:
     source_context_sha256: str
     scope_sha256: str
     runtime_evidence_sha256: str
+    successor_fence_candidate_sha256: str
+    expected_successor_fence: int
     sources: tuple[PreparedSourceContext, ...]
 
     @property
@@ -167,6 +193,7 @@ def _collect(project_root, backup_dir, restore_dir, *, maintenance_path, lifecyc
         evidence = verify_stopped_runtime(**runtime_args)
         if type(evidence) is not dict or not _sha(evidence.get('evidence_sha256')):
             _fail()
+        fence_candidate = _successor_fence_candidate(evidence)
         envelope = _read(inventory_path)
         if (type(envelope) is not dict or set(envelope) != _ENVELOPE_KEYS
                 or type(envelope['version']) is not int or envelope['version'] != 1):
@@ -257,7 +284,9 @@ def _collect(project_root, backup_dir, restore_dir, *, maintenance_path, lifecyc
             _fail()
         context_hash = digest(dict(protocol=1, scope=scope, sources=[asdict(item) for item in prepared],
             retained=retained, runtime_evidence_sha256=evidence['evidence_sha256'],
+            successor_fence_candidate=fence_candidate.to_prepared_blocked_record(),
             r3_decision_sha256=decision['decision_sha256'], inventory_sha256=digest(envelope)))
         return PreparedActivationContext(1, restore_id, current['r3_id'],
             decision['decision_sha256'], current['binding_sha256'], manifest_hash, metadata_hash,
-            digest(envelope), context_hash, digest(scope), evidence['evidence_sha256'], tuple(prepared))
+            digest(envelope), context_hash, digest(scope), evidence['evidence_sha256'],
+            fence_candidate.candidate_sha256, fence_candidate.expected_successor_fence, tuple(prepared))

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import secretary.infrastructure.playback_cache as playback_cache_module
 import secretary.infrastructure.storage_space as storage_space
 from secretary.infrastructure.playback_cache import PlaybackCache
 from secretary.infrastructure.storage_space import StorageSpaceError
@@ -26,6 +27,28 @@ def test_cache_evicts_least_recently_used_instead_of_oldest_created(tmp_path):
 
     assert first.is_file() and third.is_file()
     assert not second.exists(), "the cache not used most recently should be evicted"
+
+
+def test_cache_recency_breaks_equal_wall_clock_timestamps(tmp_path, monkeypatch):
+    monkeypatch.setattr(playback_cache_module.time, "time_ns", lambda: 1234)
+    cache = PlaybackCache(tmp_path / "data", max_bytes=250)
+    entries = cache._entries
+    monkeypatch.setattr(cache, "_entries",
+        lambda: sorted(entries(), key=lambda item: str(item[0])))
+    first = cache.root / "a" / "playback-system-a.wav"
+    second = cache.root / "b" / "playback-system-b.wav"
+    third = cache.root / "c" / "playback-system-c.wav"
+
+    for path, payload in ((first, b"a" * 100), (second, b"b" * 100)):
+        lease = cache.get_or_create(path, 100, lambda path=path, payload=payload: path.write_bytes(payload))
+        lease.release()
+    lease = cache.get_or_create(first, 100, lambda: pytest.fail("existing cache should be reused"))
+    lease.release()
+    lease = cache.get_or_create(third, 100, lambda: third.write_bytes(b"c" * 100))
+    lease.release()
+
+    assert first.is_file() and third.is_file()
+    assert not second.exists(), "equal clock readings must still evict the least recently used file"
 
 
 def test_cache_rebuilds_an_inactive_truncated_snapshot(tmp_path):

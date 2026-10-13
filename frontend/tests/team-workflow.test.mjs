@@ -612,3 +612,14 @@ test('same execution revision with newer selected task snapshot refreshes histor
   await c.store.poll(command.operation_id);await settleHistory();assert.equal(calls,3);
   assert.equal(c.store.getSnapshot().operations[0].receipt.execution_state.revision,1);
 });
+
+test('task movement choices omit the current status and Eisenhower quadrant', async () => {
+  const { taskMovementOptions } = await load();
+  const current = task('9007199254740993', { bucket: 'inbox', important: true, urgent: false });
+  assert.deepEqual(taskMovementOptions(current, false, 'owner'),
+    ['accepted', 'doing', 'blocked', 'review', 'done', 'cancelled']);
+  assert.deepEqual(taskMovementOptions(current, true, 'owner'),
+    ['important-urgent', 'not-important-urgent', 'not-important-not-urgent']);
+  assert.deepEqual(taskMovementOptions({ ...current, bucket: 'accepted' }, false, 'member'),
+    ['doing', 'blocked', 'review', 'done']);
+});

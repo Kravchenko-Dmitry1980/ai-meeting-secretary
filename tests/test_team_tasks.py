@@ -162,7 +162,7 @@ class Remote:
         if self.hook:
             self.hook(kind)
 
-    def create_task(self, draft, marker):
+    def create_task(self, draft, marker, *, operation_id=None):
         import html
         self._sent('create', task_id='123', title=draft.values.title,
             description='<p>' + html.escape(draft.values.description or '').replace('\n', '<br>') + '</p><p>' + marker + '</p>',
@@ -171,7 +171,7 @@ class Remote:
         self.origins = ('123',)
         return '123'
 
-    def apply_task_change(self, task_id, patch, expected_etag=None):
+    def apply_task_change(self, task_id, patch, expected_etag=None, *, operation_id=None):
         changes = dict(patch)
         if 'due_date' in changes:
             from datetime import datetime
@@ -179,24 +179,24 @@ class Remote:
             changes['due_at'] = None if value == self.api.ZERO_DATE else datetime.fromisoformat(value.replace('Z', '+00:00'))
         self._sent('patch', **changes)
 
-    def move_task(self, task_id, bucket):
+    def move_task(self, task_id, bucket, *, operation_id=None):
         identifier = self.binding.bucket_ids[bucket]
         self._sent('move', bucket_id=identifier, buckets=(('17', identifier),))
 
-    def add_label(self, task_id, label_id):
+    def add_label(self, task_id, label_id, *, operation_id=None):
         self._sent('add_label', label_ids=tuple(sorted((*self.current.label_ids, label_id))))
 
-    def remove_label(self, task_id, label_id):
+    def remove_label(self, task_id, label_id, *, operation_id=None):
         self._sent('remove_label', label_ids=tuple(x for x in self.current.label_ids if x != label_id))
 
-    def add_assignee(self, task_id, member_id):
+    def add_assignee(self, task_id, member_id, *, operation_id=None):
         provider_id = self.members.get_by_id(member_id).vikunja_user_id
         self._sent('add_assignee', assignee_ids=tuple(sorted((*self.current.assignee_ids, provider_id))))
 
-    def remove_assignee(self, task_id, provider_id):
+    def remove_assignee(self, task_id, provider_id, *, operation_id=None):
         self._sent('remove_assignee', assignee_ids=tuple(x for x in self.current.assignee_ids if x != provider_id))
 
-    def add_comment(self, task_id, text):
+    def add_comment(self, task_id, text, *, operation_id=None):
         import html
         comment = self.api.CommentObservation(str(900 + len(self.current.comments)), '<p>' + html.escape(text).replace('\n', '<br>') + '</p>', '19')
         self._sent('comment', comments=tuple(sorted((*self.current.comments, comment), key=lambda x: x.id)))

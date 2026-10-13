@@ -116,6 +116,8 @@ test('price rejection has an actionable explanation with technical diagnostics s
   const result = processingErrorPresentation(raw);
   assert.match(result.message, /Максимальный тариф/);
   assert.match(result.message, /настройках/);
+  assert.match(result.message, /месячного лимита Polza на это не влияет/);
+  assert.match(result.message, /лимит встречи действует отдельно/);
   assert.equal(result.message.includes('trace_id'), false);
   assert.equal(result.details, raw);
 });

@@ -7,15 +7,21 @@ from secretary.domain.team import TeamConflict
 
 
 class TeamWorker:
-    def __init__(self, repository, service, *, worker_id, lease_seconds=120, poll_seconds=1.0):
+    def __init__(self, repository, service, *, worker_id, lease_seconds=120, poll_seconds=1.0,
+                 maintenance=None, participant_id=None):
         if not isinstance(worker_id, str) or not worker_id.strip() or len(worker_id) > 4000:
             raise ValueError('worker_id_required')
         if type(lease_seconds) is not int or not 3 <= lease_seconds <= 3600:
             raise ValueError('invalid_lease_seconds')
         if isinstance(poll_seconds, bool) or not isinstance(poll_seconds, (int, float)) or not 0.01 <= poll_seconds <= 60:
             raise ValueError('invalid_poll_seconds')
+        if ((maintenance is None) != (participant_id is None)
+                or maintenance is not None and (not isinstance(participant_id, str) or not participant_id.strip()
+                    or not callable(getattr(maintenance, 'bind_current_operation', None)))):
+            raise ValueError('invalid_maintenance_binding')
         self.repository, self.service, self.worker_id = repository, service, worker_id
         self.lease_seconds, self.poll_seconds = lease_seconds, poll_seconds
+        self.maintenance, self.participant_id = maintenance, participant_id
         self._stop = asyncio.Event()
         self._busy = asyncio.Lock()
 
@@ -38,6 +44,8 @@ class TeamWorker:
         heartbeat = asyncio.create_task(self._heartbeat(claim, finished))
         try:
             try:
+                if self.maintenance is not None:
+                    self.maintenance.bind_current_operation(self.participant_id, claim.command.operation_id)
                 return await asyncio.to_thread(self.service.execute, claim)
             except Exception:
                 return await self._failed(claim)

@@ -3374,11 +3374,13 @@
         "summary": "Build Required",
         "operationId": "build_required__get",
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "503": {
+            "description": "Frontend build required",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendBuildRequiredResponse"
+                }
               }
             }
           }
@@ -5117,6 +5119,26 @@
           "state"
         ],
         "title": "ExecutionState"
+      },
+      "FrontendBuildRequiredResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "frontend_build_required",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "FrontendBuildRequiredResponse"
       },
       "HTTPValidationError": {
         "properties": {

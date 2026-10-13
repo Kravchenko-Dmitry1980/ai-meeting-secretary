@@ -1,5 +1,35 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Обновление — 2026-10-13, 11:26 МСК
+
+Полный guarded offline suite после фикса same-path SQLite race: **5 419 passed, 0 failed, 1 Starlette/httpx deprecation warning**, exit 0; подробности в [VALIDATION.md](VALIDATION.md). Повторный `scripts/doctor.ps1` также прошёл: основной `8765` — offline, `/ready=local_ok`, ключевые локальные компоненты здоровы, `production_qualified=false`. Диагностика видит 4 аудиоустройства (2 microphone и 2 system loopback), но capture без явного короткого действия владельца не выполнялся.
+
+Для ручной проверки сейчас запущены основной интерфейс [Secretary](http://127.0.0.1:8765/), отдельный offline import UI [8767](http://127.0.0.1:8767/) и synthetic Team стенд [fixture](http://localhost:56285/fixture) / [Team UI](http://localhost:56285/team/); Team TTL около 11:47:33 МСК. Импортная база disposable, в ней нет ключа и выключено облако. Свежий Team код выдаётся только на fixture и действует 5 минут; не пересылайте его в чат.
+
+Следующие шаги: вручную проверить импорт synthetic WAV; проверить вход в Team и загрузку Проекта 7; выполнить короткую запись выбранных microphone/system loopback устройств явным действием владельца; затем пройти backup/restore на защищённой цели. Отдельный сравнительный cloud benchmark не запускался, а Team runtime не подключён к основному приложению. Решение владельца «пока только офлайн» относится к проверке 319 Go module names/versions: не отправлять их в public proxy/sumdb. В этом checkpoint Polza benchmark не выполнялся; он требует отдельного выбранного тестового сценария, эталона качества и ограниченного бюджета. MAX/Vikunja/TLS пока не настроены для live-проверки.
+
+## Обновление — 2026-10-12, 21:12 МСК
+
+Локальный launcher теперь пишет Uvicorn и root application logs в `.runtime/logs` с ротацией: 5 МиБ на файл, максимум три поколения. Путь задаётся launcher’ом и проверяется как дочерний к `.runtime`; disposable lifecycle tests используют собственный scratch-каталог. Повторная изолированная проверка прошла с фактической проверкой журналов и остановкой тестовых процессов. Уже запущенный экземпляр `8765` не перезапускался; новая настройка вступит в силу при его следующем штатном старте.
+
+Свежая синтетическая Team fixture открыта по актуальным ссылкам в [TEAM_TESTING_CURRENT.md](TEAM_TESTING_CURRENT.md), TTL около 21:41 МСК. Ручной вход владельца по-прежнему не подтверждён. Следующими остаются ручная Team приёмка, проверка реальных устройств захвата, backup/restore, ограниченный Polza benchmark и отдельная квалификация MAX/TLS/Vikunja; облачные и платные шаги не выполнялись.
+
+## Предыдущий checkpoint — 2026-10-12, 20:54 МСК
+
+Основной Secretary жив на `127.0.0.1:8765`: `/`, `/health`, `/ready` → HTTP 200; текущий запуск offline, cloud disabled, `/ready=local_ok`, `production_qualified=false`. Свежий `scripts/doctor.ps1` подтвердил SQLite/storage/FFmpeg/FFprobe/frontend/release parity/processing worker и временный storage probe; Team runtime и publication worker не настроены, аудиоустройство не принято, возраст backup и log rotation не проверены. Aggregate job history: 112 succeeded, 68 failed, 1 cancelled, 1 waiting_config; stale running candidates — 0.
+
+Изолированный `scripts/check_lifecycle.py` — **PASS** без чтения проектного `.env` и credentials: scratch-only, synthetic встреча пережила restart, readiness/storage probe проверены до/после, тестовые сервера остановлены; основной процесс остался доступен. `scripts/resource_check.py` — **PASS**: 5-минутный файл подготовлен в 3 чанка, трёхчасовой — в 90 чанков; Python RSS growth составил 499 712 и 28 672 bytes соответственно, offsets непрерывны, cloud requests — 0. Это не аппаратный capture, облачный benchmark или замена человеческой проверки звука.
+
+На момент этой проверки synthetic Team smoke был на `localhost:56660`; свежая ссылка и состояние ручного входа обновлены в [TEAM_TESTING_CURRENT.md](TEAM_TESTING_CURRENT.md). Основной `/team/` даёт 404 — Team runtime не подключён. Платные/публичные вызовы и обращения к Polza/MAX/Vikunja не выполнялись. Следующие обязательные owner gates: ручной вход, тест microphone + WASAPI loopback, выбор защищённого пути backup и отдельное разрешение/запись с эталоном для ограниченного Polza benchmark.
+
+## Текущий технический checkpoint — 2026-10-12, 06:10 МСК
+
+Офлайн-проверка backup/source-epoch завершилась **190 passed / 0 failed / 1 прежнее Starlette/httpx warning / 168,35 с / exit 0**; `.venv/Scripts/python.exe -B scripts/run_offline_tests.py tests/test_team_backup.py tests/test_restore_admission_binding.py -q --tb=short` — **82 passed / 1 прежнее warning / 38,77 с / exit 0**. Versioned R4 commitment DTO уже существуют, но runtime их не потребляет и разрешение не выдаёт. Подтверждён незакрытый R5 вопрос: новый maintenance store начинает fence с `0`, а archive manifest даёт только barrier snapshot; независимо подтверждённой истории максимального fence после этого snapshot пока нет. До определения такой lineage restored runtime остаётся blocked, activation/outbound OFF. Security diff review: 0 кандидатов среди 24 изменённых application-source rows, частичный статический охват. Соблюдается offline-only; public Go proxy, Polza/MAX/Vikunja, owner data и deploy не использовались. Следующий локальный шаг — контракт доверенного fence high-water и synthetic fail-closed tests.
+
+## Исторический checkpoint — 2026-10-12
+
+Закрыт offline этап привязки durable operation ID к lifecycle ticket перед MAX/Vikunja/publication dispatch. Полный guarded backend/audit набор: **5298 PASS, 0 FAIL, 1 существующее предупреждение Starlette/httpx, 1458,20 с**. Миграция DB принимает только известную старую форму trigger; неизвестная или отсутствующая схема отклоняется без автозамены. Этот этап не включает реальный outbound и не квалифицирует локальный production: R4 source-generation/interlock и owner/live evidence ещё открыты, ручная Team UI/TLS-приёмка не пройдена. Сохраняется решение пользователя «продолжать только офлайн»: **319 Go module names/versions не отправлять public proxy/sumdb**, никаких MAX/Vikunja/Polza production вызовов. Детали: [operation dispatch report](TEAM_OPERATION_DISPATCH_VALIDATION.md), [restore/reconciliation contract](contracts/team-restore-reconciliation.md).
+
 ## Актуальные страницы ручного теста — 2026-10-10, 07:33 МСК
 
 Исправленная frontend-сборка доступна в локальном offline preview: [http://127.0.0.1:8767/](http://127.0.0.1:8767/). Она использует отдельную БД с одной синтетической двухсекундной записью, без API-ключей и облачных запросов. Здесь можно проверить актуальный UI и импорт файла; STT и формирование итогов не будут запускаться.

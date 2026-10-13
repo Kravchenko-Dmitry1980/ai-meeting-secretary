@@ -1,5 +1,11 @@
 # T9 synthetic browser smoke — 2026-10-06
 
+### Дополнение 2026-10-11, 10:36 МСК: авторизованный narrow viewport и мобильная команда статуса
+
+На отдельном disposable Chrome `isolatedContext` и `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-7a60f9a1ac30485f908d67b808784f1e`/58995 проверены Today, Kanban и Matrix при 390×844 и 320×740 (`mobile=true`, `touch=true`). CSS document width совпал с viewport в каждой ширине; Matrix целиком вмещается, Kanban ограничивает широкие колонки внутренней прокручиваемой областью. На 320 px synthetic task status прошёл preview→confirm: серверная квитанция `Применено и проверено`, «Просроченная важная задача · 1» отображалась «В работе» в Today, Kanban и Matrix. [Снимок результата](../.runtime/team-rollout/t9-mobile-status-320x740-20261011.jpg).
+
+Единственный console error — ожидаемый анонимный `GET /api/team/v1/me` →401 перед входом. После OTP POST session вернул200 и GET members/status/tasks —200. Resource origins были только loopback origin. Run штатно остановлен; PID отсутствует и route не доступен. Это подтверждает узкую browser layout и синтетический status-flow, но не реальный touch input, физический телефон или MAX WebView. Владелец handoff на порту64322 продолжает работать до10:56:53 МСК; он не использовался автоматизацией.
+
 ### Дополнение 2026-10-08, 14:15 МСК: свежая HTTP fixture для ручной Team-приёмки
 
 После того как владелец не смог пройти Chrome TLS interstitial, создана новая loopback-only fixture `t9-http-ui-4c6562c20dc64b0babb4a1a95d449eb2`, порт50626, режим `HTTP_SYNTHETIC_UI_ONLY`, manifest `ready`, max lifetime30 минут (ориентировочно до14:45 МСК). В Codex открыты [страница с синтетическими участниками и одноразовыми кодами](http://secretary-t9.localhost:50626/fixture) и [Team UI для входа и ручной проверки](http://secretary-t9.localhost:50626/team/). Используйте код, который отображается только на первой локальной странице, затем проверьте views/filters/создание и изменения задачи. HTTP fixture не требует переходить через предупреждение сертификата; TLS/MAX WebView/телефон не квалифицирует.

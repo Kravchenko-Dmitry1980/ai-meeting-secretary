@@ -3,12 +3,62 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging.handlers
 import socket
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
 import uvicorn
+
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
+
+
+def resolve_log_directory(root: Path, requested: Path | None = None) -> Path:
+    """Keep runtime logs inside the project's private runtime directory."""
+    runtime_root = (Path(root).resolve() / '.runtime').resolve()
+    candidate = Path(requested).resolve() if requested is not None else runtime_root / 'logs'
+    if candidate == runtime_root or not candidate.is_relative_to(runtime_root):
+        raise ValueError('log_directory_outside_runtime')
+    return candidate
+
+
+def build_log_config(log_directory: Path, *, max_bytes: int = LOG_MAX_BYTES,
+                     backup_count: int = LOG_BACKUP_COUNT) -> dict:
+    """Bound Uvicorn error/access logs by size and retained generations."""
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError('invalid_log_max_bytes')
+    if type(backup_count) is not int or backup_count < 1:
+        raise ValueError('invalid_log_backup_count')
+    directory = Path(log_directory)
+    formatter = {'format': '%(asctime)s %(levelname)s %(name)s %(message)s'}
+
+    def rotating_handler(filename: str) -> dict:
+        return {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'formatter': 'default',
+            'filename': str(directory / filename),
+            'maxBytes': max_bytes,
+            'backupCount': backup_count,
+            'encoding': 'utf-8',
+        }
+
+    return {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {'default': formatter},
+        'handlers': {
+            'error': rotating_handler('secretary.error.log'),
+            'access': rotating_handler('secretary.access.log'),
+        },
+        'loggers': {
+            'uvicorn': {'handlers': ['error'], 'level': 'INFO', 'propagate': False},
+            'uvicorn.error': {'level': 'INFO'},
+            'uvicorn.access': {'handlers': ['access'], 'level': 'INFO', 'propagate': False},
+        },
+        'root': {'handlers': ['error'], 'level': 'INFO'},
+    }
 
 
 def stop_marker(root: Path, run_id: str | None = None) -> Path:
@@ -20,12 +70,13 @@ def stop_marker(root: Path, run_id: str | None = None) -> Path:
 
 
 async def run(port: int, team_runtime_config: Path | None = None, run_id: str | None = None,
-              offline: bool = False, isolated_offline: bool = False) -> None:
+              offline: bool = False, isolated_offline: bool = False,
+              log_directory: Path | None = None) -> None:
     # Uvicorn otherwise binds after lifespan startup, which can claim jobs.
     # Own the literal loopback listener before loading settings or any DB.
     with owned_listener(port) as listener:
         await run_owned(port, listener, team_runtime_config, run_id, offline=offline,
-                        isolated_offline=isolated_offline)
+                        isolated_offline=isolated_offline, log_directory=log_directory)
 
 
 @contextmanager
@@ -45,7 +96,7 @@ def owned_listener(port):
 
 
 async def run_owned(port, listener, team_runtime_config=None, run_id=None, offline=False,
-                    isolated_offline=False):
+                    isolated_offline=False, log_directory=None):
     root = Path(__file__).resolve().parents[1]
     marker = stop_marker(root, run_id)
     application, factory = 'secretary.api:create_app', True
@@ -53,6 +104,8 @@ async def run_owned(port, listener, team_runtime_config=None, run_id=None, offli
         raise ValueError('isolated_mode_requires_offline')
     if offline and team_runtime_config is not None:
         raise ValueError('offline_mode_not_supported_with_team_runtime')
+    log_directory = resolve_log_directory(root, log_directory)
+    log_directory.mkdir(parents=True, exist_ok=True)
     if offline:
         from secretary.api import create_app
         if isolated_offline:
@@ -72,7 +125,9 @@ async def run_owned(port, listener, team_runtime_config=None, run_id=None, offli
         if port != config.local_secretary_port:
             raise ValueError('secretary_runtime_port_mismatch')
         application, factory = create_secretary_team_app(config, run_id=run_id, native_job=native_job), False
-    server = uvicorn.Server(uvicorn.Config(application, host='127.0.0.1', port=port, factory=factory, proxy_headers=False, log_level='info', timeout_graceful_shutdown=5))
+    server = uvicorn.Server(uvicorn.Config(application, host='127.0.0.1', port=port,
+        factory=factory, proxy_headers=False, log_level='info',
+        log_config=build_log_config(log_directory), timeout_graceful_shutdown=5))
 
     async def watch() -> None:
         while not server.should_exit:
@@ -94,6 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--team-runtime-config', type=Path)
     parser.add_argument('--run-id')
+    parser.add_argument('--log-directory', type=Path)
     parser.add_argument('--offline', action='store_true', help='Disable outbound integrations for this Secretary process')
     parser.add_argument('--isolated-offline', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -105,10 +161,12 @@ if __name__ == '__main__':
         parser.error('--offline cannot be combined with --team-runtime-config')
     if args.isolated_offline and not args.offline:
         parser.error('--isolated-offline requires --offline')
+    if args.log_directory is not None and not args.log_directory.is_absolute():
+        parser.error('log directory must be an absolute path')
     if args.run_id is not None:
         try:
             stop_marker(Path(__file__).resolve().parents[1], args.run_id)
         except ValueError:
             parser.error('run id must be a canonical UUID')
     asyncio.run(run(args.port, args.team_runtime_config, args.run_id, offline=args.offline,
-                    isolated_offline=args.isolated_offline))
+                    isolated_offline=args.isolated_offline, log_directory=args.log_directory))

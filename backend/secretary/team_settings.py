@@ -13,13 +13,16 @@ import stat
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, StrictStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 
 class RuntimeConfigurationError(ValueError):
     def __init__(self, code='team_runtime_config_invalid'):
         self.code = code
         super().__init__(code)
+
+
+_CONFIG_LOADER_MARKER = object()
 
 
 def _uuid(value):
@@ -78,6 +81,9 @@ class RuntimeProjectBinding(StrictModel):
 
 
 class TeamRuntimeSettings(StrictModel):
+    _config_path: Path | None = PrivateAttr(default=None)
+    _config_loader_marker: object | None = PrivateAttr(default=None)
+
     schema_version: Literal[1] = 1
     deployment_id: StrictStr
     project_dir: Path
@@ -265,6 +271,9 @@ def load_team_settings(config_path: Path) -> TeamRuntimeSettings:
             raise ValueError
         value = json.loads(path.read_text(encoding='utf-8-sig'), object_pairs_hook=_unique,
             parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite_configuration')))
-        return TeamRuntimeSettings.model_validate(value)
+        result = TeamRuntimeSettings.model_validate(value)
+        result._config_path = path
+        result._config_loader_marker = _CONFIG_LOADER_MARKER
+        return result
     except (OSError, ValueError, TypeError):
         raise RuntimeConfigurationError() from None

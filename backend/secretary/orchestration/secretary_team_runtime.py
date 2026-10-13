@@ -76,7 +76,8 @@ def create_secretary_team_app(config, *, run_id=None, identity_reader=None, nati
             base_url=f'http://127.0.0.1:{config.gateway_port}',
             secret=config.publication_service_secret.get_secret_value(), actor_id=config.local_owner_id)
         resources.append(bridge)
-        dispatcher = PublicationDispatcher(service.repository, bridge, validate_dispatch=service.validate_dispatch)
+        dispatcher = PublicationDispatcher(service.repository, bridge, validate_dispatch=service.validate_dispatch,
+            maintenance=gate, participant_id=participant_id)
         return PublicationWorker(dispatcher, worker_id='secretary-publications-' + run_id,
             maintenance=gate, participant_id=participant_id)
 

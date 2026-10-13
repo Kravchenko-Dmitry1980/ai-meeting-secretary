@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
+import logging.handlers
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -18,7 +20,7 @@ def load_launcher():
 
 
 @pytest.mark.asyncio
-async def test_offline_launcher_disables_outbound_before_serving(monkeypatch):
+async def test_offline_launcher_disables_outbound_before_serving(monkeypatch, tmp_path):
     launcher = load_launcher()
     calls = {}
     app = object()
@@ -35,7 +37,8 @@ async def test_offline_launcher_disables_outbound_before_serving(monkeypatch):
     monkeypatch.setattr(launcher.uvicorn, "Config", lambda *args, **kwargs: object())
     monkeypatch.setattr(launcher.uvicorn, "Server", lambda config: Server())
 
-    await launcher.run_owned(19876, object(), run_id=str(uuid4()), offline=True)
+    await launcher.run_owned(19876, object(), run_id=str(uuid4()), offline=True,
+                             log_directory=tmp_path / "logs")
 
     assert calls == {"outbound_enabled": False, "served": True}
 
@@ -49,7 +52,7 @@ async def test_offline_launcher_rejects_team_runtime_before_loading_it():
 
 
 @pytest.mark.asyncio
-async def test_isolated_offline_launcher_does_not_load_project_env(monkeypatch):
+async def test_isolated_offline_launcher_does_not_load_project_env(monkeypatch, tmp_path):
     launcher = load_launcher()
     calls = []
     configuration = object()
@@ -70,7 +73,8 @@ async def test_isolated_offline_launcher_does_not_load_project_env(monkeypatch):
     monkeypatch.setattr(launcher.uvicorn, "Config", lambda *args, **kwargs: object())
     monkeypatch.setattr(launcher.uvicorn, "Server", lambda config: Server())
 
-    await launcher.run_owned(19876, object(), run_id=str(uuid4()), offline=True, isolated_offline=True)
+    await launcher.run_owned(19876, object(), run_id=str(uuid4()), offline=True,
+                             isolated_offline=True, log_directory=tmp_path / "logs")
 
     assert [kind for kind, _ in calls] == ["settings", "create_app", "served"]
     assert calls[0][1] == {"_env_file": None}
@@ -92,5 +96,46 @@ def test_windows_launcher_keeps_per_run_logs_instead_of_overwriting_shared_logs(
     assert "$StderrLog = Join-Path $RuntimeDir ('server-' + $LaunchId + '.stderr.log')" in script
     assert "-RedirectStandardOutput $StdoutLog" in script
     assert "-RedirectStandardError $StderrLog" in script
+    assert "$LogDir = Join-Path $RuntimeDir 'logs'" in script
+    assert "--log-directory \"' + $LogDir + '\"'" in script
     assert "stdout_log=$StdoutLog;stderr_log=$StderrLog" in script
     assert "Inspect $StderrLog." in script
+
+
+def test_launcher_rotates_uvicorn_logs_with_bounded_retention(tmp_path):
+    launcher = load_launcher()
+    log_directory = tmp_path / "logs"
+    log_directory.mkdir()
+
+    config = launcher.build_log_config(log_directory, max_bytes=180, backup_count=2)
+
+    assert config["handlers"]["error"]["class"] == "logging.handlers.RotatingFileHandler"
+    assert config["handlers"]["access"]["class"] == "logging.handlers.RotatingFileHandler"
+    assert config["handlers"]["error"]["maxBytes"] == 180
+    assert config["handlers"]["error"]["backupCount"] == 2
+    handler_config = config["handlers"]["access"]
+    handler = logging.handlers.RotatingFileHandler(
+        handler_config["filename"], maxBytes=handler_config["maxBytes"],
+        backupCount=handler_config["backupCount"], encoding=handler_config["encoding"])
+    handler.setFormatter(logging.Formatter(config["formatters"]["default"]["format"]))
+    access_logger = logging.Logger("secretary_rotation_test", logging.INFO)
+    access_logger.addHandler(handler)
+    try:
+        for index in range(20):
+            access_logger.info("request-%02d %s", index, "x" * 30)
+    finally:
+        access_logger.removeHandler(handler)
+        handler.close()
+
+    generated = list(log_directory.glob("secretary.access.log*"))
+    assert {path.name for path in generated} == {
+        "secretary.access.log", "secretary.access.log.1", "secretary.access.log.2"
+    }
+    assert all(path.stat().st_size <= 180 for path in generated)
+
+
+def test_launcher_rejects_log_directory_outside_runtime_root(tmp_path):
+    launcher = load_launcher()
+
+    with pytest.raises(ValueError, match="log_directory_outside_runtime"):
+        launcher.resolve_log_directory(tmp_path / "project", tmp_path / "elsewhere" / "logs")

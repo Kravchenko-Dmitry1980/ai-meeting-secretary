@@ -238,6 +238,39 @@ def test_expired_owned_service_cannot_dispatch_next_remote_step(case):
     assert asyncio.run(worker.run_once()) is None
 
 
+def test_owner_task_worker_binds_claim_id_before_service_dispatch(case, tmp_path):
+    from secretary.infrastructure.team_maintenance import MaintenanceRepository
+
+    c = case
+    cmd = command(c)
+    c.repo.accept_command(c.member.id, cmd)
+    gate = MaintenanceRepository(tmp_path / 'maintenance.sqlite3', str(uuid4()))
+    gate.bind_sources({role: tmp_path / (role + '.sqlite3')
+        for role in ('secretary', 'team', 'billing', 'vikunja')})
+    gate.register_participant('synthetic', run_id=str(uuid4()), identity={
+        'pid': 123, 'creation_time': '2026-10-12T00:00:00Z',
+        'executable_sha256': 'a' * 64, 'argv_sha256': 'b' * 64})
+
+    class AdmissionCheckingWork:
+        def execute(self, claim):
+            gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_task',),
+                operation_id=claim.command.operation_id)
+            snapshot = c.snapshot.model_copy(update={'revision': 1, 'bucket': 'doing',
+                'remote_fingerprint': 'b' * 64})
+            return c.repo.record_remote_result(claim, state='applied', snapshot=snapshot)
+
+    worker = TeamWorker(c.repo, AdmissionCheckingWork(), worker_id='review-worker',
+        lease_seconds=3, maintenance=gate, participant_id='synthetic')
+
+    async def run():
+        async with gate.async_admission('synthetic', 'outbound_task'):
+            return await worker.run_once()
+
+    result = asyncio.run(run())
+    assert result.execution_state.state == 'applied'
+    assert gate.active_operations('synthetic') == ()
+
+
 def claim_for(c):
     cmd = command(c)
     c.repo.accept_command(c.member.id, cmd)

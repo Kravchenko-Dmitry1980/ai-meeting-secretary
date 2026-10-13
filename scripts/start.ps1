@@ -2,6 +2,7 @@ param([int]$Port = 8765, [switch]$NoBrowser, [switch]$NoBootstrap, [switch]$Offl
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $RuntimeDir = Join-Path $ProjectRoot '.runtime'
+$LogDir = Join-Path $RuntimeDir 'logs'
 $PythonExe = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
 $LauncherPath = Join-Path $PSScriptRoot 'run_server.py'
 $StatePath = Join-Path $RuntimeDir 'processes.json'
@@ -36,7 +37,7 @@ $StopPath = Join-Path $RuntimeDir ('stop-' + $LaunchId + '.request')
 if (Test-Path -LiteralPath $StopPath) { Remove-Item -LiteralPath $StopPath }
 $StdoutLog = Join-Path $RuntimeDir ('server-' + $LaunchId + '.stdout.log')
 $StderrLog = Join-Path $RuntimeDir ('server-' + $LaunchId + '.stderr.log')
-$Arguments = '"' + $LauncherPath + '" --port ' + $Port + ' --run-id ' + $LaunchId
+$Arguments = '"' + $LauncherPath + '" --port ' + $Port + ' --run-id ' + $LaunchId + ' --log-directory "' + $LogDir + '"'
 if ($TeamRuntimeConfig) {
     $Arguments += ' --team-runtime-config "' + $TeamRuntimeConfig + '"'
 }

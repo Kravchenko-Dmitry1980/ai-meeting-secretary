@@ -15,15 +15,21 @@ from secretary.orchestration.team_worker import TeamWorker
 
 
 class NotificationWorker:
-    def __init__(self, repository, sender, *, worker_id, lease_seconds=60, poll_seconds=1.0):
+    def __init__(self, repository, sender, *, worker_id, lease_seconds=60, poll_seconds=1.0,
+                 maintenance=None, participant_id=None):
         if not isinstance(worker_id, str) or not worker_id.strip() or len(worker_id) > 128:
             raise ValueError('notification_worker_id_invalid')
         if type(lease_seconds) is not int or not 3 <= lease_seconds <= 3600:
             raise ValueError('notification_lease_invalid')
         if isinstance(poll_seconds, bool) or not isinstance(poll_seconds, (int, float)) or not .01 <= poll_seconds <= 60:
             raise ValueError('notification_poll_invalid')
+        if ((maintenance is None) != (participant_id is None)
+                or maintenance is not None and (not isinstance(participant_id, str) or not participant_id.strip()
+                    or not callable(getattr(maintenance, 'bind_current_operation', None)))):
+            raise ValueError('notification_maintenance_binding_invalid')
         self.repository, self.sender, self.worker_id = repository, sender, worker_id
         self.lease_seconds, self.poll_seconds = lease_seconds, poll_seconds
+        self.maintenance, self.participant_id = maintenance, participant_id
         self._stop = asyncio.Event()
         self._busy = asyncio.Lock()
 
@@ -66,6 +72,8 @@ class NotificationWorker:
 
     def _execute(self, claim, cancelled):
         started = None
+        if self.maintenance is not None:
+            self.maintenance.bind_current_operation(self.participant_id, claim.id)
         def authorize():
             if cancelled():
                 raise NotificationDeferred('notification_not_ready')

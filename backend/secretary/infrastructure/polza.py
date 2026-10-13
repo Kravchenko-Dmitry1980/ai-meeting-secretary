@@ -152,7 +152,7 @@ async def _callback(callback: Callable | None, *args: Any) -> Any:
 
 
 def build_polza_client(settings: Any, *, transport=None, account_reader=None, price_reader=None, clock=None,
-                       billing_path=None, maintenance=None, participant_id=None):
+                       billing_path=None, restore_authority_paths=None, maintenance=None, participant_id=None):
     """Production entry point; direct unguarded clients cannot send real paid requests."""
     from secretary.infrastructure.cloud_budget_factory import build_monthly_budget
     from secretary.infrastructure.polza_account import PolzaAccountClient
@@ -163,7 +163,8 @@ def build_polza_client(settings: Any, *, transport=None, account_reader=None, pr
     return PolzaClient(settings, transport=transport, budget=budget,
                        charge_context={"key_tag": account.key_tag},
                        price_reader=price_reader or PolzaPriceClient(transport=transport, clock=clock),
-                       billing_path=billing_path, maintenance=maintenance, participant_id=participant_id)
+                       billing_path=billing_path, restore_authority_paths=restore_authority_paths,
+                       maintenance=maintenance, participant_id=participant_id)
 
 
 def _number(value: Any) -> float | None:
@@ -278,7 +279,7 @@ owner и due_date — дословно названные в цитируемы�
 class PolzaClient:
     def __init__(self, settings: Any, transport: httpx.AsyncBaseTransport | None = None, *,
                  budget=None, charge_context: dict | None = None, price_reader=None,
-                 billing_path=None, maintenance=None, participant_id=None):
+                 billing_path=None, restore_authority_paths=None, maintenance=None, participant_id=None):
         self.settings = settings
         self.transport = transport
         self.budget = budget
@@ -294,6 +295,21 @@ class PolzaClient:
             (Path(settings.data_dir).resolve() / 'billing.sqlite3' if getattr(settings, 'data_dir', None) is not None else None))
         if repository is not None and self.billing_path is not None and Path(repository.path).resolve() != self.billing_path:
             raise ProviderError('monthly_budget_configuration', 'Путь Billing не совпадает с authority бюджета')
+        try:
+            if restore_authority_paths is None:
+                paths = () if self.billing_path is None else (self.billing_path,)
+            elif type(restore_authority_paths) in (tuple, list) and len(restore_authority_paths) <= 4:
+                paths = tuple(Path(value).resolve() for value in restore_authority_paths if value is not None)
+            else:
+                raise ValueError
+            if self.billing_path is not None and self.billing_path not in paths:
+                paths = (*paths, self.billing_path)
+            paths = tuple(dict.fromkeys(paths))
+            if len(paths) > 4:
+                raise ValueError
+        except (OSError, TypeError, ValueError):
+            raise ProviderError('monthly_budget_configuration', 'Некорректный набор локальных authority восстановления') from None
+        self.restore_authority_paths = paths
 
     def set_charge_context(self, **values):
         self.charge_context.update(values)
@@ -309,6 +325,7 @@ class PolzaClient:
         return PolzaClient(settings, self.transport, budget=self.budget, price_reader=self.price_reader,
             charge_context={'key_tag': self.charge_context.get('key_tag'),
                 'category': category, 'command_id': command_id}, billing_path=self.billing_path,
+            restore_authority_paths=self.restore_authority_paths,
             maintenance=self.maintenance, participant_id=self.participant_id)
 
     @staticmethod
@@ -699,9 +716,27 @@ class PolzaClient:
     def _paid_authority(self):
         from secretary.infrastructure.budget_repository import assert_paid_billing_allowed
         try:
-            assert_paid_billing_allowed(self.billing_path)
+            assert_paid_billing_allowed(self.billing_path, authority_paths=self.restore_authority_paths)
         except BudgetError as exc:
             raise ProviderError(exc.code, 'Новый запрос Polza приостановлен: ' + exc.code) from None
+
+    async def _record_not_submitted(self, operation_id, info, checkpoint, error_code):
+        released = self.budget is None
+        if self.budget is not None:
+            try:
+                self.budget.release_unsubmitted(operation_id)
+                released = True
+            except BudgetError:
+                pass
+        if released and checkpoint is not None:
+            try:
+                await _callback(checkpoint, {**copy.deepcopy(info), 'error_code': error_code})
+            except asyncio.CancelledError as cancelled:
+                cancelled.uncertain = True
+                raise
+            except BaseException:
+                raise ProviderError('provider_checkpoint_write_failed',
+                    'Не удалось сохранить отказ до отправки; повтор запроса запрещён', uncertain=True) from None
 
     async def _request_admitted(self, method: str, endpoint: str, *, payload: dict | None = None,
                        provider_job_id: str | None = None, duration_seconds=None,
@@ -756,28 +791,17 @@ class PolzaClient:
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 raise ProviderError('provider_checkpoint_write_failed', 'Не удалось сохранить запрос Polza; запрос не отправлен') from None
-            if self.budget is not None:
-                try:
+            try:
+                # Re-read every configured restore authority after the durable
+                # request checkpoint and immediately before submitting the charge.
+                self._paid_authority()
+                if self.budget is not None:
                     self.budget.mark_submitted(operation_id)
-                except BudgetError as exc:
-                    released = False
-                    try:
-                        self.budget.release_unsubmitted(operation_id)
-                        released = True
-                    except BudgetError:
-                        pass
-                    # This branch precedes every raw transport dispatch. A released
-                    # HTTP rejection elsewhere is NOT proof of being unsubmitted.
-                    if released and not_submitted_checkpoint is not None:
-                        try:
-                            await _callback(not_submitted_checkpoint, {**copy.deepcopy(info), 'error_code': exc.code})
-                        except asyncio.CancelledError as cancelled:
-                            cancelled.uncertain = True
-                            raise
-                        except BaseException:
-                            raise ProviderError('provider_checkpoint_write_failed',
-                                'Не удалось сохранить отказ до отправки; повтор запроса запрещён', uncertain=True) from None
-                    raise ProviderError(exc.code, 'Новый запрос Polza приостановлен: ' + exc.code) from exc
+            except (BudgetError, ProviderError) as exc:
+                await self._record_not_submitted(operation_id, info, not_submitted_checkpoint, exc.code)
+                if isinstance(exc, ProviderError):
+                    raise
+                raise ProviderError(exc.code, 'Новый запрос Polza приостановлен: ' + exc.code) from exc
             submitted = True
         elif self.budget is not None and provider_job_id:
             operation_id = self.budget.operation_for_job(provider_job_id)

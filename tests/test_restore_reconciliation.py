@@ -54,7 +54,11 @@ def setup(copy, monkeypatch):
     monkeypatch.setattr(target, 'OperatorAuthority', SyntheticOperator)
     monkeypatch.setattr(target, 'protected_scope', scope)
     monkeypatch.setattr(target, 'create_private_directory', lambda path: path.mkdir())
-    proof = {'deployment_id': str(uuid4()), 'evidence_sha256': 'b' * 64}
+    proof = {'deployment_id': str(uuid4()), 'evidence_sha256': 'b' * 64,
+        'maintenance_fence_lineage': dict(archive_barrier_id=str(uuid4()),
+            archive_barrier_fence=1, archive_event_count=2,
+            archive_events_sha256='a' * 64, high_water_fence=3,
+            event_count=4, events_sha256='c' * 64)}
     monkeypatch.setattr(target, 'verify_stopped_runtime', lambda **kwargs: dict(proof))
     return copy, target, proof
 

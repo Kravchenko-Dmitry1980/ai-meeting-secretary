@@ -1,4 +1,5 @@
 """Source outbox dispatch is once; recovery only reads the same operation."""
+import asyncio
 from datetime import timedelta
 from importlib import import_module
 from uuid import uuid4
@@ -152,3 +153,36 @@ def test_continuous_new_intake_does_not_prevent_polling(case):
     c.repo.claim_next = busy
     d.run_once('sender')
     assert b.calls[-2:] == [('GET', c.item.publication_id), ('CLAIM', 'busy')]
+
+
+def test_owner_publication_worker_binds_delivery_id_before_bridge_submit(case, tmp_path):
+    from secretary.infrastructure.team_maintenance import MaintenanceRepository
+    from secretary.orchestration.publication_worker import PublicationWorker
+
+    c = case
+    accepted(c)
+    gate = MaintenanceRepository(tmp_path / 'maintenance.sqlite3', str(uuid4()))
+    gate.bind_sources({'secretary': c.db.path, **{role: tmp_path / (role + '.sqlite3')
+        for role in ('team', 'billing', 'vikunja')}})
+    gate.register_participant('synthetic', run_id=str(uuid4()), identity={
+        'pid': 123, 'creation_time': '2026-10-12T00:00:00Z',
+        'executable_sha256': 'a' * 64, 'argv_sha256': 'b' * 64})
+    bridge = Bridge(c)
+    original_submit = bridge.submit
+
+    def checked_submit(envelope):
+        operation_id = c.a.delivery_uuid(envelope.scope, envelope.item)
+        gate.assert_dispatch_admission('synthetic', allowed_kinds=('outbound_publication',),
+            operation_id=operation_id)
+        return original_submit(envelope)
+
+    bridge.submit = checked_submit
+    api = import_module('secretary.application.publication_delivery')
+    dispatcher = api.PublicationDispatcher(c.repo, bridge, validate_dispatch=lambda *args: None,
+        maintenance=gate, participant_id='synthetic')
+    worker = PublicationWorker(dispatcher, worker_id='synthetic-publication',
+        maintenance=gate, participant_id='synthetic')
+    receipt = asyncio.run(worker.run_once())
+    assert receipt is not None and receipt.execution_state.state == 'queued'
+    assert bridge.calls[0] == ('POST', c.item.publication_id)
+    assert gate.active_operations('synthetic') == ()

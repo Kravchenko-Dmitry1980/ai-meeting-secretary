@@ -34,6 +34,8 @@ def test_actual_four_source_baseline_is_recorded_under_an_independent_blocked_ep
     context = read(prepared)
     original = files(sample.restored.destination), files(sample.backup)
     result = stage(prepared)
+    assert context.expected_successor_fence >= 1
+    assert len(context.successor_fence_candidate_sha256) == 64
     assert result['state'] == 'epoch_prepared_blocked'
     assert result['outbound_enabled'] is False and result['activation_supported'] is False
     assert result['binding'] == context.ledger_binding
@@ -46,6 +48,23 @@ def test_actual_four_source_baseline_is_recorded_under_an_independent_blocked_ep
         assert record['preparation_sha256'] == source.preparation_sha256
     assert ledger_path(sample).is_file()
     assert (files(sample.restored.destination), files(sample.backup)) == original
+
+
+def test_fixed_activation_ledger_pins_successor_candidate_and_rejects_stale_context(prepared):
+    sample, _, _, _ = prepared
+    context = read(prepared)
+    result = stage(prepared)
+    path = ledger_path(sample)
+    before = path.read_bytes()
+    assert result['binding']['source_context_sha256'] == context.source_context_sha256
+
+    stale_binding = context.ledger_binding
+    stale_binding['source_context_sha256'] = hashlib.sha256(b'stale successor fence candidate').hexdigest()
+    from secretary.infrastructure.restore_activation_ledger import ActivationLedgerError, RestoreActivationLedger
+    with pytest.raises(ActivationLedgerError):
+        RestoreActivationLedger.open_existing(path, stale_binding)
+    assert path.read_bytes() == before
+    assert stage(prepared) == result
 
 
 def test_repeat_keeps_same_epoch_generation_and_file_bytes(prepared):
@@ -68,6 +87,8 @@ def test_crash_after_two_source_commits_resumes_same_blocked_epoch(prepared, mon
     context = read(prepared)
     partial = RestoreActivationLedger.open_existing(ledger_path(sample), context.ledger_binding).snapshot()
     assert set(partial['sources']) == {'secretary', 'team'}
+    assert partial['binding'] == context.ledger_binding
+    assert context.expected_successor_fence >= 1
     assert partial['outbound_enabled'] is False
     monkeypatch.setattr(RestoreActivationLedger, 'record_source', original)
     resumed = stage(prepared)

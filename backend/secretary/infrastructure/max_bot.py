@@ -33,6 +33,9 @@ _ERROR_CODES = frozenset({
     'max_transport_unsafe', 'max_configuration_invalid', 'max_request_invalid',
     'max_response_invalid', 'max_http_rejected', 'max_transport_uncertain',
     'max_rate_limited', 'max_subscription_uncertain', 'max_subscription_rejected',
+    'maintenance_admission_required', 'maintenance_admission_invalid',
+    'maintenance_operation_required', 'maintenance_operation_mismatch',
+    'maintenance_restore_blocked', 'maintenance_authority_unavailable',
 })
 
 
@@ -108,11 +111,16 @@ def _pairs(pairs):
 
 
 class MaxClient:
-    def __init__(self, token: str, *, bot_id: str, client: httpx.Client):
+    def __init__(self, token: str, *, bot_id: str, client: httpx.Client,
+                 maintenance=None, participant_id=None):
         if (not isinstance(token, str) or not 1 <= len(token) <= 4096
                 or any(not 33 <= ord(character) <= 126 for character in token)):
             raise MaxError('max_configuration_invalid')
+        if ((maintenance is None) != (participant_id is None)
+                or participant_id is not None and (not isinstance(participant_id, str) or not participant_id.strip())):
+            raise MaxError('max_configuration_invalid')
         self.bot_id, self.client, self._token = _id(bot_id), client, token
+        self.maintenance, self.participant_id = maintenance, participant_id
         self._check_client()
 
     def close(self):
@@ -171,8 +179,17 @@ class MaxClient:
                 or not context.check_hostname):
             raise MaxError('max_transport_unsafe')
 
-    def _request(self, method, path, *, payload=None, params=None):
+    def _request(self, method, path, *, payload=None, params=None, operation_id=None):
         self._check_client()
+        if method != 'GET' and self.maintenance is not None:
+            try:
+                self.maintenance.assert_dispatch_admission(self.participant_id,
+                    allowed_kinds=('outbound_bot', 'outbound_notification', 'outbound_subscription'),
+                    operation_id=operation_id)
+            except Exception as error:
+                code = getattr(error, 'code', None)
+                raise MaxError(code if isinstance(code, str) and code.startswith('maintenance_')
+                    else 'maintenance_authority_unavailable') from None
         try:
             with self.client.stream(method, BASE_URL + path, json=payload, params=params,
                     headers={'Authorization': self._token, 'Accept-Encoding': 'identity'}, follow_redirects=False) as response:
@@ -263,7 +280,7 @@ class MaxClient:
             payload['attachments'] = [{'type': 'inline_keyboard', 'payload': {'buttons': rows}}]
         try:
             status, value, retry = self._request('POST', '/messages', payload=payload,
-                params={'user_id': user_id, 'disable_link_preview': 'true'})
+                params={'user_id': user_id, 'disable_link_preview': 'true'}, operation_id=operation_id)
             if status == 429:
                 return SendReceipt(operation_id, 'retryable', error_code='max_rate_limited', retry_after=self._retry_after(retry))
             if 400 <= status < 500:
@@ -297,6 +314,8 @@ class MaxClient:
         except MaxError as exc:
             if exc.code == 'max_transport_unsafe':
                 raise
+            if exc.code.startswith('maintenance_'):
+                return SendReceipt(operation_id, 'rejected', error_code=exc.code)
             return SendReceipt(operation_id, 'uncertain', error_code=exc.code)
 
     def _read_subscriptions(self, *, redact):
@@ -327,7 +346,7 @@ class MaxClient:
     def read_subscription(self) -> tuple[dict, ...]:
         return self._read_subscriptions(redact=True)
 
-    def register_own_subscription(self, desired: MaxSubscription) -> SubscriptionReceipt:
+    def register_own_subscription(self, desired: MaxSubscription, *, operation_id=None) -> SubscriptionReceipt:
         self._check_client()
         if not isinstance(desired, MaxSubscription):
             raise MaxError('max_request_invalid')
@@ -346,7 +365,8 @@ class MaxClient:
             return SubscriptionReceipt('uncertain', error_code=exc.code)
         try:
             status, value, _ = self._request('POST', '/subscriptions',
-                payload={'url': url, 'update_types': list(types), 'secret': desired.secret})
+                payload={'url': url, 'update_types': list(types), 'secret': desired.secret},
+                operation_id=operation_id)
             if 400 <= status < 500:
                 return SubscriptionReceipt('rejected', error_code='max_subscription_rejected')
             if status != 200 or type(value.get('success')) is not bool:

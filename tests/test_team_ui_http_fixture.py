@@ -18,6 +18,67 @@ def module():
     return value
 
 
+def test_browser_fixture_defaults_to_localhost_for_secure_cookie_compatibility():
+    assert module().DEFAULT_HTTP_HOSTNAME == 'localhost'
+
+
+def test_http_fixture_cookie_name_is_unique_per_run():
+    adapter = module()
+    first = 't9-http-ui-' + 'a' * 32
+    second = 't9-http-ui-' + 'b' * 32
+
+    first_cookie = adapter.session_cookie_name_for_run(first)
+    second_cookie = adapter.session_cookie_name_for_run(second)
+
+    assert first_cookie == b'__Host-secretary-team-t9-' + b'a' * 32
+    assert second_cookie == b'__Host-secretary-team-t9-' + b'b' * 32
+    assert first_cookie != second_cookie
+    with pytest.raises(adapter.FixtureFailure):
+        adapter.session_cookie_name_for_run('t9-http-ui-not-a-valid-id')
+
+
+def test_parallel_localhost_fixtures_keep_sessions_isolated_by_cookie_name(tmp_path):
+    adapter = module()
+    dist = tmp_path / 'dist'
+    (dist / 'assets').mkdir(parents=True)
+    (dist / 'team.html').write_text('<html>synthetic Team</html>', encoding='utf-8')
+    fixtures = []
+    clients = []
+    try:
+        for index in range(2):
+            run = tmp_path / ('t9-http-ui-' + uuid4().hex)
+            run.mkdir()
+            (run / 'lifecycle.log').write_text('', encoding='utf-8')
+            origin = f'http://localhost:{44450 + index}'
+            fixture, app = adapter.build_http_fixture(run, frontend_dist=dist, http_origin=origin)
+            fixtures.append(fixture)
+            client = TestClient(app, base_url=origin, client=('127.0.0.1', 45001 + index))
+            client.__enter__()
+            clients.append(client)
+
+        session_pairs = []
+        for fixture, client, origin in zip(fixtures, clients, ('http://localhost:44450', 'http://localhost:44451')):
+            response = client.post('/api/team/v1/session/code', json={'value': fixture.codes[0]},
+                headers={'Origin': origin})
+            assert response.status_code == 200
+            set_cookie = next(value.decode('latin-1') for key, value in response.headers.raw
+                if key.lower() == b'set-cookie')
+            session_pairs.append(set_cookie.split(';', 1)[0])
+
+        assert session_pairs[0].split('=', 1)[0] != session_pairs[1].split('=', 1)[0]
+        combined = '; '.join(session_pairs)
+        for index, (fixture, client) in enumerate(zip(fixtures, clients)):
+            response = client.get('/api/team/v1/me', headers={
+                'Cookie': combined + '; __Host-secretary-team=stale-cookie-from-an-older-fixture'})
+            assert response.status_code == 200
+            assert response.json()['actor']['id'] == fixture.owners[0].id
+    finally:
+        for client in clients:
+            client.__exit__(None, None, None)
+        for fixture in fixtures:
+            fixture.close()
+
+
 @pytest.fixture
 def case(tmp_path):
     adapter = module()
@@ -53,6 +114,7 @@ def test_local_http_fixture_runs_real_gateway_and_preserves_secure_cookie(case):
     assert page.status_code == 200
     assert 'HTTP_SYNTHETIC_UI_ONLY' in page.text
     assert 'TLS и MAX WebView не проверяются' in page.text
+    assert 'Код для входа в этот стенд показан здесь; код из MAX-бота не подойдёт.' in page.text
     response = client.post('/api/team/v1/session/code', json={'value': fixture.codes[0]},
         headers={'Origin': origin})
     assert response.status_code == 200
@@ -69,11 +131,43 @@ def test_local_http_fixture_runs_real_gateway_and_preserves_secure_cookie(case):
     assert fixture.provider.mutations == []
 
 
+def test_localhost_http_origin_runs_real_gateway_and_keeps_secure_cookie(tmp_path):
+    adapter = module()
+    run = tmp_path / ('t9-http-ui-' + uuid4().hex)
+    run.mkdir()
+    (run / 'lifecycle.log').write_text('', encoding='utf-8')
+    dist = tmp_path / 'dist'
+    (dist / 'assets').mkdir(parents=True)
+    (dist / 'team.html').write_text('<html>synthetic Team <script src="./assets/team.js"></script></html>', encoding='utf-8')
+    (dist / 'assets/team.js').write_text('/* synthetic built Team UI */', encoding='utf-8')
+    origin = 'http://localhost:44444'
+    fixture, app = adapter.build_http_fixture(run, frontend_dist=dist, http_origin=origin)
+    try:
+        with TestClient(app, base_url=origin, client=('127.0.0.1', 45001)) as client:
+            assert client.get('/fixture').status_code == 200
+            response = client.post('/api/team/v1/session/code', json={'value': fixture.codes[0]},
+                headers={'Origin': origin})
+            assert response.status_code == 200
+            cookie = response.headers['set-cookie'].lower()
+            assert '__host-secretary-team-t9-' in cookie
+            assert 'secure' in cookie and 'httponly' in cookie and 'samesite=lax' in cookie
+            cookie_pair = response.headers['set-cookie'].split(';', 1)[0]
+            me = client.get('/api/team/v1/me', headers={'Cookie': cookie_pair})
+            assert me.status_code == 200 and me.json()['actor']['id'] == fixture.owners[0].id
+            assert client.get('/fixture', headers={'Host': 'localhost.evil:44444'}).status_code == 403
+            assert client.post('/api/team/v1/session/code', json={'value': fixture.codes[1]},
+                headers={'Origin': 'http://attacker.example'}).status_code == 403
+            assert fixture.provider.mutations == []
+    finally:
+        fixture.close()
+
+
 def test_http_fixture_rejects_foreign_origin_duplicate_origin_and_missing_mutation_origin(case):
     _, fixture, client, _ = case
     code = fixture.codes[0]
     for headers in (
         {'Origin': 'http://attacker.example'},
+        {'Origin': 'null'},
         [("Origin", 'http://secretary-t9.localhost:44443'),
          ("Origin", 'http://secretary-t9.localhost:44443')],
         {},
@@ -99,7 +193,8 @@ def test_http_fixture_rejects_wrong_host_forbidden_routes_and_https_scope(case):
         await adapter.LocalHttpSyntheticAdapter(
             lambda *_: pytest.fail('invalid scope reached inner app'),
             http_origin='http://secretary-t9.localhost:44443',
-            secure_origin='https://secretary-t9.localhost:44443')(
+            secure_origin='https://secretary-t9.localhost:44443',
+            run_id='t9-http-ui-' + 'a' * 32)(
                 scope, receive, send)
         return events
 
@@ -120,7 +215,8 @@ def test_http_fixture_rejects_non_loopback_peer_before_gateway(case):
     app = adapter.LocalHttpSyntheticAdapter(
         lambda *_: pytest.fail('non-loopback peer reached inner app'),
         http_origin='http://secretary-t9.localhost:44443',
-        secure_origin='https://secretary-t9.localhost:44443')
+        secure_origin='https://secretary-t9.localhost:44443',
+        run_id='t9-http-ui-' + 'a' * 32)
 
     async def run():
         events = []

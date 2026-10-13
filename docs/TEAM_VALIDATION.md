@@ -1,5 +1,21 @@
 # Secretary Team: сквозная приёмка T13
 
+## Checkpoint 2026-10-12: offline R5 fence-history observation
+
+Новые manifests включают commitment к журналу maintenance events на момент замороженного barrier. Stopped-runtime verifier сверяет его префикс с закреплённым старым DB, проверяет порядок `begin/freeze/release`, high-water и точные immutable triggers; lineage входит в `evidence_sha256`, который использует source-epoch baseline. Более поздний fence учитывается; missing, changed, malformed и inconsistent history блокирует. Старые archives без optional commitment можно восстановить только с guards.
+
+Интеграционный offline-набор из пяти файлов до последней строгой type-проверки commitment: **210 passed / 1 прежнее предупреждение / 281,15 с / exit 0**. После type-проверки (`bool` больше не принимается как schema/fence integer) и переноса capture до копирования данных финально повторены backup + runtime-evidence файлы: **124 passed / 1 существующее Starlette/httpx deprecation warning / 49,54 с / exit 0**. Pure handoff DTO `MaintenanceFenceLineageV1` + `SourceGenerationV2` отдельно проверены: **37 passed / 0,07 с / exit 0**. Это diagnostic evidence, не криптографическая подпись и не permission: same-user rewrite и Windows ACL/host custody не квалифицированы; successor DB не получает fence. Offline-only соблюдено; внешние обращения, owner data и providers не использовались.
+
+## Checkpoint 2026-10-12 06:10 МСК: R4 commitments, R5 fence-lineage review
+
+Свежий synthetic/offline backup и source-epoch regression: **190 passed / 0 failed / 1 существующее Starlette/httpx warning / 168,35 с / exit 0**. `.venv/Scripts/python.exe -B scripts/run_offline_tests.py tests/test_team_backup.py tests/test_restore_admission_binding.py -q --tb=short` — **82 passed / 1 прежнее warning / 38,77 с / exit 0**. DTO формируют хеши evidence и operation scope, но не используются runtime и не выдают разрешений.
+
+Проверка локального кода подтвердила открытый R5 gap: backup фиксирует fence текущего barrier, restored metadata фиксирует только manifest hash, новая maintenance DB начинает с fence `0`; последующий high-water старого deployment независимо не подтверждён. Поэтому R4/R5 и activation остаются открытыми, guards сохраняются. Security diff scan просмотрел 24 изменённых source rows, не нашёл подтверждённых кандидатов; coverage частичный, статический. Ручная owner, HTTPS/TLS, MAX/Polza/Vikunja, Windows 24/7 и live acceptance не проверялись.
+
+## Checkpoint 2026-10-12 04:26 МСК: exact operation ID на outbound dispatch
+
+[Новая offline lifecycle карточка](TEAM_OPERATION_DISPATCH_VALIDATION.md): operation ID из durable claim связывается с maintenance ticket; MAX и Vikunja сверяют его на final mutation seam; bot, task, reminder и publication workers передают тот же ID. SQLite разрешает одноразовый `NULL → UUID` только при точном старом trigger; неизвестный или отсутствующий trigger fail-closed отклоняется без замены. Расширенный целевой набор **655 passed**; полный guarded backend/audit **5298 passed, 0 failed, 1 прежнее Starlette/httpx warning, 1458,20 с**. Провайдеры вызваны только через mocks, реальные outbound/activation OFF. R4 остаётся IN_PROGRESS, R5 PARTIAL_OFFLINE; owner/manual/TLS/live/phone/24h gates открыты, 319 Go module paths не отправлялись. Следующий offline шаг — versioned proof/source-generation ticket и межпроцессный interlock.
+
 ## Checkpoint 2026-10-10 06:09 МСК: guarded offline suite PASS; owner gates open
 
 Свежий полный guarded запуск `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests audit/tests -q --tb=short`: **5 232 passed, 0 failed**, одно `StarletteDeprecationWarning`, 1 859,65 с. Включены backend, API/OpenAPI contracts, Team E2E/load tests и audit tests; runner запрещал внешнюю сеть, real audio devices, рабочие базы и provider credentials. Frontend: 296 processing tests + 1 release-manifest test, typecheck/lint и scratch production build — PASS. Это закрывает offline test slice T13, но не весь T13/root acceptance.

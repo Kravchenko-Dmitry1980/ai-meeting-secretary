@@ -19,6 +19,17 @@ _STRUCTURAL = {getattr(sqlite3, name) for name in (
 )}
 _READ_PRAGMAS = {'table_info', 'table_xinfo', 'index_info', 'index_xinfo',
                 'index_list', 'foreign_key_list', 'integrity_check', 'quick_check', 'foreign_key_check'}
+_RESTORE_MARKER_QUERY = """SELECT 1 FROM sqlite_master WHERE
+    name GLOB 'backup_restore_no_*'
+    OR name GLOB 'restore_source_epoch_*'
+    OR name GLOB 'secretary_r4_native_*'
+    OR name GLOB 'secretary_native_activation_v1_*'
+    LIMIT 1"""
+
+
+def _restore_protocol_marker(conn):
+    """Recognize exact restore/R3/R4 artifacts even when the base guard is partial."""
+    return conn.execute(_RESTORE_MARKER_QUERY).fetchone()
 
 
 class RestoredDiagnosticConnection(sqlite3.Connection):
@@ -71,13 +82,69 @@ def readonly_authority_uri(path):
 
 def restore_guard_present(paths):
     """Inspect authority stores without migrations or write-capable connections."""
+    paths = tuple(paths)
+    if paths and _restore_metadata_present(paths):
+        return True
     for value in paths:
         path = Path(value).resolve()
         if path.exists():
             with closing(sqlite3.connect(readonly_authority_uri(path), uri=True, timeout=.2)) as conn:
                 table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='maintenance_restore_guard'").fetchone()
-                if table and conn.execute('SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1').fetchone():
+                restored_marker = _restore_protocol_marker(conn)
+                if restored_marker:
                     return True
+                if table and conn.execute(
+                        'SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1').fetchone():
+                    return True
+    return False
+
+
+def _restore_metadata_present(paths):
+    """Recognize a Team restore hold from bounded, database-derived roots.
+
+    A four-authority runtime derives the shared target from its configured
+    paths. A single repository also checks the two documented Team restore
+    layouts (``databases/<role>.sqlite3`` and
+    ``assets/secretary_data/<name>``), so opening an authority directly cannot
+    bypass metadata when SQL guard rows are missing. Local Secretary restores
+    use the same filename with state ``verified`` and remain writable.
+    """
+    resolved = tuple(Path(value).resolve() for value in paths)
+    parents = tuple(path.parent for path in resolved)
+    if not parents:
+        raise ValueError('restore_authorities_missing')
+    roots = [Path(os.path.commonpath(tuple(str(parent) for parent in parents)))]
+    roots.extend(parents)
+    for parent in parents:
+        if parent.name == 'databases':
+            roots.append(parent.parent)
+        elif parent.name == 'secretary_data' and parent.parent.name == 'assets':
+            roots.append(parent.parent.parent)
+    seen = set()
+    for root in roots:
+        key = os.path.normcase(str(root))
+        if key in seen:
+            continue
+        seen.add(key)
+        # A restore may crash before the first database is copied or guarded.
+        # Its durable partial marker must block a runtime pointed at that
+        # directory just like the completed restore marker does.
+        if os.path.lexists(root / 'restore.partial.json'):
+            return True
+        metadata = root / 'restore.json'
+        if not os.path.lexists(metadata):
+            continue
+        try:
+            if metadata.is_symlink() or not metadata.is_file() or metadata.stat().st_size > 4 * 1024 * 1024:
+                return True
+            document = json.loads(metadata.read_text(encoding='utf-8'))
+        except (OSError, UnicodeError, ValueError, TypeError):
+            # A damaged restore marker must not silently release a restored copy.
+            return True
+        if not isinstance(document, dict):
+            return True
+        if document.get('state') == 'restored_for_reconciliation':
+            return True
     return False
 
 
@@ -101,13 +168,19 @@ def restored_runtime_guard_present(settings):
 
 
 def protect_restored_connection(conn):
-    """Keep a guarded authority readable while denying SQL writes and escapes.
+    """Keep a restored authority readable while denying SQL writes and escapes.
 
     Call before WAL setup or migrations, on every newly opened connection.
-    The original guard is authority; an application's outbound flag is not.
+    A guard row or residual restore-specific trigger marks the copy; an
+    application's outbound flag is not authority.
     """
     table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='maintenance_restore_guard'").fetchone()
-    if not table or not conn.execute('SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1').fetchone():
+    restored_marker = _restore_protocol_marker(conn)
+    guard_row = (conn.execute('SELECT 1 FROM maintenance_restore_guard WHERE id=1 AND reconciliation_required=1').fetchone()
+        if table else None)
+    main = next((row[2] for row in conn.execute('PRAGMA database_list') if row[1] == 'main'), '')
+    metadata_guard = _restore_metadata_present((main,)) if main else False
+    if not (restored_marker or guard_row or metadata_guard):
         return False
     def authorize(action, arg1, arg2, database, trigger):
         if action in (_DML | _STRUCTURAL) or (action == sqlite3.SQLITE_PRAGMA and arg2 is not None

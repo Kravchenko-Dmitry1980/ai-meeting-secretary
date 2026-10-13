@@ -140,7 +140,7 @@ def test_approvals_are_append_only_same_operator_and_fresh(private):
     snapshot = store.snapshot()
     assert len(snapshot['approvals']) == 2 and snapshot['approval']['approval_digest'] == second.approval_digest
     for bad in (approval('foreign', operator='other account'), approval('expired', expires=int(time.time()) - 1),
-        approval('future', expires=int(time.time()) + 301), dict(approved=True)):
+        approval('future', expires=int(time.time()) + 600), dict(approved=True)):
         before = file_hash(path)
         with pytest.raises(port.ObservationStoreError): store.consume_approval(bad)
         assert file_hash(path) == before
