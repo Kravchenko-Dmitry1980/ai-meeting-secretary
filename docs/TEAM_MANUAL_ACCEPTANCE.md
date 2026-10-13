@@ -8,7 +8,7 @@
 
 ## Ограниченный ручной результат — 2026-10-14
 
-Владелец повторно подтвердил: после входа и выбора «Проект 7» synthetic Team UI показывает карточки. Это ручной PASS только для отображения списка. Конкретный fixture run/порт не указан; counts, фильтры, preview/confirm/receipt, изменения карточек, MAX/Vikunja/Polza, телефон, TLS и production этим результатом не подтверждены. См. [текущий отчёт](TEAM_TESTING_CURRENT.md).
+Владелец повторно подтвердил в 00:58 МСК: после входа и выбора «Проект 7» synthetic Team UI показывает карточки. Это ручной PASS только для отображения списка. Конкретный fixture run/порт не указан; counts, фильтры, preview/confirm/receipt, изменения карточек, MAX/Vikunja/Polza, телефон, TLS и production этим результатом не подтверждены. См. [текущий отчёт](TEAM_TESTING_CURRENT.md).
 
 Актуальные результаты автоматических проверок находятся в [TEAM_VALIDATION.md](TEAM_VALIDATION.md) и [TEAM_IMPLEMENTATION_STATUS.md](TEAM_IMPLEMENTATION_STATUS.md). Перед началом сверить их ограничения; synthetic ответы не являются подключённым сервисом.
 
