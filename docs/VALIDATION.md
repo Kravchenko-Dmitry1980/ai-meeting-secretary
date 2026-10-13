@@ -1,5 +1,9 @@
 # Проверки Secretary V1
 
+## Продление ручного Team smoke — 2026-10-13, 11:39 МСК
+
+Истёкшую в ближайшие минуты Team fixture заменил новым loopback-only synthetic run `t9-http-ui-fd0047fac0284b629cad9d0d94ec8f11` на порту `62920` (старт 11:38:47, TTL 30 минут). [Fixture](http://localhost:62920/fixture), [Team UI](http://localhost:62920/team/) → HTTP 200; `/fixture/status` подтверждает `HTTP_SYNTHETIC_UI_ONLY`, `simulation=true`, анонимный `/api/team/v1/me` → 401. Старый адрес истекает сам; новый запуск не затрагивает основной app.
+
 ## Повторная runtime-проверка — 2026-10-13, 11:26 МСК
 
 - `scripts/doctor.ps1` завершился exit 0 и подтвердил идентичность основного процесса `8765`, outbound guard в offline-режиме, `/health=ok`, `/ready=local_ok`, здоровые SQLite/storage/FFmpeg/FFprobe/frontend/release parity/processing worker и успешный storage probe. `production_qualified=false`; publication worker и maintenance не настроены, backup age и log rotation не проверены, аудиозахват не квалифицирован. В агрегате: 112 succeeded, 68 failed, 1 cancelled, 1 waiting_config; stale running candidates — 0. Секреты не выводились.

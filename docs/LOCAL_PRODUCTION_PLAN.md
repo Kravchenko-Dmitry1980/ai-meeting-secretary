@@ -1,5 +1,9 @@
 # Secretary: план локальной рабочей эксплуатации на Windows
 
+## Продление ручного Team smoke — 2026-10-13, 11:39 МСК
+
+Чтобы оставить полное 30-минутное окно ручного теста, создан свежий синтетический стенд: [fixture и одноразовый код](http://localhost:62920/fixture), [Team UI](http://localhost:62920/team/). Вход/карточки ещё требуют проверки владельца. Основной offline runtime не менялся.
+
 ## Обновление — 2026-10-13, 11:26 МСК
 
 Полный guarded offline suite после фикса same-path SQLite race: **5 419 passed, 0 failed, 1 Starlette/httpx deprecation warning**, exit 0; подробности в [VALIDATION.md](VALIDATION.md). Повторный `scripts/doctor.ps1` также прошёл: основной `8765` — offline, `/ready=local_ok`, ключевые локальные компоненты здоровы, `production_qualified=false`. Диагностика видит 4 аудиоустройства (2 microphone и 2 system loopback), но capture без явного короткого действия владельца не выполнялся.

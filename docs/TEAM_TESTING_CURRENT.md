@@ -1,5 +1,9 @@
 # Текущее тестирование Secretary Team
 
+## Свежая ручная fixture — 13.10.2026, 11:38 МСК
+
+Новый `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-fd0047fac0284b629cad9d0d94ec8f11`, port `62920`, PID `66664`, стартовал в 11:38:47 МСК и истекает около **12:08:47 МСК**. Открыты в очереди Codex [fixture/одноразовый код](http://localhost:62920/fixture) и [Team UI](http://localhost:62920/team/). `/fixture/status`, `/fixture`, `/team/` отвечают HTTP 200; анонимный `/api/team/v1/me` — ожидаемый HTTP 401. Только синтетические участники/задачи и mock Vikunja. Для ручного smoke получите свежий код на первой странице, сразу войдите на второй и выберите «Проект 7»; код не отправляйте в чат.
+
 ## Проверка после исправления SQLite и актуальные ручные стенды — 13.10.2026, 11:18 МСК
 
 Причина единственного сбоя предыдущего полного suite подтверждена и устранена: два экземпляра `ActivationDecisionLedger` для одного нормализованного пути сериализуются внутрипроцессной блокировкой, поэтому штатный временный SQLite rollback-журнал не принимается за повреждение. После исправления полный guarded offline suite `scripts/run_offline_tests.py tests audit/tests -q --tb=short` завершился **5 419 passed / 0 failed / 1 предупреждение Starlette/httpx / 2 105,68 с / exit 0**. Вывод: `.runtime/team-rollout/offline-postfix-20261013.log`.
