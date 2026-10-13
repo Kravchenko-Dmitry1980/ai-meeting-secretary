@@ -1,5 +1,11 @@
 # Secretary Team: журнал реализации
 
+## Текущая проверка — 2026-10-14, 00:54 МСК: новый fixture и read-only doctor
+
+После истечения предыдущей fixture запущен свежий `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-85cd1fb3f87e4d7fb76dd4f8657af177` на `localhost:62637` (PID 3384, TTL 30 минут). `/fixture`, `/team/`, `/fixture/status` → HTTP 200; анонимный `/api/team/v1/me` → 401. Только синтетические данные и mock Vikunja. Ручной PASS за видимость карточек относится к предыдущему run; предпросмотр команды пока ожидает ответа.
+
+`scripts/doctor.ps1 -ReadOnly` завершился exit 0, но текущий локальный Secretary не получил подтверждённую идентичность из `.runtime/processes.json`: записанный PID stale; обнаружен untracked same-checkout offline listener PID 9384 на `127.0.0.1:8767`, run ID `ec7ad843-e1ce-4e66-820d-eb5287ee9611`. По fail-closed правилам doctor не запрашивал `/health` у listener. Процесс не останавливался и не усыновлялся; readiness текущего процесса не подтверждена этим запуском.
+
 ## Completion audit — 2026-10-14, 00:47 МСК: Polza contract и UI workflow
 
 Владелец подтвердил, что на synthetic Team UI после входа и выбора «Проект 7» видны карточки. Проверены только вход/список; preview/confirm/receipt ещё ожидают отдельной проверки. До истечения fixture `localhost:54804` все три страницы `/fixture`, `/team/`, `/fixture/status` отвечали HTTP 200. Fixture использует только синтетические данные и mock Vikunja.
