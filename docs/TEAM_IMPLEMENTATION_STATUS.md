@@ -1,5 +1,63 @@
 # Secretary Team: журнал реализации
 
+## Offline regression checkpoint — 2026-10-14, 00:34 МСК: повторно проверен import path
+
+`tests/test_backend.py -k upload` через изолированный offline runner — **9 passed / 52 deselected / 1 существующее предупреждение Starlette/httpx / 4,12 с**; синтетический WAV проходит подготовку аудио и ожидает настройку Polza (`waiting_config`). Frontend byte-cap/import limits — **3/3 passed**. Это не ручной browser upload и не live STT: AIPex вернул `Not allowed`, а текущая offline база содержит существующие данные, поэтому синтетический файл туда не отправлялся. Ручной UI импорт требует отдельной пустой базы. Пользователь отдельно подтвердил только отображение списка карточек после входа и выбора «Проект 7».
+
+## Текущий checkpoint — 2026-10-14, 00:10 МСК: launcher fail-closed и повторное подтверждение списка
+
+Пользователь повторно подтвердил, что после входа и выбора проекта 7 карточки видны; подтверждён только рендер списка.
+
+Исправлен `scripts/start.ps1`: второй экземпляр этого checkout теперь блокируется по активному `run_server.py` независимо от выбранного порта. Проверено на текущем offline-процессе PID `9384`/port `8767`: запрос запуска на `8765` завершился безопасным отказом до bootstrap/`Start-Process`; PID и listener сохранились, `8765` остался свободен, hash launch record не изменился. `scripts/doctor.ps1` показывает неучтённый listener с PID/портом/run ID/mode, без сырой командной строки, и не запрашивает readiness/storage API у такого процесса. Launch record остаётся stale (`63800`/`8765`); действующий `8767` не остановлен и не усыновлён.
+
+Проверки: `tests/test_offline_launcher.py` **9/9**, PowerShell parser 5.1 и 7 — PASS для обоих скриптов; `8767` — `health=ok`, `local_ok`, `production_qualified=false`; `git diff --check` — PASS. Offline-only; MAX/Vikunja/Polza, сеть и пользовательские данные не использовались. Общее выполнение остаётся IN_PROGRESS.
+
+## Проверка Team UI/API — 2026-10-14, 00:20 МСК
+
+На текущем frontend: **302 UI/API workflow tests passed**, `typecheck` и `lint` — exit 0. На Python Team/API/workers — **1 269 passed**; дополнительно адаптеры MAX/Vikunja, task delivery/publication и job contracts — **552 passed**. Два Python набора запущены изолированным offline runner; каждое предупреждение — существующая deprecation Starlette/httpx. Совокупность проверяет synthetic contract/state paths, а не живые сервисы.
+
+## Текущий checkpoint — 2026-10-13, 23:34 МСК: карточки видны; повторный аудит operation ticket
+
+Пользователь повторно подтвердил, что после входа и выбора «Проект 7» карточки видны. Это ручной PASS только для отображения списка; точный fixture run/порт не указан, действия по карточкам не подтверждены. Результат зафиксирован в [инструкции ручной приёмки](TEAM_MANUAL_ACCEPTANCE.md).
+
+Проверка устаревшего T12R checkpoint: текущий код уже требует точного совпадения `MaintenanceTicket.operation_id` с ID команды в `MaintenanceRepository.assert_dispatch_admission()`, а MAX/Vikunja вызывают эту проверку до HTTP. `bind_current_operation()` используется Team, bot, notification и publication workers. Три runtime-регрессии дополнительно подтверждают нулевые внешние MAX/Vikunja side effects при неверном operation ID; `test_team_backup.py` покрывает bind-once и ticket-first barrier interleaving. Поэтому отдельное production-исправление не требуется, старую заметку о недостающем compare считать исторической.
+
+Focused offline validation: ticket/barrier — **2 passed**, worker claim-to-dispatch binding — **3 passed**, runtime missing/different-ticket MAX/Vikunja boundaries — **3 passed**; все три команды завершились exit 0. Production-код не менялся, полный suite не повторялся после предыдущего полного PASS (**5 428 passed**). Следующая незакрытая offline карточка остаётся доверенным source-generation/native-head evidence; shared predicate и consumers не подключать, activation/outbound OFF. Реальные MAX, Polza, Vikunja и внешняя сеть не вызывались.
+
+## Текущий checkpoint — 2026-10-13, 23:24 МСК: полный offline suite повторно зелёный
+
+Выполнен полный `tests audit/tests` прогон: **5 428 passed / 0 failed / 1 прежнее предупреждение Starlette/httpx / 1 654,29 с / exit 0**. Лог: `.runtime/team-rollout/full-offline-goal-after-timeout-20261013-225650.log`.
+
+Причина единственного падения предшествующего прогона локализована в test-only CWD probe: запуск простого Python child под полной нагрузкой превысил жёсткие 5 секунд ожидания. `test_restore_native_launch_directory.py` теперь допускает до 15 секунд на exit; проверки абсолютного CWD, exit code и bound output сохранены. До изменения: изолированный модуль 6/6 и exact failing case 3/3. После изменения: модуль 6/6, затем полный набор 5 428/0. Production-код не менялся; `git diff --check -- tests/test_restore_native_launch_directory.py` — exit 0.
+
+Пользователь подтвердил видимость карточек после входа и выбора проекта 7. Проверка действий карточки ещё открыта. Новый одноразовый `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-6b8675c8a0a1426e80a7f5c23d12d1bc` на `localhost:58046` доступен до примерно 23:54:54 МСК; синтетическая fixture/UI — HTTP 200, anonymous me — 401. Основной runtime `127.0.0.1:8767` — `local_ok`, cloud disabled, production false. Никаких live/MAX/Polza/Vikunja вызовов.
+
+Общий план остаётся IN_PROGRESS: R4–R6, native source trust/current head, основной Team runtime, реальные MAX/Polza/Vikunja, TLS, owner pilot, телефон и 24/7 не квалифицированы. Activation/outbound OFF.
+
+## Текущий checkpoint — 2026-10-13, 13:40 МСК: пользователь увидел карточки проекта 7
+
+Пользователь вручную подтвердил, что после входа и выбора «Проект 7» карточки видны. Это PASS только для целевого интерфейсного поведения; точный run/порт не назван, остальные кнопки, фильтры и end-to-end действия не принимались. Программный browser smoke обновлённой сборки ранее показал 45 карточек в Today и 62 в Kanban; причина исходного пустого экрана на конкретном старом run остаётся недоказанной.
+
+Исправление стартового фильтра «Все» остаётся в рабочем дереве вместе с regression. Три offline-набора restore binding/control/successor повторно прошли 150/150 за 9,95 с. Никакой production/native/provider/network path не вызывался. Синтетическая fixture localhost:65252 отвечает HTTP 200 на свои страницы; ограничение Host localhost объясняет ложный отрицательный ответ моего отдельного probe через 127.0.0.1.
+
+R5/R4 остаются offline-only: sequence журнала native_events не считается native DB head; trusted current generation producer и приемлемый same-user trust anchor не квалифицированы. Contract design записан в [native observation contract](contracts/team-native-read-observation.md). Activation/outbound OFF; основной Team runtime на 8765 не смонтирован; полный ручной сценарий остаётся открытым.
+
+## Текущий checkpoint — 2026-10-13, 13:31 МСК: пустая доска и общий фильтр
+
+Пользователь сообщил, что после входа и выбора проекта 7 на fixture `51515` карточки не появились. Изолированный API повтор вернул 62 проектные задачи: 31 назначена синтетической Анне и 31 синтетическому Борису; существующий Gateway/UI-probe набор — **22 passed**. На свежей сборке с прежним фильтром «Мои» карточки Анны отображались, поэтому первичная причина конкретного ручного пустого экрана не доказана.
+
+UX-исправление: стартовый фильтр Team изменён с «Мои» на «Все», индивидуальный фильтр сохранён. RED/green проверка подтвердила контракт общего значения по умолчанию. В свежем `HTTP_SYNTHETIC_UI_ONLY` smoke (port `65252`) после входа и выбора проекта 7 отображаются **45 карточек в «Сегодня» (23 Анны, 22 Бориса)** и **62 в «Канбане» (31/31)**. Порт действует до примерно **13:59 МСК**; подробная инструкция и границы доказательств в [текущем отчёте](TEAM_TESTING_CURRENT.md).
+
+Проверки frontend: **302/302** processing tests; Team API/workflow — **78/78**; typecheck, lint, изолированный production build и `git diff --check` — exit 0. Браузерный smoke использовал только синтетические данные и Vikunja MockTransport. Ручная проверка пользователем остаётся pending; Team runtime на основном `8765` не включён, MAX/Polza/реальный Vikunja/TLS/production не квалифицированы. Goal остаётся ACTIVE.
+
+## Текущий checkpoint — 2026-10-13, 13:04 МСК: blocked activation evaluator и изолированный UI
+
+Последняя R4 offline-карточка добавила read-only `evaluate_fixed_blocked_activation(settings)`: он требует результат штатного `TeamRuntimeSettings` loader-а, читает только фиксированные текущие blocked ledgers, не пересоздаёт отсутствующий activation ledger и возвращает только `activation_blocked` с `activation_supported=false`, `outbound_enabled=false`, `generation_state=incomplete`. Команда `.venv\Scripts\python.exe -B scripts\run_offline_tests.py tests\test_restore_activation_ledger.py tests\test_restore_activation_staging.py tests\test_restore_activation_decision.py tests\test_restore_activation_context.py tests\test_restore_admission_binding.py tests\test_restore_activation_evaluator.py -q --tb=short` завершилась **169 passed / 0 failed / 325.33 s / exit 0**; границы записаны в [контракте восстановления](contracts/team-restore-reconciliation.md). Код в `767dc5a` уже находится в опубликованной ветке; текущая документационная правка не коммитилась.
+
+Уточнена следующая native-head граница: prepared native history должен остаться на genesis `sequence=0`, hash-chained `NativeObservationStore.native_events.seq` относится к другому диагностическому журналу, а `SourceGenerationV1` producer отсутствует и требует positive native head. Эти sequence не взаимозаменяемы; evaluator остаётся blocked, shared permit/consumer wiring не добавлены. Следующая offline-карточка должна определить authority, тип и sequence domain trusted current native-read evidence, freshness/replay и binding к тому же source readback.
+
+Для ручного acceptance работает disposable import UI `127.0.0.1:8767`: `/`, `/health`, `/ready`, `/api/v1/config` — HTTP 200; `key_configured=false`, `cloud_enabled=false`, `production_qualified=false`; БД новая и находится под `.runtime/manual-ui-offline-20261013-1007/data`. Доступен только синтетический 2-секундный WAV из `TEAM_TESTING_CURRENT.md`; ручной import не подтверждён. Team fixture `localhost:51515` также остаётся доступной; прежний `56660` выключен. Ни пользовательский вход/видимость карточек, ни аудио, native GET, MAX, Polza, Vikunja, TLS или 24-часовой runtime этим не квалифицированы. Общий goal остаётся ACTIVE.
+
 ## Текущий checkpoint — 2026-10-12, 19:31 МСК: R4 blocked-decision reader и полный offline-suite
 
 Добавлен bounded read-only `read_current_blocked_activation_decision(settings)`: контекст путей выводится только из загруженной и повторно проверенной конфигурации Team плюс фиксированного R3 inventory; затем используется текущий collector R4 и читается только существующий decision ledger. Reader возвращает исключительно `activation_blocked`, отклоняет missing ledger, устаревшую конфигурацию/provider commitment и expired owner decision без создания или переписывания ledger. TDD регрессии покрывают current blocked record, post-R4 path resolution, отсутствие side effect при missing ledger, поворот provider config и истечение consent. Везде сохранены `activation_supported=false` и `outbound_enabled=false`; это не shared predicate, не current-generation evaluator, не dispatch permit и не подключение consumers.
@@ -899,3 +957,13 @@ MAX bot registration/moderation/token, публичный HTTPS, реальны�
 - Пользователь уточнил, что не проверял прежнюю ссылку; это не считается отказом UI. Прежний run `t9-http-ui-b9d2a3c525cb494ca2da76c4f0e06e15` остановлен штатно, чтобы оставить один однозначный адрес.
 - Для ручной приёмки поднят новый loopback-only run `t9-http-ui-f89b91b75a8049259d750ea93d9d868a`, PID `31192`, port `56660`, mode `HTTP_SYNTHETIC_UI_ONLY`, максимум 30 минут (до примерно 21:16 МСК). `/fixture/status`, `/fixture`, `/team/`, `/team/team.html` → HTTP 200; анонимный `/api/team/v1/me` → HTTP 401. Gateway настоящий; Vikunja подключён только через локальный `httpx.MockTransport`.
 - Ручная инструкция и ссылки обновлены в `docs/TEAM_TESTING_CURRENT.md`. Ранее автоматизированный isolated Chromium smoke остаётся доказательством только синтетического входа/UI и не заменяет ручную приёмку владельца. TLS/MAX/live Vikunja/production не проверялись; activation/outbound остаются OFF.
+
+## Offline checkpoint: R4 regression и UI сборка — 2026-10-13
+
+- Current R4 evaluator, decision ledger, registry V2, source-generation ticket, backup/barrier, workers и runtime повторно проверены: **266 passed / 0 failed / 1 прежнее Starlette/httpx warning / 261,81 с / exit 0**. Лог: `.runtime/team-rollout/current-r4-focused-20261013.log`. Cross-process missing/stale/unbound cases сохраняют fail-closed ответ; mismatched operation tickets отвергаются до MAX/Vikunja transport. Это диагностическое offline evidence, не grant.
+- Frontend processing/API/workflow **302/302**, release manifest **1/1**, typecheck/lint exit 0; Vite production build успешно записан в отдельный `.runtime/team-rollout/frontend-build-current-20261013-2350`. Обычный dist не заменялся.
+- Пользователь вручную подтвердил отображение карточек после входа и выбора «Проект 7». Действия, preview/receipt, изменение задач, реальная интеграция/телефон и production не приняты. Для свежего build открыт `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-adb01d3416c047458817d06c0f068235`, port `65229`, fixture `t9-ui-4a1a363999b742acb90ef311a95d1000`, PID `70992`, TTL 30 минут (примерно до 00:23 МСК 14.10); страницы `/fixture` и `/team/` отдают HTTP 200, anonymous `me` — 401. Реальный Gateway, Vikunja только `httpx.MockTransport`, TLS not tested.
+- Следующий незакрытый gate — проверяемые provenance/freshness/replay и trusted native history/head для current source generation. Synthetic evidence не считается trust anchor. Consumer wiring, activation и outbound остаются OFF; live/paid/credential-dependent calls не запускались.
+- Дополнительный offline audit `test_restore_native_history.py`, `test_restore_native_observations.py`, `test_restore_native_observation_store.py`, `test_restore_source_epoch.py`, `test_restore_source_epoch_writer.py` прошёл **355/355**; лог `.runtime/team-rollout/current-native-head-audit-20261013.log`. `rg` не нашёл production-конструкторов `SourceGenerationV1/V2`; отдельные sequence domains в contract остаются корректно разделёнными.
+- Отдельный read-only host probe **2026-10-14 около 00:00 МСК**: `Get-Tpm` вернул `TpmPresent=True`, `TpmReady=True`. Никакие TPM NV counters/ключи/ownership не читались и не менялись; это только возможность для дальнейшей оценки локального trust anchor, не его квалификация.
+- **2026-10-14, 00:02 МСК:** `tests/test_restore_successor_process_durability.py` — **2/2 passed / 0,82 с**. Process exit after blocked commit preserves the typed candidate/approval; an uncommitted source-control write leaves its journal and fails closed on reopen without cleanup. Это не transfer R5 high-water и не power-loss qualification.

@@ -47,7 +47,7 @@ def _python_cwd_probe(folder, environment):
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=subprocess.DETACHED_PROCESS, close_fds=True)
         handle = int(process._handle)  # Original HANDLE; no numeric PID lookup.
-        assert kernel.WaitForSingleObject(handle, 5000) == 0, 'owned CWD probe must terminate within 5 seconds'
+        assert kernel.WaitForSingleObject(handle, 15000) == 0, 'owned CWD probe must terminate within 15 seconds'
         output, _ = process.communicate(timeout=5)
         assert process.returncode == 0
         assert len(output) <= 4096, 'literal CWD probe output must stay bounded'

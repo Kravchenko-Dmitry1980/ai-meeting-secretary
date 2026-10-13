@@ -1,8 +1,98 @@
 # Текущее тестирование Secretary Team
 
+## Текущий checkpoint — 14.10.2026, 00:10 МСК: ручной список подтверждён; запуск второго сервера заблокирован
+
+Пользователь повторно подтвердил, что после входа и выбора «Проект 7» карточки видны. Это ручной PASS только для отображения списка; конкретный run/порт, действия карточек, фильтры и сохранение изменений не подтверждены.
+
+Исправлена защита Windows launcher: `scripts/start.ps1` до проверки запрошенного порта, bootstrap и создания нового процесса обнаруживает активные `run_server.py` этого checkout на любом порту и завершается без остановки/усыновления. На живой системе запуск с `-Port 8765 -NoBootstrap -NoBrowser -Offline` безопасно отказал из-за offline процесса PID `9384`, run `ec7ad843-e1ce-4e66-820d-eb5287ee9611`, слушающего `8767`. Повторная проверка подтвердила: `8765` свободен, `8767` остался у PID `9384`, `.runtime/processes.json` побайтно не изменился. `scripts/doctor.ps1` показал прежнюю stale запись PID `63800`/port `8765` и отдельно `Untracked same-checkout listener` PID `9384`/port `8767`; untracked процесс не опрашивался и storage probe не запускался.
+
+`tests/test_offline_launcher.py` — **9 passed / 0 failed**; parser обоих Windows PowerShell (5.1) и PowerShell 7 принял `start.ps1`/`doctor.ps1`; `git diff --check` — exit 0. `8767 /health=ok`, `/ready=local_ok`, `production_qualified=false`. Сервер оставлен работающим. Никакие внешние сервисы, ключи, платные вызовы или устройства не использовались.
+
+Эта защита не заменяет ручное закрытие/перезапуск существующего orphan процесса: текущий `8767` не был автоматически остановлен или перепривязан к launch record. До planned handoff следует отдельно сверить выбранный каталог данных и сделать контролируемый запуск штатным launcher. Team activation/outbound остаются OFF; live MAX/Vikunja/Polza, TLS, телефон, backup/recovery и 24/7 не квалифицированы.
+
+## Проверка кнопок и API-контрактов — 14.10.2026, 00:20 МСК
+
+Повторно прогнаны текущие UI workflows: `npm run test:processing` — **302 passed / 0 failed**; `npm run typecheck` и `npm run lint` — exit 0. В тестах есть CSRF/API ошибки, создание/назначение задач, двойное подтверждение, перенос карточек, revision conflict, неизвестный результат POST и reconciliation тем же operation ID, семь состояний receipt, история/пагинация, отмена и session/project race.
+
+Python contracts/workers: все `tests/test_team*.py` — **1 269 passed / 0 failed / 1 существующее предупреждение Starlette/httpx / 394,53 с**; дополнительно MAX/Vikunja/task publication/job contract modules — **552 passed / 0 failed / 1 такое же предупреждение / 54,16 с**. Оба прогона шли через `scripts/run_offline_tests.py`; реальные MAX/Vikunja/Polza, сеть и пользовательские записи не использовались. Этот результат подтверждает mock/API contract paths и UI state transitions; не подтверждает реальные credentials, устройство телефона, сообщения/уведомления, внешнюю доставку и live integration.
+
+## Повторная проверка импорта — 14.10.2026, 00:34 МСК
+
+Изолированный backend прогон `scripts/run_offline_tests.py tests/test_backend.py -k upload -q --tb=short` — **9 passed / 52 deselected / 1 существующее предупреждение Starlette/httpx / 4,12 с**. Он подтверждает лимиты/отказы upload и путь синтетического WAV через подготовку аудио до `waiting_config`, когда ключ Polza отсутствует; внешний ASR-запрос не выполняется. `node --test frontend/tests/import-limit.test.mjs` — **3/3 passed**. Это backend/component automation, а не ручная отправка файла через браузер; пользовательский import flow остаётся непроверенным. AIPex upload вернул `Not allowed`; текущий offline runtime содержит уже существующие данные, поэтому синтетический файл туда не отправлялся. Для ручного UI импорта требуется отдельная пустая тестовая база.
+
+## Новый synthetic handoff для ручного action smoke — 14.10.2026, 00:21:55 МСК
+
+Создан disposable `HTTP_SYNTHETIC_UI_ONLY` run `t9-ui-665e6df3c03d4afea6cf250c7389e413`, PID `21308`, `localhost:54804`; отдельный run root `.runtime/team-rollout/t9-http-ui-ccd6a3295af94ec3b044535500325697`. [Fixture и генерация одноразового кода](http://localhost:54804/fixture), [Team UI](http://localhost:54804/team/). Оба URL, `/team/team.html` и `/fixture/status` возвращают HTTP 200; anonymous `/api/team/v1/me` — ожидаемый 401. Вкладки поставлены в очередь Codex. TTL 30 минут, до примерно **00:51:55 МСК**. Вход и действия на этом свежем run ещё не проверены; получайте код только на fixture, не отправляйте его в чат. Backend — реальный локальный Gateway fixture, Vikunja — локальный mock; TLS/MAX/production не тестировались.
+
+## R5 process-crash regression — 14.10.2026, 00:02 МСК
+
+`tests/test_restore_successor_process_durability.py` — **2 passed / 0 failed / 0,82 с / exit 0**. Synthetic child exit после committed `partial_prepared_blocked` сохраняет exact candidate/approval и не открывает `activate`/`transfer_fence`; exit до SQLite commit оставляет journal, а повторное чтение отказывает без recovery или удаления evidence. Это проверка локального процесса и blocked state; power-loss recovery, successor high-water transfer и native trust anchor не доказаны.
+
+## Offline regressions R4 и UI сборка — 13.10.2026, 23:53 МСК
+
+Повторно проверены текущий R4 evaluator/decision/ledger, admission binding, maintenance registry V2, cross-process backup/barrier, operation admission, workers и runtime: **266 passed / 0 failed / 1 существующее предупреждение Starlette/httpx / 261,81 с / exit 0**. Дополнительная native-history/observation/source-epoch выборка — **355 passed / 0 failed / 155,46 с / exit 0**; лог `.runtime/team-rollout/current-native-head-audit-20261013.log`. Поиск подтвердил отсутствие `SourceGenerationV1/V2` producer-а в non-test backend. Synthetic missing/stale/unbound, ticket/interlock и отказ до MAX/Vikunja side effects проверены; это offline fail-closed поведение, не разрешение на activation.
+
+Frontend на текущем checkout: processing/API/workflow **302/302**, release manifest **1/1**, `typecheck` и `lint` — exit 0. Vite production build прошёл в отдельную папку `.runtime/team-rollout/frontend-build-current-20261013-2350` (9 артефактов, версии frontend/backend `0.1.0`); обычный `frontend/dist` не перезаписывался. Свежий handoff на этой сборке: [синтетический вход](http://localhost:65229/fixture), [Team UI](http://localhost:65229/team/), run `t9-http-ui-adb01d3416c047458817d06c0f068235`, fixture `t9-ui-4a1a363999b742acb90ef311a95d1000`, PID `70992`, TTL до **00:23 МСК 14.10**. `/fixture/status`, `/fixture`, `/team/`, `/team/team.html` — HTTP 200; anonymous `/api/team/v1/me` — ожидаемый 401; Gateway real, Vikunja `httpx.MockTransport`, TLS not tested. Страницы поставлены в очередь открытия Codex. Пользователь ранее подтвердил только отображение карточек; ручные preview/confirm/receipt и сохранение изменений не проверены.
+
+Следующий gate — доверенный current native history/head и provenance, а также полная owner/provider lineage. Нельзя подменять их synthetic sequence или diagnostic observation; consumer wiring и activation/outbound остаются OFF. Рабочий Secretary остаётся `local_ok`, `production_qualified=false`, cloud disabled; live MAX/Vikunja/Polza, credentials, paid calls и production readiness этой проверкой не квалифицированы.
+
+Read-only Windows `Get-Tpm`, выполненный **14.10.2026 около 00:00 МСК**, сообщил `TpmPresent=True`, `TpmReady=True`; TPM NV monotonic counter API, access policy, persistence/replay, ACL and same-user threat model не проверялись. Наличие TPM само по себе trust anchor не квалифицирует.
+
+## Ручная проверка списка и повторная проверка owner tickets — 13.10.2026, 23:34 МСК
+
+Пользователь подтвердил: после входа и выбора «Проект 7» карточки видны. Точный fixture run/порт не назван; результат подтверждает только отображение карточек, без проверки их действий или сохранения изменений.
+
+Read-only snapshot через AIPex Browser на `http://localhost:58046/team/` сейчас показывает форму входа с отключённой кнопкой «Войти», то есть именно у подключённой вкладки нет authenticated session. Synthetic-код не считывался и не вводился; другие ручные вкладки пользователя не проверялись. Поэтому дополнительные визуальные клики по карточкам не выполнялись.
+
+Перепроверка существующего контракта operation ID: `tests/test_team_backup.py` — **2 passed / 59 deselected** (одноразовая привязка ticket и ticket-first barrier); `tests/test_team_operation_admission.py tests/test_team_worker.py -k "binds_claim_id"` — **3 passed / 9 deselected**; целевые 3 owner-dispatch проверки в `tests/test_team_runtime.py` — **3 passed / 59 deselected**, включая отсутствие MAX/Vikunja HTTP mutation при mismatched operation ID. Все запуски через `scripts/run_offline_tests.py`, exit 0. Код приложения не менялся.
+
+Весь ручной сетевой/UI сценарий остаётся synthetic и не подтверждает настоящие MAX/Vikunja/Polza, TLS или production. Действия карточек, телефон и owner pilot ещё не приняты.
+
+## Полный offline прогон и новый ручной handoff — 13.10.2026, 23:24 МСК
+
+Полный `.venv\\Scripts\\python.exe -B scripts\\run_offline_tests.py tests audit\\tests -q --tb=short` завершился **5 428 passed / 0 failed / 1 существующее предупреждение Starlette/httpx / 1 654,29 с / exit 0**. [Полный лог](../.runtime/team-rollout/full-offline-goal-after-timeout-20261013-225650.log). Первый полный прогон до исправления test timeout имел 5 427 passed и 1 timeout в Windows CWD probe. Его модуль прошёл изолированно 6/6; конкретный кейс — 3/3 отдельных запуска. Исправлен только timeout вспомогательного Python процесса: 5 → 15 секунд. Проверки CWD, успешного exit и ограниченного вывода остались обязательными; производственный код не менялся. После изменения модуль прошёл 6/6, полный прогон — 5 428/0.
+
+Основной локальный интерфейс на `http://127.0.0.1:8767/` проверен после набора: `/health=ok`, `/ready=local_ok`, `production_qualified=false`, `cloud_enabled=false`. Он запущен в `--offline --isolated-offline`; ключ не используется.
+
+Свежая synthetic fixture `t9-http-ui-6b8675c8a0a1426e80a7f5c23d12d1bc`, PID `16368`, порт `58046`, TTL до примерно **23:54:54 МСК**. `/fixture/status`, `/fixture`, `/team/`, `/team/team.html` — HTTP 200; анонимный `/api/team/v1/me` — ожидаемый 401. Вкладки: [синтетический вход и одноразовый код](http://localhost:58046/fixture), [Team UI](http://localhost:58046/team/). Владелец уже подтвердил видимость карточек после входа и выбора «Проект 7» на предыдущем synthetic run; action preview/confirm/receipt ещё не подтверждены. Вопрос о mock-комментарии отправлен владельцу; код вводится только локально и в чат не отправляется. Все действия остаются в одноразовом mock Vikunja; реальные задачи, MAX, Polza и production не подключены.
+
+## Ручная проверка карточек — 13.10.2026, 13:40 МСК
+
+Пользователь подтвердил: после входа и выбора «Проект 7» карточки видны. Это ручной PASS только для отображения карточек в открытой synthetic Team-сессии; точный run/порт в ответе не указан, поэтому counts, фильтры, действия с карточкой, настоящий Vikunja, MAX, TLS и production этим не подтверждены.
+
+Свежий run HTTP_SYNTHETIC_UI_ONLY на localhost:65252 по-прежнему ready; /fixture/status, /fixture, /team/ и /team/team.html ответили HTTP 200 при запросе с разрешённым Host localhost. Срок run — до примерно 13:59 МСК. Для отдельного теста использовать [страницу синтетического входа](http://localhost:65252/fixture) и [Team UI](http://localhost:65252/team/); код берётся только на первой странице и не передаётся в чат.
+
+Коррекция диагностики: проверка через 127.0.0.1:65252 была отклонена host allowlist-ом фикстуры и ошибочно воспринята как недоступность. Правильный origin — http://localhost:65252; сам run не был сломан.
+
+## Автоматическая offline-проверка API и кнопок — 13.10.2026, 13:57 МСК
+
+Выборочный контрактный backend suite: все 38 `tests/test_team*.py` плюс `test_vikunja_adapter.py`, `test_max_contract_fixture.py`, `test_openapi_export.py`, `test_task_delivery_contracts.py` и `test_job_contract.py` — **1 482 passed / 0 failed / 1 существующее предупреждение Starlette/httpx / 517,24 с / exit 0**. Это локальные/синтетические проверки; реальные MAX, Polza и Vikunja не вызывались.
+
+Frontend: `npm run test:processing` — **302/302**, `npm run test:release-manifest` — **1/1**, `npm run lint` и `tsc -b` — exit 0. Изолированная Vite-сборка преобразовала **1 777 модулей** в `.runtime/team-ui-verification-2026-10-13-1345`; активный `frontend/dist` не заменялся. `git diff --check` — exit 0.
+
+Основной интерфейс запущен командой `scripts/start.ps1 -Port 8765 -NoBrowser -NoBootstrap -Offline`: `/health=ok`, `/ready=local_ok`, `production_qualified=false`, `cloud_enabled=false`. Disposable import UI на `8767` тоже отвечает `/health=ok`; синтетический Team run `localhost:65252` был повторно проверен в 13:57 МСК. Пользователь вручную подтвердил только видимость карточек; ручная проверка кнопок и production-интеграций остаётся открытой.
+
+## Свежий Team handoff — 13.10.2026, 14:11 МСК
+
+Истёкший run `localhost:65252` заменён новым `HTTP_SYNTHETIC_UI_ONLY`: run `t9-http-ui-d05d96fada3641bab022baab99ebecc2`, PID `38652`, порт `50623`, максимум до примерно **14:41 МСК**. `/fixture`, `/fixture/status`, `/team/` и `/team/team.html` возвращают HTTP 200; анонимный `/api/team/v1/me` — ожидаемый 401. Свежие ссылки: [страница входа и синтетического кода](http://localhost:50623/fixture), [Team UI](http://localhost:50623/team/). Ссылки поставлены в очередь панели Codex.
+
+Войдите кодом, который отображается на первой странице, затем выберите «Проект 7». Для дополнительного ручного smoke можно переключить «Сегодня»/«Канбан»/«Матрица» и выполнить одно изменение синтетической карточки: все данные остаются в локальном mock Vikunja. Код не отправлять в чат; реальные задачи, MAX, Polza, TLS и production не подключены. Остановить только этот run: `.venv\Scripts\python.exe -B scripts\team\probe_team_ui_http.py stop --run-root 'D:\AI\Projects\Active\Secretary\.runtime\team-rollout\t9-http-ui-d05d96fada3641bab022baab99ebecc2'`.
+
+## Проверка сообщения «Проект открылся, карточек нет» — 13.10.2026, 13:31 МСК
+
+Пользователь сообщил, что в проекте 7 на ручной fixture порт `51515` карточек не было. API-сбой в изолированном повторе не воспроизведён: свежий backend fixture отдаёт 62 задачи проекта 7, по 31 Анне и Борису; `tests/test_team_ui_probe.py` — **22 passed**. На свежей сборке с прежним фильтром «Мои» интерфейс Анны показывал её карточки, поэтому точная первичная причина сообщения пока не установлена.
+
+Чтобы общий проект не выглядел пустым, когда участнику ещё не назначены задачи, стартовый фильтр UI изменён на «Все»; «Мои» оставлен доступным. Новая регрессия сначала упала на отсутствующем контракте default filter, затем прошла. Браузерный smoke нового bundle: после выбора проекта 7 вид «Сегодня» показывает **45 карточек (23 Анны, 22 Бориса)**; «Канбан» — **62 (31 Анны, 31 Бориса)**. Активный браузер оставлен на канбане.
+
+Для ручного повторения доступна новая `HTTP_SYNTHETIC_UI_ONLY` fixture до **13:59 МСК**: [страница синтетического входа и кода](http://localhost:65252/fixture), [Team UI](http://localhost:65252/team/). Код берите только на первой странице и не отправляйте в чат. Gateway настоящий, Vikunja заменён локальным `httpx.MockTransport`; реальные MAX, Polza, пользовательские записи и production-задачи не использовались. Ручная перепроверка владельцем ещё pending. Основное приложение на `8765` Team runtime не монтирует; TLS/MAX/production qualification этим smoke не подтверждаются.
+
+После изменения: `npm run test:processing` — **302 passed / 0 failed**; Team API/workflow — **78 passed**; `typecheck`, `lint`, production build и `git diff --check` — exit 0. Build создан в отдельном `.runtime` каталоге; `frontend/dist` и активный основной app не заменялись.
+
 ## Свежая ручная fixture — 13.10.2026, около 12:53 МСК
 
 Прежняя fixture на порту `62920` остановлена по TTL. Создан новый `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-bc821fcce54448eb8bc36dc2e7373a08`, port `51515`, PID `28068`; TTL — 30 минут от старта. Открыты в очереди Codex [fixture и получение одноразового кода](http://localhost:51515/fixture) и [Team UI](http://localhost:51515/team/). `/fixture/status`, `/fixture` и `/team/` вернули HTTP 200. Пользователь сообщил, что вошёл; отображение карточек на предыдущем уже истёкшем run не подтверждено. На текущем run получите свежий код только на странице fixture, введите его в Team UI и выберите «Проект 7». Все участники и карточки синтетические; Vikunja заменён локальным mock. Код в чат не отправлять.
+
+Повторная адресная проверка около 13:00 МСК: три страницы на `localhost:51515` по-прежнему отвечают HTTP 200; запрос на `127.0.0.1:51515` получает HTTP 403 из-за host allowlist; прежний `localhost:56660` больше не слушает. Для ручной проверки используйте только актуальные ссылки выше с именем `localhost`, создайте новый одноразовый код на fixture-странице и затем выберите «Проект 7». Наличие карточек и пользовательский вход на текущем run пока не подтверждены.
 
 ## Свежая ручная fixture — 13.10.2026, 11:38 МСК
 

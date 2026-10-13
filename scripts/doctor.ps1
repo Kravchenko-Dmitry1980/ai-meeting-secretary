@@ -21,9 +21,10 @@ Write-Output "Local .env present: $(Test-Path -LiteralPath (Join-Path $ProjectRo
 Write-Output "Python lock: $(Test-Path -LiteralPath (Join-Path $ProjectRoot 'uv.lock'))"
 Write-Output "Frontend lock: $(Test-Path -LiteralPath (Join-Path $ProjectRoot 'frontend\package-lock.json'))"
 $StatePath = Join-Path $ProjectRoot '.runtime\processes.json'
+$LauncherPath = Join-Path $PSScriptRoot 'run_server.py'
+$IdentityMatches = $false
 if (Test-Path -LiteralPath $StatePath) {
     $State = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
-    $LauncherPath = Join-Path $PSScriptRoot 'run_server.py'
     $TrackedPid = [long]0
     $PidParsed = [long]::TryParse([string]$State.pid, [ref]$TrackedPid)
     $TrackedProcess = if ($PidParsed -and $TrackedPid -gt 0 -and $TrackedPid -le [int]::MaxValue) {
@@ -130,5 +131,30 @@ if (Test-Path -LiteralPath $StatePath) {
 } else {
     Write-Output 'Tracked process: not found'
     Write-Output 'Health: not queried'
+}
+$VerifiedTrackedPid = if ($IdentityMatches) { [long]$TrackedPid } else { [long]0 }
+$ProjectProcesses = @(
+    Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+        $_.CommandLine -and $_.CommandLine.IndexOf($LauncherPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    } | ForEach-Object {
+        $CommandLine = [string]$_.CommandLine
+        $PortMatch = [regex]::Match($CommandLine, '(?:^|\s)--port(?:=|\s+)(?<value>\d{1,5})(?:\s|$)')
+        $RunIdMatch = [regex]::Match($CommandLine, '(?:^|\s)--run-id(?:=|\s+)(?<value>[0-9a-fA-F-]{36})(?:\s|$)')
+        [pscustomobject]@{
+            Pid = [int]$_.ProcessId
+            Port = if ($PortMatch.Success) { [int]$PortMatch.Groups['value'].Value } else { 0 }
+            RunId = if ($RunIdMatch.Success) { $RunIdMatch.Groups['value'].Value } else { 'unknown' }
+            Mode = if ($CommandLine -match '(?:^|\s)--offline(?:\s|$)') { 'offline' } else { 'standard' }
+        }
+    }
+)
+foreach ($ProjectProcess in $ProjectProcesses) {
+    if ($VerifiedTrackedPid -gt 0 -and $ProjectProcess.Pid -eq $VerifiedTrackedPid) { continue }
+    if ($ProjectProcess.Port -le 0) { continue }
+    $OwnedListener = Get-NetTCPConnection -LocalPort $ProjectProcess.Port -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwningProcess -eq $ProjectProcess.Pid } | Select-Object -First 1
+    if ($OwnedListener) {
+        Write-Output "Untracked same-checkout listener: PID=$($ProjectProcess.Pid); port=$($ProjectProcess.Port); run_id=$($ProjectProcess.RunId); mode=$($ProjectProcess.Mode)"
+    }
 }
 Write-Output 'No secrets displayed. Device capture and cloud quality need separate verification.'

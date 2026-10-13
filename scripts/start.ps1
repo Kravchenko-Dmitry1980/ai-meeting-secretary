@@ -13,10 +13,6 @@ if ($TeamRuntimeConfig) {
     if (-not [IO.Path]::IsPathRooted($TeamRuntimeConfig) -or -not (Test-Path -LiteralPath $TeamRuntimeConfig -PathType Leaf)) { throw 'TeamRuntimeConfig must identify an existing absolute configuration path.' }
     $TeamRuntimeConfig = (Resolve-Path -LiteralPath $TeamRuntimeConfig).Path
 }
-if (-not (Test-Path -LiteralPath $PythonExe) -or -not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'frontend\dist\index.html'))) {
-    if ($NoBootstrap) { throw 'Secretary runtime is not prepared. Run bootstrap.ps1 explicitly before enabling the scheduled launcher.' }
-    & (Join-Path $PSScriptRoot 'bootstrap.ps1')
-}
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 if (Test-Path -LiteralPath $StatePath) {
     $State = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
@@ -30,8 +26,46 @@ if (Test-Path -LiteralPath $StatePath) {
         exit 0
     }
 }
+$ActiveRuns = @(
+    Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+        $_.CommandLine -and $_.CommandLine.IndexOf($LauncherPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    } | ForEach-Object {
+        $CommandLine = [string]$_.CommandLine
+        $ProcessId = [int]$_.ProcessId
+        $PortMatch = [regex]::Match($CommandLine, '(?:^|\s)--port(?:=|\s+)(?<value>\d{1,5})(?:\s|$)')
+        $RunIdMatch = [regex]::Match($CommandLine, '(?:^|\s)--run-id(?:=|\s+)(?<value>[0-9a-fA-F-]{36})(?:\s|$)')
+        $ProcessPort = if ($PortMatch.Success) { [int]$PortMatch.Groups['value'].Value } else { 0 }
+        $OwnsListener = $false
+        if ($ProcessPort -gt 0) {
+            $OwnsListener = [bool](Get-NetTCPConnection -LocalPort $ProcessPort -State Listen -ErrorAction SilentlyContinue |
+                Where-Object { $_.OwningProcess -eq $ProcessId } | Select-Object -First 1)
+        }
+        [pscustomobject]@{
+            Pid = $ProcessId
+            Port = $ProcessPort
+            RunId = if ($RunIdMatch.Success) { $RunIdMatch.Groups['value'].Value } else { 'unknown' }
+            Listening = $OwnsListener
+        }
+    }
+)
+if ($ActiveRuns.Count -gt 0) {
+    $ActiveRunDetails = @($ActiveRuns | Group-Object {
+        if ($_.RunId -ne 'unknown') { "$($_.Port):$($_.RunId)" } else { "pid:$($_.Pid)" }
+    } | ForEach-Object {
+        $Group = $_.Group
+        $Representative = $Group | Where-Object { $_.Listening } | Select-Object -First 1
+        if (-not $Representative) { $Representative = $Group | Select-Object -First 1 }
+        $PortLabel = if ($Representative.Port -gt 0) { [string]$Representative.Port } else { 'unknown' }
+        "PID $($Representative.Pid), port $PortLabel, run $($Representative.RunId)"
+    }) -join '; '
+    throw "A Secretary process from this checkout is already active ($ActiveRunDetails). No process was stopped or adopted."
+}
 $Listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 if ($Listener) { throw "Port $Port is occupied. No process was stopped. Choose another -Port." }
+if (-not (Test-Path -LiteralPath $PythonExe) -or -not (Test-Path -LiteralPath (Join-Path $ProjectRoot 'frontend\dist\index.html'))) {
+    if ($NoBootstrap) { throw 'Secretary runtime is not prepared. Run bootstrap.ps1 explicitly before enabling the scheduled launcher.' }
+    & (Join-Path $PSScriptRoot 'bootstrap.ps1')
+}
 $LaunchId = [guid]::NewGuid().ToString()
 $StopPath = Join-Path $RuntimeDir ('stop-' + $LaunchId + '.request')
 if (Test-Path -LiteralPath $StopPath) { Remove-Item -LiteralPath $StopPath }

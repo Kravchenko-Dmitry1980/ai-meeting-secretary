@@ -75,6 +75,13 @@ test('canonical snapshots feed seven board buckets and independent matrix axes',
   assert.equal(taskViews(tasks,{actorId:OWNER,filter:'all',now:Date.parse(NOW)}).tasks.length,4);
 });
 
+test('shared team view defaults to all project tasks, including tasks assigned to other members',async()=>{
+  const {DEFAULT_TASK_FILTER,taskViews} = await load();
+  assert.equal(DEFAULT_TASK_FILTER,'all');
+  const tasks=[task(),task('9007199254740995',{assignee_id:MEMBER})];
+  assert.equal(taskViews(tasks,{actorId:OWNER,filter:DEFAULT_TASK_FILTER,now:Date.parse(NOW)}).tasks.length,2);
+});
+
 test('terminal tasks remain in Kanban but never enter any matrix group',async()=>{
   const {taskViews} = await load();
   const tasks=[task('1',{important:true,urgent:true}),

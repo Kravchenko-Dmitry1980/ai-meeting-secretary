@@ -4,7 +4,7 @@ import { createTeamApi } from './api';
 import type { Actor, TaskChange, TaskSnapshot } from './api';
 import { useTeamAuth } from './useTeamAuth';
 import { useTeamTasks } from './useTeamTasks';
-import { BUCKETS, BUCKET_LABELS, MATRIX_KEYS, MATRIX_LABELS, emptyDraft, taskMovementOptions, taskViews } from './model';
+import { BUCKETS, BUCKET_LABELS, DEFAULT_TASK_FILTER, MATRIX_KEYS, MATRIX_LABELS, emptyDraft, taskMovementOptions, taskViews } from './model';
 import type { AssigneeBinding, Bucket, MatrixKey, PublicAction, TeamDraft } from './model';
 import { TeamTaskForm } from './TeamTaskForm';
 import { TeamCommandPreview } from './TeamCommandPreview';
@@ -97,7 +97,7 @@ export function TeamApp({ maxSource = null, lifecycleSignal, bridgeUnavailable =
     const value = new URLSearchParams(window.location.search).get('view');
     return value === 'matrix' || value === 'board' ? value : 'today';
   });
-  const [filter, setFilter] = useState<'mine' | 'all'>('mine');
+  const [filter, setFilter] = useState<'mine' | 'all'>(DEFAULT_TASK_FILTER);
   const [code, setCode] = useState('');
   const [errorState, setErrorState] = useState<{ epoch: number; value: string | null }>({ epoch: -1, value: null });
   const uiError = errorState.epoch === authState.sessionEpoch ? errorState.value : null;

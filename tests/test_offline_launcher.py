@@ -102,6 +102,30 @@ def test_windows_launcher_keeps_per_run_logs_instead_of_overwriting_shared_logs(
     assert "Inspect $StderrLog." in script
 
 
+def test_windows_start_refuses_untracked_same_checkout_server_before_starting_another():
+    script = (Path(__file__).parents[1] / "scripts" / "start.ps1").read_text(encoding="utf-8")
+
+    scan = script.index("$ActiveRuns = @(")
+    port_check = script.index("$Listener = Get-NetTCPConnection")
+    bootstrap = script.index("bootstrap.ps1")
+    process_start = script.index("Start-Process -FilePath $PythonExe")
+    assert scan < port_check < process_start
+    assert scan < bootstrap < process_start
+    assert "Get-CimInstance Win32_Process" in script[scan:port_check]
+    assert "IndexOf($LauncherPath" in script[scan:port_check]
+    assert "No process was stopped or adopted." in script[scan:port_check]
+
+
+def test_windows_doctor_reports_untracked_listener_without_printing_command_line():
+    script = (Path(__file__).parents[1] / "scripts" / "doctor.ps1").read_text(encoding="utf-8")
+
+    assert "$ProjectProcesses = @(" in script
+    assert "IndexOf($LauncherPath" in script
+    assert "Where-Object { $_.OwningProcess -eq $ProjectProcess.Pid }" in script
+    assert "Untracked same-checkout listener:" in script
+    assert 'Write-Output $ProjectProcess.CommandLine' not in script
+
+
 def test_launcher_rotates_uvicorn_logs_with_bounded_retention(tmp_path):
     launcher = load_launcher()
     log_directory = tmp_path / "logs"

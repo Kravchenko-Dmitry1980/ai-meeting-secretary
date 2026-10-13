@@ -36,3 +36,31 @@ Offline transport tests проверяют current identity отдельно о�
 Managed-lane tests должны покрыть каждый переход custody/crash, foreign listener/unknown child, operator/config rotation и expiry, startup/DDL/header drift, journals без cleanup, replacement FileID, GET200 с неверным final readback и отказ в превращении synthetic receipt в production proof.
 
 NoDelete не исключает другого writer под тем же SID. Compiled binary/source correspondence, transitive GET/background side effects и универсальная network isolation остаются ограничениями. Production activation, атомарный owner nonce/final decision, advancing native head и общий runtime predicate требуют отдельных завершённых карточек.
+
+### Дополнение 2026-10-13: native history head и sequence журнала наблюдений — разные evidence
+
+Offline-аудит выявил два разных счётчика, которые нельзя подменять друг другом. `NativeHistoryHead` в `restore_native_history.py` — epoch-bound head DML history внутри native Vikunja SQLite. Подготовленный reader требует, чтобы после custody native head по-прежнему совпадал с initial head (`sequence=0`, `nonce=null`) и `event_count=0`; managed GET lane не должна продвигать или менять этот источник. `NativeObservationStore.native_events.seq` — отдельная цепочка событий diagnostic attempts (`started`/`terminal`) в другом хранилище. Её hash chain подтверждает порядок записей журнала, но не является native DB head, не аутентифицирует GET или custody и всегда остаётся `diagnostic_only`.
+
+`SourceGenerationV1.native_head_sequence` принимает только положительный счётчик, но в non-test backend нет producer-а `SourceGenerationV1`. Read-only `SourceEvidence` сейчас фиксирует только SHA подготовленного proposal head и не несёт его sequence. Поэтому сейчас нельзя получить trusted current generation простым преобразованием результата managed GET или последовательности observation journal. Запрещено использовать `native_events.seq` как `native_head_sequence` или ослаблять требование, чтобы DTO проходил. Следующая offline карточка должна сначала определить отдельный typed source монотонного native evidence, владельца и домен его sequence, freshness/replay semantics, а также связь с теми же source readbacks и auth evidence; пока такой контракт не одобрен и не реализован, native-head оценка остаётся unavailable/blocked. Live GET, запись в native DB, consumer wiring и grant path этим audit не выполнялись.
+
+### Офлайн-контракт current source generation — дизайн, 2026-10-13
+
+Статус: DESIGN_ONLY. Это уточнение не добавляет producer, миграцию, запись в native DB, consumer или разрешение.
+
+Sequence domains разделяются строго:
+
+| Источник | Что считает | Допустимое использование |
+| --- | --- | --- |
+| NativeHistoryHead.sequence | DML-события внутри native Vikunja DB и конкретного epoch; подготовленная база начинается с 0 | Только как native history head после проверки epoch, binding, текущего файла и полной hash-chain истории |
+| NativeObservationStore.native_events.seq | diagnostic-события попыток managed GET: started/terminal | Только порядок диагностического журнала; нельзя преобразовать в native-head sequence или доказательство GET/custody |
+| SourceGeneration.protocol | Версию схемы commitment DTO | Только совместимость формата; это не счётчик поколений и не признак свежести |
+
+Будущий producer должен быть внутренним фиксированным evaluator-ом, а не принимать готовый SourceGeneration DTO, путь, sequence или Boolean от caller. Его candidate обязан одновременно связывать deployment/restore/epoch, точный Vikunja FileID и schema, проверенный NativeHistoryHead и удержанную lineage, current readbacks четырёх authorities и конфигурации, итог closed managed-native attempt, актуальное owner/provider decision и execution/auth lineage. Результат повторно читается на том же фиксированном наборе источников непосредственно перед операцией; detached receipt и один hash не заменяют custody или authority.
+
+При отсутствии head, sequence 0, неверной epoch/schema/FileID, невозможности связать managed GET с остановленным процессом и closed readback, уменьшении ниже сохранённого high-water, конфликте digest/nonce, устаревшем owner/provider proof или изменении любого source generation результат — unavailable/incomplete и activation_blocked. Такой отказ должен происходить до SQL mutation, native write, provider request, MAX/Vikunja dispatch и создания новой очереди. Повтор не восстанавливает и не переиспользует старые операции.
+
+Freshness не выводится из номера native_events.seq или одного timestamp. Replay защищается только exact operation ID + одноразовым owner nonce в текущем durable fixed ledger и сравнением с закреплённым parent generation/high-water. Same-user rewrite двух локальных файлов остаётся вне подтверждённой защиты: текущие Windows ACL/host custody не квалифицированы, а в этой offline-карточке нет основания объявлять DPAPI или hash-chain независимым trust anchor.
+
+Следующее implementation gate остаётся закрытым до выбора/квалификации допустимого local trust anchor и получения реального owner-authorized managed GET/closed-readback evidence. До него SourceGenerationV1/V2 остаются чистыми commitments, fixed evaluator возвращает incomplete, native head недоступен для grant, guards сохранены, activation/outbound OFF. Не создавать фиктивный sequence=1 и не использовать native_events.seq.
+
+**Offline audit 2026-10-13:** native-history, observation-store and source-epoch affected tests passed 355/355; no `SourceGenerationV1/V2` producer exists in non-test backend. **Read-only host probe 2026-10-14, about 00:00 MSK:** Windows `Get-Tpm` found `TpmPresent=True` and `TpmReady=True`, but no TPM NV counter API, key, ownership, persistence/replay, or access policy was tested. This host fact does not qualify a trust anchor. Any TPM-backed counter or isolated service-account witness remains a design choice; no native DB, TPM state, ACL, or consumer was changed.

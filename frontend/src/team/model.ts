@@ -4,6 +4,7 @@ export type { Actor, Bucket, CommandReceipt, TaskChange, TaskCommand, TaskSnapsh
 
 export type PublicAction = Exclude<TaskCommand['action'], 'link' | 'resolve_due'>;
 export type TaskFilter = 'mine' | 'all';
+export const DEFAULT_TASK_FILTER: TaskFilter = 'all';
 export interface AssigneeBinding {
   id: string;
   revision: number;
