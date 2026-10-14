@@ -1,0 +1,4 @@
+# Preserve the exact source bytes referenced by the provenance manifests.
+* -text whitespace=cr-at-eol
+# Unified diff context prefixes intentionally contain spaces before tabs/blanks.
+*.patch -whitespace

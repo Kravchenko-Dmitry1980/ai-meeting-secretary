@@ -1,0 +1,1881 @@
+"""One-shot public dependency metadata preparation. SOURCE_ONLY / NOT_RUN.
+
+Importing defines helpers only. No Vikunja init/tests/build/server/SQL execution.
+Root must complete source closure, reviews, pure probes and exact launch freeze.
+"""
+from __future__ import annotations
+
+from contextlib import ExitStack, contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from ctypes import wintypes as w
+from dataclasses import asdict, dataclass
+from pathlib import Path
+import base64
+import builtins
+import ctypes
+import hashlib
+import json
+import math
+import os
+import re
+import stat
+import subprocess
+import sys
+import threading
+import time
+
+ROOT = Path('D:/AI/Projects/Active/Secretary')
+HERE = ROOT / '.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134'
+INPUT = ROOT / '.runtime/team-rollout/r4-native-ro-inputs-eof-e4effec08eb54054941eaa48b04850a6'
+PROFILE = ROOT / '.runtime/team-rollout/r4-native-ro-profile-3d6ffd1910e4445293ea5819855959f0'
+SOURCE = PROFILE / 'source'
+PYTHON_CARD = ROOT / '.runtime/team-rollout/r4-python-private-runtime-9dcd252344d143cb969d68a159c021eb'
+PYTHON = PYTHON_CARD / 'portable-python/python.exe'
+CONTRACT = ROOT / 'docs/contracts/team-native-read-profile-dependencies.md'
+CONTRACT_SHA = '4db394b9ca80403e31d088e1645e7319df0dcf1516ca98ff7c7b448272081ad6'
+PROFILE_MANIFEST_SHA = '68f8d6104bf1fe0d43efe7f957a8b15b950655a095b07ec7eceeed7d2a8449ea'
+SOURCE_CLOSURE_SHA = '884239df3c7486e6bfcd36b4f7c2db9a0fdc7c41ef796f947a4710bb195efa54'
+PYTHON_CLOSURE_SHA = 'c6ec6f9d6a3cfbf587e18cc3f14c616e2ba338da4d24d8983aa160f4454f0c40'
+INPUT_CLOSURE_SHA = 'b4ed3dca9b2b62ea7a930f1e54d76afae100befd1091dbe216d6d6eba7f6a3df'
+REGISTRY_SHA = '48c59ac6b19aebef3f5032afcc133f61707f1d9cd3210170a0040e8d8d5590e0'
+GO_MOD_SHA = '587c512c4b5b46ff38f7aa5818de49727fa0854b81f160ba14362689e68d7f75'
+GO_SUM_SHA = 'f2c33d60ce25ccc7212c3b8d6392c9afc3d9222888e0567b6f8a24b7ac345944'
+PHYSICAL_PYTHON_SHA = '02c3bcf63782cc34665ff39ea73d029128ef0849c5a67fe4bbb03748a63fb4f1'
+EXES = {'go': (INPUT / 'inputs/go/bin/go.exe', 'd3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490'),
+        'gcc': (INPUT / 'inputs/gcc/bin/gcc.exe', '206f9fc067234f48ae077550658dae06bd75d99110c1b3166887b7090cbd7fa0')}
+MANIFESTS = {'go': '42339d963a095203f89c16ab22738f592c6f08ca48be6476cc3a344c7b20b1cc',
+             'gcc': '9197c6cd0c798a947b088d40e65a2523b607ed31a7a6457226193c3fc792a6e2'}
+PIN_NAMES = frozenset({'check_dependencies.py', 'run_dependencies.py', 'contract.md', 'interfaces.md',
+    'review-dependencies-worker.md', 'review-dependencies-parent.md', 'pure-dependency-final.json', 'pure-parent-final.json'})
+STAGES = ('preflight', 'declared_download', 'mvs_graph', 'remaining_download', 'runtime_discovery',
+          'test_discovery', 'final_verification', 'closed')
+ERRORS = frozenset({'scope_invalid', 'pin_changed', 'already_attempted', 'deadline', 'path_invalid',
+    'resource_limit', 'resource_monitor_failed', 'output_limit', 'output_invalid', 'process_failed',
+    'process_identity_invalid', 'job_invalid', 'module_download_invalid', 'module_graph_invalid',
+    'module_source_changed', 'checksum_missing', 'discovery_invalid', 'receipt_invalid', 'custody_invalid',
+    'cleanup_unverified', 'dependency_egress_disabled', 'unclassified_failure'})
+METADATA_FIELDS = ('Dir,ImportPath,ImportMap,Name,Root,Standard,Module,GoFiles,CgoFiles,IgnoredGoFiles,'
+    'IgnoredOtherFiles,CFiles,CXXFiles,MFiles,HFiles,FFiles,SFiles,SwigFiles,SwigCXXFiles,SysoFiles,'
+    'CgoCFLAGS,CgoCPPFLAGS,CgoCXXFLAGS,CgoFFLAGS,CgoLDFLAGS,CgoPkgConfig,Imports,Deps,Incomplete,Error,'
+    'DepsErrors,EmbedPatterns,EmbedFiles,TestGoFiles,TestImports,TestEmbedPatterns,TestEmbedFiles,'
+    'XTestGoFiles,XTestImports,XTestEmbedPatterns,XTestEmbedFiles,ForTest')
+FILE_FIELDS = ('GoFiles', 'CgoFiles', 'CFiles', 'CXXFiles', 'MFiles', 'HFiles', 'FFiles', 'SFiles',
+               'SwigFiles', 'SwigCXXFiles', 'SysoFiles', 'EmbedFiles')
+REPLACED = 'github.com/samedi/caldav-go'
+REPLACEMENT = ('github.com/go-vikunja/caldav-go', 'v3.0.1-0.20260914150516-75a300de4623+incompatible')
+MAX_RECEIPT = 4 << 20
+MAX_COMMANDS = 64
+ORIGINAL_MANIFEST_SHA = 'da68b1581adb6ad5e40eb8f08982d159eaf36ae980bacc3fc6897ede60e9fcf7'
+S_HASH = re.compile(r'[0-9a-f]{64}\Z')
+H1 = re.compile(r'h1:[A-Za-z0-9+/]{43}=\Z')
+
+
+class PreparationError(Exception):
+    def __init__(self, code):
+        self.code = code if code in ERRORS else 'unclassified_failure'
+        super().__init__(self.code)
+
+
+def need(value, code):
+    if not value:
+        raise PreparationError(code)
+
+
+class Budget:
+    def __init__(self, seconds=1500):
+        self.end = time.monotonic() + seconds
+        self.online_end = None
+
+    def remaining(self):
+        value = self.end - time.monotonic()
+        need(value > 0, 'deadline')
+        return value
+
+    def operation(self, cap, online=False):
+        remaining = self.remaining() - 30
+        if online:
+            if self.online_end is None:
+                self.online_end = time.monotonic() + 600
+            remaining = min(remaining, self.online_end - time.monotonic())
+        need(remaining > 0, 'deadline')
+        return min(cap, remaining)
+
+
+class InspectionBudget:
+    def __init__(self, parent, seconds=120):
+        self.parent, self.end = parent, time.monotonic() + min(seconds, parent.remaining() - 30)
+
+    def remaining(self):
+        self.parent.remaining()
+        value = self.end - time.monotonic()
+        need(value > 0, 'deadline')
+        return value
+
+
+def win(path):
+    return '\\\\?\\' + str(path)
+
+
+def no_link(path):
+    info = os.lstat(win(path))
+    need(not stat.S_ISLNK(info.st_mode) and not getattr(info, 'st_file_attributes', 0) & 0x400, 'path_invalid')
+    need(stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'path_invalid')
+    return info
+
+
+def relative_name(name):
+    need(type(name) is str and name and len(name) <= 4096 and '\\' not in name and ':' not in name,
+         'path_invalid')
+    path = Path(name)
+    need(not path.is_absolute() and not path.drive and '..' not in path.parts and '.' not in path.parts,
+         'path_invalid')
+    need(path.as_posix() == name and all(part and not part.endswith((' ', '.')) for part in path.parts), 'path_invalid')
+    return path
+
+
+def private(path, must_exist=True):
+    need(path.is_absolute() and path.is_relative_to(HERE), 'path_invalid')
+    current = path if must_exist else path.parent
+    while current.is_relative_to(HERE):
+        no_link(current)
+        if current == HERE:
+            break
+        current = current.parent
+    return path
+
+
+def read(path, budget=None, cap=16 << 20):
+    info = no_link(path)
+    need(stat.S_ISREG(info.st_mode) and info.st_size <= cap, 'resource_limit')
+    if budget is not None:
+        budget.remaining()
+    with open(win(path), 'rb') as source:
+        opened = os.fstat(source.fileno())
+        need(same_open_file(info, opened), 'pin_changed')
+        raw = source.read(cap + 1)
+        need(same_open_file(opened, os.fstat(source.fileno())), 'pin_changed')
+    need(len(raw) == info.st_size and len(raw) <= cap and unchanged_stat(info, no_link(path)), 'pin_changed')
+    return raw
+
+
+def sha(path, budget=None, cap=1 << 30):
+    info = no_link(path)
+    need(stat.S_ISREG(info.st_mode) and info.st_size <= cap, 'resource_limit')
+    digest, count = hashlib.sha256(), 0
+    with open(win(path), 'rb') as source:
+        opened = os.fstat(source.fileno())
+        need(same_open_file(info, opened), 'pin_changed')
+        while True:
+            if budget is not None:
+                budget.remaining()
+            block = source.read(1 << 16)
+            if not block:
+                break
+            count += len(block)
+            need(count <= cap and count <= info.st_size, 'resource_limit')
+            digest.update(block)
+        need(same_open_file(opened, os.fstat(source.fileno())), 'pin_changed')
+    need(count == info.st_size and unchanged_stat(info, no_link(path)), 'pin_changed')
+    return digest.hexdigest()
+
+
+def same_open_file(path_info, handle_info):
+    # Compare stable identity/type facts across lstat and fstat. Windows may
+    # report different permission bits for paths such as *.com, so compare
+    # only the file type from st_mode and revalidate full path facts separately.
+    fields = ('st_dev', 'st_ino', 'st_nlink', 'st_size', 'st_mtime_ns')
+    return (getattr(path_info, 'st_dev', 0) != 0 and getattr(path_info, 'st_ino', 0) != 0
+        and getattr(handle_info, 'st_dev', 0) != 0 and getattr(handle_info, 'st_ino', 0) != 0
+        and all(getattr(path_info, key) == getattr(handle_info, key) for key in fields)
+        and stat.S_IFMT(path_info.st_mode) == stat.S_IFMT(handle_info.st_mode)
+        and getattr(path_info, 'st_file_attributes', 0) == getattr(handle_info, 'st_file_attributes', 0))
+
+
+def unchanged_stat(before, after):
+    # Reading can update access time; identity, size, mtime, ctime and link/attribute facts cannot change.
+    fields = ('st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    return all(getattr(before, key) == getattr(after, key) for key in fields) and \
+        getattr(before, 'st_file_attributes', 0) == getattr(after, 'st_file_attributes', 0)
+
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        need(key not in result, 'output_invalid')
+        result[key] = value
+    return result
+
+
+def invalid_constant(_):
+    raise PreparationError('output_invalid')
+
+
+def finite_json(value):
+    if type(value) is float:
+        need(math.isfinite(value), 'output_invalid')
+    elif type(value) is dict:
+        for child in value.values():
+            finite_json(child)
+    elif type(value) is list:
+        for child in value:
+            finite_json(child)
+    return value
+
+
+def strict_json(raw):
+    try:
+        return finite_json(json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant))
+    except PreparationError:
+        raise
+    except Exception:
+        raise PreparationError('output_invalid') from None
+
+
+def json_stream(raw, maximum):
+    try:
+        need(type(raw) is bytes and type(maximum) is int and 0 < maximum <= 25000, 'output_invalid')
+        text = raw.decode('utf-8', errors='strict')
+        decoder = json.JSONDecoder(object_pairs_hook=pairs, parse_constant=invalid_constant)
+        result, offset = [], 0
+        while offset < len(text):
+            while offset < len(text) and text[offset].isspace():
+                offset += 1
+            if offset == len(text):
+                break
+            value, offset = decoder.raw_decode(text, offset)
+            finite_json(value)
+            need(type(value) is dict and len(result) < maximum, 'output_invalid')
+            result.append(value)
+        return result
+    except PreparationError:
+        raise
+    except Exception:
+        raise PreparationError('output_invalid') from None
+
+
+def encoded_json(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, allow_nan=False, indent=2).encode('ascii') + b'\n'
+
+
+def save(name, value, cap=64 << 20):
+    path = private(HERE / relative_name(name), must_exist=False)
+    raw = encoded_json(value)
+    need(len(raw) <= cap and not os.path.lexists(win(path)), 'resource_limit')
+    with open(win(path), 'xb') as output:
+        output.write(raw)
+        output.flush()
+        os.fsync(output.fileno())
+    need(read(path, cap=cap) == raw, 'receipt_invalid')
+    return {'path': name, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+
+def trace_path(raw):
+    value = os.fsdecode(raw)
+    if value.startswith('\\\\?\\'):
+        value = value[4:]
+    need(0 < len(value) <= 4096 and not any(ord(c) < 32 for c in value), 'path_invalid')
+    path = Path(value)
+    need(path.is_absolute() and len(path.drive) == 2 and ':' not in str(path)[2:]
+         and not str(path).startswith('\\\\') and not any(p in {'.', '..'} for p in path.parts), 'path_invalid')
+    return path
+
+
+class TraceRecorder:
+    def __init__(self, clock=time.monotonic):
+        self.clock, self.started = clock, clock()
+        self.current_stage = None
+        self._local, self._lock = threading.local(), threading.RLock()
+        self._local.current_tool = self._local.current_phase = self._local.current_file = None
+        self._local.phase_started = None
+        self._latest_context = {'tool': None, 'phase': None, 'file': None}
+        self.inputs_returned = False
+        self.last_operation = self.last_failure = None
+        self.stages = {}
+        self.tools = {name: {'verify_tree_returned': False, 'hashed_bytes': 0,
+            'phases': {phase: {'seconds': 0.0} for phase in ('manifest', 'inventory', 'hash')}}
+            for name in ('go', 'gcc')}
+        self.operations = {name: {'count': 0, 'seconds': 0.0, 'bytes': 0}
+            for name in ('lstat', 'open', 'read', 'digest')}
+        self.hashed_bytes = 0
+
+    @property
+    def current_tool(self):
+        return getattr(self._local, 'current_tool', None)
+
+    @current_tool.setter
+    def current_tool(self, value):
+        self._local.current_tool = value
+
+    @property
+    def current_phase(self):
+        return getattr(self._local, 'current_phase', None)
+
+    @current_phase.setter
+    def current_phase(self, value):
+        self._local.current_phase = value
+
+    @property
+    def current_file(self):
+        return getattr(self._local, 'current_file', None)
+
+    @current_file.setter
+    def current_file(self, value):
+        self._local.current_file = value
+
+    @property
+    def phase_started(self):
+        return getattr(self._local, 'phase_started', None)
+
+    @phase_started.setter
+    def phase_started(self, value):
+        self._local.phase_started = value
+
+    def path(self, raw):
+        path = trace_path(raw)
+        need(path.is_relative_to(ROOT), 'path_invalid')
+        self.current_file = path.relative_to(ROOT).as_posix()
+        self.publish_context()
+        return path
+
+    def publish_context(self):
+        with self._lock:
+            self._latest_context.update(tool=self.current_tool,
+                phase=self.current_phase, file=self.current_file)
+
+    def phase(self, tool, phase):
+        need(tool in self.tools and phase in self.tools[tool]['phases'], 'scope_invalid')
+        if (tool, phase) != (self.current_tool, self.current_phase):
+            self.settle()
+            self.current_tool, self.current_phase, self.phase_started = tool, phase, self.clock()
+        self.publish_context()
+
+    def settle(self):
+        if self.phase_started is not None:
+            elapsed = self.clock() - self.phase_started
+            with self._lock:
+                self.tools[self.current_tool]['phases'][self.current_phase]['seconds'] += elapsed
+            self.phase_started = None
+
+    def mark_verify_tree_returned(self, tool):
+        with self._lock:
+            self.tools[tool]['verify_tree_returned'] = True
+
+    def select(self, raw, phase):
+        path = self.path(raw)
+        if self.current_stage == 'inputs_check':
+            for tool in self.tools:
+                if path == INPUT / 'metadata' / (tool + '-extracted-inventory.json'):
+                    self.phase(tool, 'manifest')
+                elif path.is_relative_to(INPUT / 'inputs' / tool):
+                    self.phase(tool, phase)
+        return path
+
+    def frame(self, name, started):
+        return {'operation': name, 'stage': self.current_stage, 'tool': self.current_tool,
+            'phase': self.current_phase, 'relative_file': self.current_file,
+            'started_seconds': started - self.started}
+
+    def failed(self, name, started):
+        with self._lock:
+            if self.last_failure is None:
+                self.last_failure = self.frame(name, started)
+                self.last_failure['seconds'] = self.clock() - started
+
+    def call(self, name, raw, function, *args, byte_count=0, **kwargs):
+        need(name in self.operations, 'scope_invalid')
+        if raw is not None:
+            self.path(raw)
+        began = self.clock()
+        frame = self.frame(name, began)
+        tool = frame['tool']
+        with self._lock:
+            self.last_operation = frame
+            counter = self.operations[name]
+            counter['count'] += 1
+        try:
+            value = function(*args, **kwargs)
+            count = len(value) if name == 'read' and type(value) is bytes else byte_count
+            with self._lock:
+                counter['bytes'] += count
+                if name == 'digest':
+                    self.hashed_bytes += count
+                    if tool is not None:
+                        self.tools[tool]['hashed_bytes'] += count
+            frame['returned'] = True
+            return value
+        except BaseException:
+            self.failed(name, began)
+            frame['returned'] = False
+            raise
+        finally:
+            elapsed = self.clock() - began
+            with self._lock:
+                counter['seconds'] += elapsed
+                frame['seconds'] = elapsed
+
+    def snapshot(self):
+        with self._lock:
+            result = deepcopy({'current_stage': self.current_stage,
+                'current_tool': self._latest_context['tool'], 'current_phase': self._latest_context['phase'],
+                'current_file': self._latest_context['file'], 'inputs_returned': self.inputs_returned,
+                'last_operation': self.last_operation, 'last_failure': self.last_failure,
+                'stages': self.stages, 'tools': self.tools, 'operations': self.operations,
+                'hashed_bytes': self.hashed_bytes})
+        trace_encoded(result)
+        return result
+
+
+class FileProxy:
+    def __init__(self, inner, path, trace):
+        self.inner, self.path, self.trace = inner, path, trace
+
+    def __enter__(self):
+        self.inner.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.inner.__exit__(*args)
+
+    def read(self, *args, **kwargs):
+        return self.trace.call('read', self.path, self.inner.read, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+class OSProxy:
+    def __init__(self, inner, trace):
+        self.inner, self.trace = inner, trace
+
+    def lstat(self, path, *args, **kwargs):
+        return self.trace.call('lstat', path, self.inner.lstat, path, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+class DigestProxy:
+    def __init__(self, inner, trace):
+        self.inner, self.trace = inner, trace
+
+    def update(self, raw):
+        return self.trace.call('digest', None, self.inner.update, raw, byte_count=len(raw))
+
+    def hexdigest(self):
+        return self.trace.call('digest', None, self.inner.hexdigest)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+class HashlibProxy:
+    def __init__(self, inner, trace):
+        self.inner, self.trace = inner, trace
+
+    def sha256(self, *args, **kwargs):
+        count = len(args[0]) if args else 0
+        return DigestProxy(self.trace.call('digest', None, self.inner.sha256,
+            *args, byte_count=count, **kwargs), self.trace)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+@contextmanager
+def instrument(module, trace):
+    originals = {name: getattr(module, name) for name in ('os', 'hashlib', 'sha', 'read', 'tree_inventory', 'verify_tree')}
+    had_open = 'open' in module.__dict__
+    original_open = getattr(module, 'open', builtins.open)
+    had_active_trace = '_active_input_trace' in module.__dict__
+    original_active_trace = module.__dict__.get('_active_input_trace')
+
+    def opened(path, *args, **kwargs):
+        inner = trace.call('open', path, original_open, path, *args, **kwargs)
+        return FileProxy(inner, path, trace)
+
+    def selected(name, phase):
+        original = originals[name]
+        def delegated(path, *args, **kwargs):
+            trace.select(path, phase)
+            began = trace.clock()
+            try:
+                value = original(path, *args, **kwargs)
+                if name == 'verify_tree' and trace.current_stage == 'inputs_check':
+                    for tool in trace.tools:
+                        if trace_path(path) == INPUT / 'inputs' / tool:
+                            trace.mark_verify_tree_returned(tool)
+                return value
+            except BaseException:
+                trace.failed(name, began)
+                raise
+        return delegated
+
+    try:
+        module._active_input_trace = trace
+        module.os, module.hashlib, module.open = OSProxy(originals['os'], trace), HashlibProxy(originals['hashlib'], trace), opened
+        module.sha, module.read = selected('sha', 'hash'), selected('read', 'manifest')
+        module.tree_inventory = selected('tree_inventory', 'inventory')
+        module.verify_tree = selected('verify_tree', 'inventory')
+        yield
+    finally:
+        for name, value in originals.items():
+            setattr(module, name, value)
+        if had_open:
+            module.open = original_open
+        else:
+            module.__dict__.pop('open', None)
+        if had_active_trace:
+            module._active_input_trace = original_active_trace
+        else:
+            module.__dict__.pop('_active_input_trace', None)
+
+
+def trace_encoded(value):
+    try:
+        raw = encoded_json(value)
+    except (ValueError, TypeError, RecursionError):
+        raise PreparationError('output_invalid') from None
+    need(len(raw) <= 128 << 10, 'resource_limit')
+    return raw
+
+
+def observe_inputs(module, trace, budget):
+    trace.current_stage, trace.current_tool, trace.current_phase = 'inputs_check', None, None
+    began, returned = trace.clock(), False
+    try:
+        with instrument(module, trace):
+            value = module.inputs_check(budget)
+        returned = trace.inputs_returned = True
+        return value
+    except BaseException:
+        trace.failed('inputs_check', began)
+        raise
+    finally:
+        trace.settle()
+        trace.stages['inputs_check'] = {'seconds': trace.clock() - began, 'returned': returned}
+
+
+def check_pins(budget):
+    pins = strict_json(read(HERE / 'launch-pins.json', budget))
+    need(type(pins) is dict and set(pins) == {'schema', 'contract_sha256', 'files'}
+         and type(pins['schema']) is int and pins['schema'] == 1
+         and pins['contract_sha256'] == CONTRACT_SHA and type(pins['files']) is dict
+         and set(pins['files']) == PIN_NAMES, 'pin_changed')
+    for name, expected in pins['files'].items():
+        need(type(expected) is str and S_HASH.fullmatch(expected) and sha(HERE / name, budget) == expected, 'pin_changed')
+    need(sha(CONTRACT, budget) == CONTRACT_SHA and sha(HERE / 'contract.md', budget) == CONTRACT_SHA, 'pin_changed')
+    need(S_HASH.fullmatch(SOURCE_CLOSURE_SHA), 'pin_changed')
+    need(sha(PROFILE / 'closed-source-profile-card.json', budget) == SOURCE_CLOSURE_SHA, 'pin_changed')
+    need(sha(PROFILE / 'source-preparation-manifest.json', budget) == PROFILE_MANIFEST_SHA, 'pin_changed')
+    need(sha(INPUT / 'closed-input-card.json', budget) == INPUT_CLOSURE_SHA, 'pin_changed')
+    return hashlib.sha256(read(HERE / 'launch-pins.json', budget)).hexdigest()
+
+
+def tree_inventory(base, budget, stop=None, total_cap=6 << 30, file_cap=150000, dir_cap=15000):
+    pending, entries, total, files, dirs = [base], [], 0, 0, 0
+    while pending:
+        if stop is not None and stop.is_set():
+            return None
+        budget.remaining()
+        folder = pending.pop()
+        try:
+            no_link(folder)
+            listing = os.scandir(win(folder))
+        except FileNotFoundError:
+            if stop is not None and any(folder.is_relative_to(HERE / part)
+                for part in ('temp', 'go-cache', 'mod-cache', 'go-path')):
+                continue
+            raise
+        with listing as listing:
+            for item in listing:
+                if stop is not None and stop.is_set():
+                    return None
+                budget.remaining()
+                path = folder / item.name
+                try:
+                    info = no_link(path)
+                except FileNotFoundError:
+                    if stop is not None and any(path.is_relative_to(HERE / part)
+                        for part in ('temp', 'go-cache', 'mod-cache', 'go-path')):
+                        continue
+                    raise
+                name = path.relative_to(base).as_posix()
+                relative_name(name)
+                if stat.S_ISDIR(info.st_mode):
+                    dirs += 1
+                    pending.append(path)
+                    entries.append({'path': name, 'directory': True, 'size': 0})
+                else:
+                    files += 1
+                    total += info.st_size
+                    entries.append({'path': name, 'directory': False, 'size': info.st_size})
+                need(files <= file_cap and dirs <= dir_cap and total <= total_cap, 'resource_limit')
+    return {'entries': sorted(entries, key=lambda item: item['path']), 'files': files, 'directories': dirs, 'bytes': total}
+
+
+def verify_tree(base, expected, budget):
+    actual = tree_inventory(base, budget)
+    names = set()
+    for entry in expected:
+        need(type(entry) is dict and type(entry.get('directory')) is bool and type(entry.get('size')) is int
+             and entry['size'] >= 0, 'pin_changed')
+        name = relative_name(entry.get('path')).as_posix()
+        need(name not in names, 'pin_changed')
+        names.add(name)
+        if not entry['directory']:
+            need(type(entry.get('sha256')) is str and S_HASH.fullmatch(entry['sha256'])
+                 and sha(base / name, budget) == entry['sha256'], 'pin_changed')
+    normalized = sorted([{'path': item['path'], 'directory': item['directory'], 'size': item['size']}
+                         for item in expected], key=lambda item: item['path'])
+    need(actual['entries'] == normalized, 'pin_changed')
+    return actual
+
+
+def source_check(budget):
+    path = HERE / 'source-before-310.json'
+    need(sha(path, budget) == REGISTRY_SHA, 'pin_changed')
+    entries = strict_json(read(path, budget))['sources']
+    need(type(entries) is list and len(entries) == 310, 'pin_changed')
+    seen = set()
+    for entry in entries:
+        name = relative_name(entry['path']).as_posix()
+        need(name not in seen and sha(ROOT / name, budget) == entry['sha256'], 'pin_changed')
+        seen.add(name)
+    return {'count': 310, 'unchanged': True, 'registry_sha256': REGISTRY_SHA}
+
+
+def profile_check(budget):
+    need(sha(PROFILE / 'closed-source-profile-card.json', budget) == SOURCE_CLOSURE_SHA, 'pin_changed')
+    closure = strict_json(read(PROFILE / 'closed-source-profile-card.json', budget))
+    need(type(closure) is dict and type(closure.get('schema')) is int and closure['schema'] == 1
+         and closure.get('kind') == 'ROOT_SOURCE_PREPARATION_CLOSURE'
+         and closure.get('status') == 'CLOSED_SOURCE_PREPARATION_ONLY_PASS'
+         and closure.get('phase') == 'SOURCE_PREPARATION_ONLY'
+         and closure.get('source_manifest_sha256') == PROFILE_MANIFEST_SHA
+         and closure.get('frozen_regular_files') == 2311 and closure.get('frozen_directories') == 232
+         and closure.get('continuous_source_custody') is False
+         and closure.get('activation_supported') is False and closure.get('full_r4_qualified') is False,
+         'pin_changed')
+    document = strict_json(read(PROFILE / 'source-preparation-manifest.json', budget))
+    need(document.get('status') == 'SOURCE_PREPARATION_SCOPE_PASS' and document.get('stage') == 'closed'
+         and document.get('current_regular_files') == 2293 and document.get('current_directories') == 231
+         and document.get('current_bytes') == 28516597, 'pin_changed')
+    actual = verify_tree(SOURCE, document['source_entries'], InspectionBudget(budget, 60))
+    need((actual['files'], actual['directories'], actual['bytes']) == (2293, 231, 28516597), 'pin_changed')
+    need(sha(SOURCE / 'go.mod', budget) == GO_MOD_SHA and sha(SOURCE / 'go.sum', budget) == GO_SUM_SHA, 'pin_changed')
+    need(closure['source_entries'] == document['source_entries'] and type(closure.get('frozen_files')) is dict
+         and len(closure['frozen_files']) == 2311, 'pin_changed')
+    namespace, bounded = tree_inventory(PROFILE, budget), InspectionBudget(budget, 60)
+    expected_files = set(closure['frozen_files']) | {'closed-source-profile-card.json'}
+    expected_dirs = {'source'} | {'source/' + entry['path'] for entry in closure['source_entries'] if entry['directory']}
+    need({item['path'] for item in namespace['entries'] if not item['directory']} == expected_files and
+         {item['path'] for item in namespace['entries'] if item['directory']} == expected_dirs, 'pin_changed')
+    for name, facts in closure['frozen_files'].items():
+        relative_name(name)
+        need(type(facts) is dict and set(facts) == {'sha256', 'size'} and type(facts['size']) is int
+             and facts['size'] >= 0 and S_HASH.fullmatch(facts['sha256'])
+             and no_link(PROFILE / name).st_size == facts['size']
+             and sha(PROFILE / name, bounded) == facts['sha256'], 'pin_changed')
+    return {'regular_files': 2293, 'directories': 231, 'bytes': 28516597,
+            'manifest_sha256': PROFILE_MANIFEST_SHA, 'exact_match': True}
+
+
+def original_source_check(budget):
+    path = INPUT / 'metadata/source-extracted-inventory.json'
+    need(sha(path, budget) == ORIGINAL_MANIFEST_SHA, 'pin_changed')
+    document = strict_json(read(path, budget))
+    actual = verify_tree(INPUT / 'inputs/source', document['entries'], InspectionBudget(budget, 60))
+    need((actual['files'], actual['directories'], actual['bytes']) ==
+         (document['regular_files'], document['directories'], document['uncompressed_bytes']), 'pin_changed')
+    return {'manifest_sha256': ORIGINAL_MANIFEST_SHA, 'regular_files': actual['files'],
+            'directories': actual['directories'], 'bytes': actual['bytes'], 'exact_match': True}
+
+
+def inputs_check(budget):
+    need(tuple(MANIFESTS) == ('go', 'gcc'), 'scope_invalid')
+    bounded, result = InspectionBudget(budget, 360), {}
+    def inspect(name, expected):
+        try:
+            path = INPUT / 'metadata' / (name + '-extracted-inventory.json')
+            need(sha(path, bounded) == expected, 'pin_changed')
+            document = strict_json(read(path, bounded))
+            actual = verify_tree(INPUT / 'inputs' / name, document['entries'], bounded)
+            need((actual['files'], actual['directories'], actual['bytes']) ==
+                 (document['regular_files'], document['directories'], document['uncompressed_bytes']), 'pin_changed')
+            return {'manifest_sha256': expected, 'regular_files': actual['files'],
+                    'directories': actual['directories'], 'bytes': actual['bytes'], 'exact_match': True}
+        finally:
+            trace = globals().get('_active_input_trace')
+            if trace is not None:
+                trace.settle()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {name: pool.submit(inspect, name, expected) for name, expected in MANIFESTS.items()}
+        for name in MANIFESTS:
+            result[name] = futures[name].result()
+    return result
+
+
+def runtime_check(budget):
+    path = PYTHON_CARD / 'closed-version-card.json'
+    need(sha(path, budget) == PYTHON_CLOSURE_SHA, 'pin_changed')
+    document = strict_json(read(path, budget))
+    need(document.get('status') == 'CLOSED_PRIVATE_PYTHON_VERSION_ONLY_PASS' and len(document['files']) == 789,
+         'pin_changed')
+    bounded, seen = InspectionBudget(budget, 45), set()
+    for entry in document['files']:
+        name = relative_name(entry['path']).as_posix()
+        need(name not in seen and sha(PYTHON_CARD / name, bounded) == entry['sha256'], 'pin_changed')
+        need(no_link(PYTHON_CARD / name).st_size == entry['bytes'], 'pin_changed')
+        seen.add(name)
+    return {'closure_sha256': PYTHON_CLOSURE_SHA, 'files_checked': 789, 'exact_match': True}
+
+
+def resource_scan(budget, stop=None):
+    current = tree_inventory(HERE, budget, stop)
+    if current is None:
+        return None
+    zipped = extracted = scratch = 0
+    for entry in current['entries']:
+        if entry['directory']:
+            continue
+        name, size = entry['path'], entry['size']
+        if name.startswith('mod-cache/'):
+            # Pinned Go fetch.go/cache.go writes <version>.<kind><decimal>.tmp
+            # in its @v download cache before the final atomic rename.
+            # Completed and in-progress files consume the same type caps.
+            temporary = re.search(r'\.(zip|mod|info)[0-9]{1,9}\.tmp\Z', Path(name).name)
+            temp_kind = temporary.group(1) if (temporary and name.startswith('mod-cache/cache/download/')
+                and Path(name).parent.name == '@v') else None
+            is_zip = name.endswith('.zip') or temp_kind == 'zip'
+            if is_zip:
+                need(size <= 128 << 20, 'resource_limit')
+                zipped += size
+            elif name.endswith('.mod') or temp_kind == 'mod':
+                need(size <= 8 << 20, 'resource_limit')
+            elif name.endswith('.info') or temp_kind == 'info':
+                need(size <= 64 << 10, 'resource_limit')
+            if not name.startswith('mod-cache/cache/'):
+                extracted += size
+        if name.startswith(('temp/', 'go-cache/')):
+            scratch += size
+    need(zipped <= 1 << 30 and extracted <= 4 << 30 and scratch <= 1 << 30, 'resource_limit')
+    return {'regular_entries': current['files'], 'directories': current['directories'], 'bytes': current['bytes'],
+            'zip_bytes': zipped, 'extracted_module_bytes': extracted, 'cache_temp_bytes': scratch}
+
+
+class Accounting(ctypes.Structure):
+    _fields_ = [('TotalUserTime', ctypes.c_int64), ('TotalKernelTime', ctypes.c_int64),
+        ('ThisPeriodTotalUserTime', ctypes.c_int64), ('ThisPeriodTotalKernelTime', ctypes.c_int64),
+        ('TotalPageFaultCount', w.DWORD), ('TotalProcesses', w.DWORD), ('ActiveProcesses', w.DWORD),
+        ('TotalTerminatedProcesses', w.DWORD)]
+
+
+class JobBasic(ctypes.Structure):
+    _fields_ = [('PerProcessUserTimeLimit', ctypes.c_int64), ('PerJobUserTimeLimit', ctypes.c_int64),
+        ('LimitFlags', w.DWORD), ('MinimumWorkingSetSize', ctypes.c_size_t),
+        ('MaximumWorkingSetSize', ctypes.c_size_t), ('ActiveProcessLimit', w.DWORD),
+        ('Affinity', ctypes.c_size_t), ('PriorityClass', w.DWORD), ('SchedulingClass', w.DWORD)]
+
+
+class IOCounters(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint64) for name in ('ReadOperationCount', 'WriteOperationCount',
+        'OtherOperationCount', 'ReadTransferCount', 'WriteTransferCount', 'OtherTransferCount')]
+
+
+class JobExtended(ctypes.Structure):
+    _fields_ = [('BasicLimitInformation', JobBasic), ('IoInfo', IOCounters),
+        ('ProcessMemoryLimit', ctypes.c_size_t), ('JobMemoryLimit', ctypes.c_size_t),
+        ('PeakProcessMemoryUsed', ctypes.c_size_t), ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+
+class FullFileId(ctypes.Structure):
+    _fields_ = [('volume', ctypes.c_ulonglong), ('identifier', ctypes.c_ubyte * 16)]
+
+
+def full_handle_identity(api, handle):
+    # Same held HANDLE and complete FileIdInfo semantics as the reviewed original,
+    # without importing its unrelated application/native orchestration closure.
+    kernel = api._kernel
+    kernel.GetFileInformationByHandleEx.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD]
+    kernel.GetFileInformationByHandleEx.restype = w.BOOL
+    facts = FullFileId()
+    need(kernel.GetFileInformationByHandleEx(handle, 18, ctypes.byref(facts), ctypes.sizeof(facts)), 'custody_invalid')
+    return facts.volume, int.from_bytes(bytes(facts.identifier), 'little')
+
+
+@dataclass(frozen=True)
+class OwnProof:
+    pid: int
+    creation_time: str
+    executable_sha256: str
+    argv_sha256: str
+
+
+class WinAPI:
+    def __init__(self):
+        self.kernel = kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        declarations = {
+            'QueryInformationJobObject': ([w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'WaitForSingleObject': ([w.HANDLE, w.DWORD], w.DWORD),
+            'GetExitCodeProcess': ([w.HANDLE, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'TerminateProcess': ([w.HANDLE, w.UINT], w.BOOL), 'GetProcessId': ([w.HANDLE], w.DWORD),
+            'GetProcessTimes': ([w.HANDLE, ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME)], w.BOOL),
+            'QueryFullProcessImageNameW': ([w.HANDLE, w.DWORD, w.LPWSTR, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'IsProcessInJob': ([w.HANDLE, w.HANDLE, ctypes.POINTER(w.BOOL)], w.BOOL),
+            'GetWindowsDirectoryW': ([w.LPWSTR, w.UINT], w.UINT),
+            'GetCurrentProcess': ([], w.HANDLE), 'GetCommandLineW': ([], w.LPWSTR),
+            'LocalFree': ([w.HLOCAL], w.HLOCAL),
+            'CreateJobObjectW': ([ctypes.c_void_p, w.LPCWSTR], w.HANDLE),
+            'SetInformationJobObject': ([w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD], w.BOOL),
+            'AssignProcessToJobObject': ([w.HANDLE, w.HANDLE], w.BOOL),
+            'GetHandleInformation': ([w.HANDLE, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'CloseHandle': ([w.HANDLE], w.BOOL)}
+        for name, (arguments, result) in declarations.items():
+            function = getattr(kernel, name)
+            function.argtypes, function.restype = arguments, result
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = kernel.GetWindowsDirectoryW(buffer, len(buffer))
+        need(0 < length < len(buffer), 'scope_invalid')
+        self.windows = Path(buffer.value).resolve(strict=True)
+        self.system32 = self.windows / 'System32'
+        no_link(self.system32)
+        self.shell = ctypes.WinDLL(str(self.system32 / 'shell32.dll'), use_last_error=True)
+        self.shell.CommandLineToArgvW.argtypes = [w.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+        self.shell.CommandLineToArgvW.restype = ctypes.POINTER(w.LPWSTR)
+
+    def own_identity(self):
+        handle, times = self.kernel.GetCurrentProcess(), [w.FILETIME() for _ in range(4)]
+        buffer, length, exit_code = ctypes.create_unicode_buffer(32768), w.DWORD(32768), w.DWORD()
+        pid = self.kernel.GetProcessId(handle)
+        need(pid == os.getpid() and pid > 0 and
+             self.kernel.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)) and
+             self.kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(length)) and
+             self.kernel.GetExitCodeProcess(handle, ctypes.byref(exit_code)) and exit_code.value == 259,
+             'process_identity_invalid')
+        physical = Path(buffer.value).resolve(strict=True)
+        need(physical == PYTHON.resolve(strict=True), 'process_identity_invalid')
+        creation = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+        need(0 < creation <= (1 << 64) - 1, 'process_identity_invalid')
+        command_line = self.kernel.GetCommandLineW()
+        need(type(command_line) is str and 0 < len(command_line) <= 32767, 'process_identity_invalid')
+        count = ctypes.c_int()
+        native_argv = self.shell.CommandLineToArgvW(command_line, ctypes.byref(count))
+        need(bool(native_argv), 'process_identity_invalid')
+        try:
+            need(0 < count.value <= 32, 'process_identity_invalid')
+            argv = [native_argv[index] for index in range(count.value)]
+            need(all(type(value) is str and len(value) <= 32767 for value in argv), 'process_identity_invalid')
+        finally:
+            need(not self.kernel.LocalFree(ctypes.cast(native_argv, w.HLOCAL)), 'cleanup_unverified')
+        need(command_line == self.kernel.GetCommandLineW(), 'process_identity_invalid')
+        serialized = json.dumps(argv, ensure_ascii=True, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        executable_sha = sha(physical, cap=256 << 20)
+        need(executable_sha == PHYSICAL_PYTHON_SHA, 'process_identity_invalid')
+        return OwnProof(pid, str(creation), executable_sha, hashlib.sha256(serialized).hexdigest())
+
+    def accounting(self, job):
+        value, returned = Accounting(), w.DWORD()
+        need(self.kernel.QueryInformationJobObject(job.handle, 1, ctypes.byref(value), ctypes.sizeof(value), ctypes.byref(returned))
+             and returned.value == ctypes.sizeof(value) and value.ActiveProcesses >= 1, 'job_invalid')
+        return {'active_processes': value.ActiveProcesses, 'total_processes': value.TotalProcesses,
+                'terminated_processes': value.TotalTerminatedProcesses}
+
+    def terminal(self, child):
+        status = self.kernel.WaitForSingleObject(child._handle, 0)
+        need(status in {0, 258}, 'process_identity_invalid')
+        return status == 0
+
+    def original_identity(self, child, executable, job):
+        member, times = w.BOOL(), [w.FILETIME() for _ in range(4)]
+        buffer, length = ctypes.create_unicode_buffer(32768), w.DWORD(32768)
+        need(self.kernel.GetProcessId(child._handle) == child.pid and
+             self.kernel.GetProcessTimes(child._handle, *(ctypes.byref(value) for value in times)) and
+             self.kernel.QueryFullProcessImageNameW(child._handle, 0, buffer, ctypes.byref(length)) and
+             self.kernel.IsProcessInJob(child._handle, job.handle, ctypes.byref(member)) and member.value,
+             'process_identity_invalid')
+        need(Path(buffer.value).resolve(strict=True) == executable.resolve(strict=True), 'process_identity_invalid')
+        creation = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+        need(0 < creation <= (1 << 64) - 1, 'process_identity_invalid')
+        return {'pid': child.pid, 'creation_filetime': creation,
+                'original_handle_verified': True, 'owned_job_member': True}
+
+    def stop(self, child):
+        if not self.terminal(child):
+            need(self.kernel.TerminateProcess(child._handle, 70) or self.terminal(child), 'cleanup_unverified')
+
+
+class OwnJob:
+    """Narrow owned-current-process Job; assigned HANDLE persists until exit."""
+    def __init__(self, api):
+        need(os.name == 'nt' and type(api) is WinAPI, 'job_invalid')
+        self.api, self.owner, self.pid = api, api.own_identity(), os.getpid()
+        self.handle = api.kernel.CreateJobObjectW(None, None)
+        need(bool(self.handle), 'job_invalid')
+        limits = JobExtended()
+        # The worker is one active member of its Job. One command child is the
+        # only additional active member allowed; descendants are denied by the
+        # kernel before they can execute, not discovered by the later counter.
+        limits.BasicLimitInformation.LimitFlags = 0x2008
+        limits.BasicLimitInformation.ActiveProcessLimit = 2
+        if not api.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            need(api.kernel.CloseHandle(self.handle), 'cleanup_unverified')
+            self.handle = None
+            raise PreparationError('job_invalid')
+        if not api.kernel.AssignProcessToJobObject(self.handle, api.kernel.GetCurrentProcess()):
+            member = w.BOOL()
+            if not api.kernel.IsProcessInJob(api.kernel.GetCurrentProcess(), self.handle, ctypes.byref(member)) or member.value:
+                os._exit(70)  # Assignment uncertainty: retain HANDLE until death.
+            need(api.kernel.CloseHandle(self.handle), 'cleanup_unverified')
+            self.handle = None
+            raise PreparationError('job_invalid')
+        # No close/context manager/finalizer: kill-on-close remains live at death.
+        try:
+            self.verify_owned_identity()
+        except BaseException:
+            os._exit(70)  # Assigned Job verification uncertainty cannot unwind.
+
+    def verify_owned_identity(self):
+        need(type(self) is OwnJob and self.pid == os.getpid() and self.handle, 'job_invalid')
+        kernel = self.api.kernel
+        member, flags, returned, limits = w.BOOL(), w.DWORD(), w.DWORD(), JobExtended()
+        need(kernel.IsProcessInJob(kernel.GetCurrentProcess(), self.handle, ctypes.byref(member)) and member.value
+             and kernel.GetHandleInformation(self.handle, ctypes.byref(flags)) and flags.value & 1 == 0
+             and kernel.QueryInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits), ctypes.byref(returned))
+             and returned.value == ctypes.sizeof(limits) and limits.BasicLimitInformation.LimitFlags == 0x2008
+             and limits.BasicLimitInformation.ActiveProcessLimit == 2,
+             'job_invalid')
+        current = self.api.own_identity()
+        need(current == self.owner, 'process_identity_invalid')
+        return current
+
+
+def abort_worker(command):
+    # Unknown cleanup must not wait for filesystem/pipe I/O or unwind custody.
+    os._exit(70)
+
+
+@contextmanager
+def cleanup_barrier(api, job):
+    try:
+        yield
+    finally:
+        try:
+            need(api.accounting(job)['active_processes'] == 1, 'cleanup_unverified')
+            job.verify_owned_identity()
+        except BaseException:
+            abort_worker('custody_exit')
+
+
+_OFFLINE_GO_ENV = {
+    'GOENV': 'off', 'GOWORK': 'off', 'GO111MODULE': 'on', 'GOAUTH': 'off',
+    'GOPROXY': 'off', 'GOSUMDB': 'off', 'GOFLAGS': '',
+    'GOPRIVATE': '', 'GONOPROXY': '', 'GONOSUMDB': '', 'GOINSECURE': '',
+    'GOVCS': '*:off', 'GOTOOLCHAIN': 'local',
+}
+_OFFLINE_GO_ENV_KEYS = frozenset({
+    'SYSTEMROOT', 'WINDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA',
+    'TEMP', 'TMP', 'GOTMPDIR', 'PATH', 'GOENV', 'GOWORK', 'GO111MODULE',
+    'GOAUTH', 'GOVCS', 'GOTOOLCHAIN', 'GOOS', 'GOARCH', 'CGO_ENABLED',
+    'GOMAXPROCS', 'GOROOT', 'CC', 'GOPATH', 'GOCACHE', 'GOMODCACHE',
+    'TEST_TELEMETRY_DIR', 'GOPROXY', 'GOSUMDB', 'GOPRIVATE', 'GONOPROXY',
+    'GONOSUMDB', 'GOINSECURE', 'GOFLAGS',
+})
+
+
+def require_offline_go_execution(env, *, online):
+    """Permit only the exact hermetic worker environment for a Go child."""
+    need(type(online) is bool and not online, 'dependency_egress_disabled')
+    need(type(env) is dict and all(type(key) is str and key == key.upper() for key in env),
+         'dependency_egress_disabled')
+    need(set(env) == _OFFLINE_GO_ENV_KEYS and all(type(value) is str for value in env.values()),
+         'dependency_egress_disabled')
+    need(all(env[key] == value for key, value in _OFFLINE_GO_ENV.items()), 'dependency_egress_disabled')
+
+
+def run_owned(name, argv, cwd, env, api, job, budget, cap, stdout_cap, online=False):
+    """Original child HANDLE, reader EOF and root-only Job precede receipt I/O."""
+    require_offline_go_execution(env, online=online)
+    start, child, identity, error, exit_code = time.monotonic(), None, None, None, None
+    before = api.accounting(job)
+    need(before['active_processes'] == 1 and before['terminated_processes'] == 0, 'job_invalid')
+    deadline = start + budget.operation(cap, online)
+    lock, stop_scan = threading.Lock(), threading.Event()
+    failure = {'output': False, 'reader': False, 'monitor': False}
+    streams = {'stdout': {'raw': bytearray(), 'count': 0, 'digest': hashlib.sha256(), 'eof': False},
+               'stderr': {'raw': bytearray(), 'count': 0, 'digest': hashlib.sha256(), 'eof': False}}
+    threads, waited, closed, after = [], False, False, None
+    peaks = resource_scan(budget)
+
+    def reader(pipe, key, limit):
+        try:
+            while True:
+                block = pipe.read1(65536)
+                if not block:
+                    with lock:
+                        streams[key]['eof'] = True
+                    break
+                with lock:
+                    current = streams[key]
+                    current['count'] += len(block)
+                    current['digest'].update(block)
+                    if current['count'] > limit:
+                        failure['output'] = True
+                    elif not failure['output']:
+                        current['raw'].extend(block)
+        except BaseException:
+            with lock:
+                failure['reader'] = True
+
+    def monitor():
+        try:
+            while not stop_scan.is_set():
+                current = resource_scan(budget, stop_scan)
+                if current is None:
+                    return
+                with lock:
+                    for key, value in current.items():
+                        peaks[key] = max(peaks[key], value)
+                stop_scan.wait(1)
+        except BaseException:
+            with lock:
+                failure['monitor'] = True
+
+    try:
+        need(time.monotonic() < deadline and budget.remaining() > 30, 'deadline')
+        child = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+        identity = api.original_identity(child, Path(argv[0]), job)
+        for target, arguments in ((reader, (child.stdout, 'stdout', stdout_cap)),
+                                  (reader, (child.stderr, 'stderr', 1 << 20)), (monitor, ())):
+            thread = threading.Thread(target=target, args=arguments, daemon=True)
+            threads.append(thread)
+            thread.start()
+        while True:
+            budget.remaining()
+            need(time.monotonic() < deadline, 'deadline')
+            with lock:
+                need(not failure['output'], 'output_limit')
+                need(not failure['reader'], 'output_invalid')
+                need(not failure['monitor'], 'resource_monitor_failed')
+            current = api.accounting(job)
+            need(current['total_processes'] <= before['total_processes'] + 1 and current['terminated_processes'] == 0,
+                 'job_invalid')
+            if api.terminal(child):
+                break
+            time.sleep(.02)
+    except BaseException as caught:
+        error = caught.code if isinstance(caught, PreparationError) else 'unclassified_failure'
+    finally:
+        cleanup_end = min(budget.end, time.monotonic() + 10)
+        try:
+            if child is not None:
+                api.stop(child)
+                wait_ms = max(0, int(min(5, cleanup_end - time.monotonic()) * 1000))
+                need(api.kernel.WaitForSingleObject(child._handle, wait_ms) == 0, 'cleanup_unverified')
+                value = w.DWORD()
+                need(api.kernel.GetExitCodeProcess(child._handle, ctypes.byref(value)), 'cleanup_unverified')
+                exit_code, child.returncode, waited = value.value, value.value, True
+            stop_scan.set()
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(max(0, min(5, cleanup_end - time.monotonic())))
+                need(not thread.is_alive(), 'cleanup_unverified')
+            if child is not None:
+                need(len(threads) == 3 and all(streams[key]['eof'] for key in streams), 'cleanup_unverified')
+                child.stdout.close()
+                child.stderr.close()
+            after = api.accounting(job)
+            need(after['active_processes'] == 1 and after['terminated_processes'] == 0 and
+                 after['total_processes'] == before['total_processes'] + (1 if child is not None else 0),
+                 'cleanup_unverified')
+            job.verify_owned_identity()
+            if child is not None:
+                child._handle.Close()
+                closed = True
+        except BaseException:
+            abort_worker(name)
+    resources = resource_scan(budget)
+    for key, value in resources.items():
+        peaks[key] = max(peaks[key], value)
+    record = {'name': name, 'original_identity': identity, 'exit_code': exit_code,
+        'argv': argv, 'cwd': str(cwd), 'environment_sha256': hashlib.sha256(encoded_json(env)).hexdigest(),
+        'elapsed_seconds': time.monotonic() - start, 'known_child_waited': waited,
+        'readers_completed': child is not None and all(item['eof'] for item in streams.values()),
+        'job_before': before, 'job_after': after, 'stop_reason': error,
+        'stdout_bytes': streams['stdout']['count'], 'stderr_bytes': streams['stderr']['count'],
+        'stdout_sha256': streams['stdout']['digest'].hexdigest(), 'stderr_sha256': streams['stderr']['digest'].hexdigest(),
+        'resource_peaks': peaks, 'resources_after': resources}
+    save(name + '-run.json', record, MAX_RECEIPT)
+    need(error is None and exit_code == 0 and waited and closed and not any(failure.values()),
+         error or 'process_failed')
+    return record, bytes(streams['stdout']['raw'])
+
+
+def create_environment(api, mkdir):
+    for name in ('profile', 'profile/appdata', 'profile/localappdata', 'profile/appdata/go',
+                 'profile/appdata/go/telemetry', 'mod-cache', 'go-cache', 'go-path', 'temp', 'download-root'):
+        path = private(HERE / name, must_exist=False)
+        need(not os.path.lexists(win(path)), 'already_attempted')
+        mkdir(path)
+    mode = HERE / 'profile/appdata/go/telemetry/mode'
+    with open(win(mode), 'xb') as output:
+        output.write(b'off\n')
+        output.flush()
+        os.fsync(output.fileno())
+    need(read(mode) == b'off\n', 'pin_changed')
+    for ancestor in (HERE / 'download-root').parents:
+        need(not os.path.lexists(win(ancestor / 'go.mod')) and not os.path.lexists(win(ancestor / 'go.work')), 'scope_invalid')
+    return {'SYSTEMROOT': str(api.windows), 'WINDIR': str(api.windows),
+        'HOME': str(HERE / 'profile'), 'USERPROFILE': str(HERE / 'profile'),
+        'APPDATA': str(HERE / 'profile/appdata'), 'LOCALAPPDATA': str(HERE / 'profile/localappdata'),
+        'TEMP': str(HERE / 'temp'), 'TMP': str(HERE / 'temp'), 'GOTMPDIR': str(HERE / 'temp'),
+        'PATH': str(EXES['gcc'][0].parent) + os.pathsep + str(api.system32),
+        'GOENV': 'off', 'GOWORK': 'off', 'GO111MODULE': 'on', 'GOAUTH': 'off', 'GOVCS': '*:off',
+        'GOTOOLCHAIN': 'local', 'GOOS': 'windows', 'GOARCH': 'amd64', 'CGO_ENABLED': '1', 'GOMAXPROCS': '2',
+        'GOROOT': str(INPUT / 'inputs/go'), 'CC': str(EXES['gcc'][0]),
+        'GOPATH': str(HERE / 'go-path'), 'GOCACHE': str(HERE / 'go-cache'), 'GOMODCACHE': str(HERE / 'mod-cache'),
+        'TEST_TELEMETRY_DIR': str(mode.parent), 'GOPROXY': 'off', 'GOSUMDB': 'off',
+        'GOPRIVATE': '', 'GONOPROXY': '', 'GONOSUMDB': '', 'GOINSECURE': '', 'GOFLAGS': ''}
+
+
+def validate_pair(path, version, code='module_graph_invalid'):
+    need(type(path) is str and type(version) is str and 0 < len(path) <= 1024
+         and 0 < len(version) <= 256, code)
+    parts = path.split('/')
+    host = parts[0]
+    need(len(parts) >= 2 and '.' in host and host == host.lower() and len(host) <= 253
+         and not re.fullmatch(r'[0-9.]+', host) and
+         not host.endswith(('.localhost', '.local', '.internal', '.invalid', '.test', '.example'))
+         and all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]*[a-z0-9])?', label) for label in host.split('.')),
+         code)
+    need(all(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) and part not in {'.', '..'}
+             and not part.endswith('.') for part in parts[1:]), code)
+    need(re.fullmatch(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
+        r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+incompatible)?', version), code)
+    return path, version
+
+
+def parse_inputs(mod_raw, sum_raw):
+    """Pure strict decoder for the exact frozen module contract, with no path seam."""
+    need(type(mod_raw) is bytes and type(sum_raw) is bytes and len(mod_raw) <= 1 << 20
+         and len(sum_raw) <= 4 << 20, 'resource_limit')
+    try:
+        text, sum_text = mod_raw.decode('utf-8', errors='strict'), sum_raw.decode('ascii', errors='strict')
+    except UnicodeError:
+        raise PreparationError('module_graph_invalid') from None
+    sums = {}
+    for line in sum_text.splitlines():
+        parts = line.split(' ')
+        need(len(parts) == 3 and all(parts) and H1.fullmatch(parts[2]), 'checksum_missing')
+        validate_pair(parts[0], parts[1].removesuffix('/go.mod'), 'checksum_missing')
+        digest = base64.b64decode(parts[2][3:], validate=True)
+        need(len(digest) == 32 and base64.b64encode(digest).decode('ascii') == parts[2][3:], 'checksum_missing')
+        key = tuple(parts[:2])
+        need(key not in sums, 'checksum_missing')
+        sums[key] = parts[2]
+    need(len(sums) == 880 and len({(path, version.removesuffix('/go.mod')) for path, version in sums}) == 604,
+         'checksum_missing')
+    required, logical, tools, directives, block, require_blocks = [], set(), set(), set(), None, 0
+    for line in text.splitlines():
+        value = line.split('//', 1)[0].strip()
+        if not value:
+            continue
+        if value == ')':
+            need(block in {'require', 'tool'}, 'module_graph_invalid')
+            block = None
+            continue
+        if block is not None:
+            if block == 'tool':
+                need(value in {'github.com/magefile/mage', 'github.com/swaggo/swag/cmd/swag',
+                               'src.techknowlogick.com/xgo'} and value not in tools, 'module_graph_invalid')
+                tools.add(value)
+                continue
+            parts = value.split()
+            need(len(parts) == 2, 'module_graph_invalid')
+            validate_pair(*parts)
+            need(parts[0] not in logical, 'module_graph_invalid')
+            logical.add(parts[0])
+            pair = effective(*parts)
+            need(pair not in required and pair in sums and (pair[0], pair[1] + '/go.mod') in sums,
+                 'checksum_missing')
+            required.append(pair)
+            continue
+        if value == 'require (':
+            block, require_blocks = 'require', require_blocks + 1
+            need(require_blocks <= 2, 'module_graph_invalid')
+            continue
+        if value == 'tool (':
+            need('tool' not in directives, 'module_graph_invalid')
+            directives.add('tool')
+            block = 'tool'
+            continue
+        permitted = {'module': 'module code.vikunja.io/api', 'go': 'go 1.27.0',
+            'replace': 'replace ' + REPLACED + ' => ' + REPLACEMENT[0] + ' ' + REPLACEMENT[1]}
+        directive = value.split()[0]
+        need(directive in permitted and directive not in directives and value == permitted[directive],
+             'module_graph_invalid')
+        directives.add(directive)
+    need(len(required) == 196 and block is None and require_blocks == 2 and REPLACED in logical
+         and len(tools) == 3 and directives == {'module', 'go', 'replace', 'tool'}, 'module_graph_invalid')
+    return sorted(required), sums
+
+
+def declared_modules():
+    mod_raw, sum_raw = read(SOURCE / 'go.mod'), read(SOURCE / 'go.sum')
+    need(hashlib.sha256(mod_raw).hexdigest() == GO_MOD_SHA and hashlib.sha256(sum_raw).hexdigest() == GO_SUM_SHA,
+         'pin_changed')
+    return parse_inputs(mod_raw, sum_raw)
+
+
+def gomod_sum(raw):
+    summary = hashlib.sha256(raw).hexdigest().encode('ascii') + b'  go.mod\n'
+    return 'h1:' + base64.b64encode(hashlib.sha256(summary).digest()).decode('ascii')
+
+
+def unescape(value):
+    result, offset = '', 0
+    while offset < len(value):
+        char = value[offset]
+        if char == '!':
+            need(offset + 1 < len(value) and 'a' <= value[offset + 1] <= 'z', 'module_graph_invalid')
+            result += value[offset + 1].upper()
+            offset += 2
+        else:
+            result += char
+            offset += 1
+    return result
+
+
+def verify_cached_mods(sums, budget):
+    inventory = tree_inventory(HERE / 'mod-cache', budget)
+    result = []
+    for entry in inventory['entries']:
+        if entry['directory'] or not entry['path'].startswith('cache/') or not entry['path'].endswith('.mod'):
+            continue
+        parts = Path(entry['path']).parts
+        need(parts[:2] == ('cache', 'download') and len(parts) >= 5 and parts[-2] == '@v', 'module_graph_invalid')
+        path, version = unescape('/'.join(parts[2:-2])), unescape(parts[-1][:-4])
+        validate_pair(path, version)
+        canonical = cache_paths(path, version)['GoMod'].relative_to(HERE / 'mod-cache').as_posix()
+        need(entry['path'] == canonical, 'module_graph_invalid')
+        expected = sums.get((path, version + '/go.mod'))
+        need(expected is not None, 'checksum_missing')
+        raw = read(HERE / 'mod-cache' / entry['path'], budget, 8 << 20)
+        need(gomod_sum(raw) == expected, 'module_source_changed')
+        result.append({'path': path, 'version': version, 'go_mod_sum': expected, 'bytes': len(raw),
+                       'sha256': hashlib.sha256(raw).hexdigest()})
+    need(len(result) <= 604, 'resource_limit')
+    return sorted(result, key=lambda item: (item['path'], item['version']))
+
+
+def module_path(raw, directory=False):
+    need(type(raw) is str and raw and len(raw) <= 4096, 'module_download_invalid')
+    path = Path(raw)
+    need(path.is_absolute() and path.is_relative_to(HERE / 'mod-cache') and '..' not in path.parts, 'module_download_invalid')
+    private(path)
+    info = no_link(path)
+    need(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), 'module_download_invalid')
+    return path
+
+
+def escaped(value):
+    return ''.join('!' + char.lower() if 'A' <= char <= 'Z' else char for char in value)
+
+
+def cache_paths(path, version):
+    validate_pair(path, version)
+    cache = HERE / 'mod-cache'
+    base = cache / 'cache/download' / escaped(path) / '@v' / escaped(version)
+    return {'Dir': cache / (escaped(path) + '@' + escaped(version)),
+            'Info': Path(str(base) + '.info'), 'GoMod': Path(str(base) + '.mod'), 'Zip': Path(str(base) + '.zip')}
+
+
+def public_metadata(record, allowed, code):
+    need(type(record) is dict and set(record).issubset(allowed) and 'Error' not in record, code)
+    for key in ('Main', 'Indirect', 'Reuse'):
+        if key in record:
+            need(type(record[key]) is bool, code)
+    need(record.get('Reuse', False) is False, code)
+    for key in ('Path', 'Version', 'Query', 'Time', 'Dir', 'Info', 'GoMod', 'Zip', 'GoVersion', 'Sum', 'GoModSum'):
+        if key in record:
+            need(type(record[key]) is str and 0 < len(record[key]) <= 4096
+                 and not any(ord(char) < 32 for char in record[key]), code)
+    if 'Origin' in record:
+        origin = record['Origin']
+        need(type(origin) is dict and set(origin).issubset({'VCS', 'URL', 'Subdir', 'Hash', 'TagPrefix',
+             'TagSum', 'Ref', 'RepoSum'}) and all(type(value) is str and len(value) <= 4096
+             and not any(ord(char) < 32 for char in value) for value in origin.values()), code)
+        if 'URL' in origin:
+            need(origin['URL'].startswith('https://') and '@' not in origin['URL'].split('/', 3)[2], code)
+    if 'Query' in record:
+        need(record['Query'] == record.get('Version'), code)
+
+
+def download_records(raw, expected, sums, budget):
+    records = json_stream(raw, 32)
+    need(len(records) == len(expected), 'module_download_invalid')
+    wanted, seen, result = set(expected), set(), []
+    for record in records:
+        public_metadata(record, {'Path', 'Version', 'Query', 'Info', 'GoMod', 'Zip', 'Dir', 'Sum',
+            'GoModSum', 'Origin', 'Reuse'}, 'module_download_invalid')
+        pair = (record.get('Path'), record.get('Version'))
+        validate_pair(pair[0], pair[1], 'module_download_invalid')
+        need(pair in wanted and pair not in seen,
+             'module_download_invalid')
+        need(record.get('Sum') == sums[pair] and record.get('GoModSum') == sums[(pair[0], pair[1] + '/go.mod')],
+             'checksum_missing')
+        facts = {'path': pair[0], 'version': pair[1], 'sum': record['Sum'], 'go_mod_sum': record['GoModSum']}
+        paths = cache_paths(*pair)
+        for key, cap in (('Info', 64 << 10), ('GoMod', 8 << 20), ('Zip', 128 << 20)):
+            path = module_path(record.get(key))
+            need(path == paths[key], 'module_download_invalid')
+            facts[key.lower()] = {'path': path.relative_to(HERE).as_posix(), 'bytes': no_link(path).st_size,
+                                 'sha256': sha(path, budget, cap)}
+        need(gomod_sum(read(module_path(record['GoMod']), budget, 8 << 20)) == record['GoModSum'], 'module_source_changed')
+        directory = module_path(record.get('Dir'), directory=True)
+        need(directory == paths['Dir'], 'module_download_invalid')
+        facts['dir'] = directory.relative_to(HERE).as_posix()
+        result.append(facts)
+        seen.add(pair)
+    need(seen == wanted, 'module_download_invalid')
+    return result
+
+
+def batches(modules):
+    need(type(modules) is list and len(modules) <= 604, 'resource_limit')
+    result, current, seen = [], [], set()
+    prefix = [str(EXES['go'][0]), 'mod', 'download', '-json']
+    for item in modules:
+        need(type(item) in {tuple, list} and len(item) == 2, 'module_graph_invalid')
+        path, version = item
+        validate_pair(path, version)
+        need((path, version) not in seen, 'module_graph_invalid')
+        seen.add((path, version))
+        argument = path + '@' + version
+        trial = prefix + current + [argument]
+        if current and (len(current) == 32 or len(subprocess.list2cmdline(trial).encode('utf-16-le')) // 2 > 4096):
+            result.append(current)
+            current = []
+        current.append(argument)
+        need(len(subprocess.list2cmdline(prefix + current).encode('utf-16-le')) // 2 <= 4096, 'resource_limit')
+    if current:
+        result.append(current)
+    return result
+
+
+def effective(path, version):
+    return REPLACEMENT if path == REPLACED else (path, version)
+
+
+def mvs_checksum_context(ordinal, path, version, pair, reason):
+    need(type(ordinal) is int and 1 <= ordinal <= 606, 'receipt_invalid')
+    validate_pair(path, version, 'receipt_invalid')
+    need(type(pair) is tuple and len(pair) == 2, 'receipt_invalid')
+    validate_pair(pair[0], pair[1], 'receipt_invalid')
+    need(pair == effective(path, version), 'receipt_invalid')
+    need(type(reason) is str and reason in {'archive_sum_absent', 'gomod_sum_absent',
+         'archive_sum_mismatch', 'gomod_sum_mismatch'}, 'receipt_invalid')
+    context = {'schema': 1, 'source': 'mvs_records', 'ordinal': ordinal,
+               'logical_path': path, 'logical_version': version,
+               'effective_path': pair[0], 'effective_version': pair[1], 'reason': reason}
+    need(len(encoded_json(context)) <= 4096, 'resource_limit')
+    return context
+
+
+def mvs_records(raw, sums):
+    records, result, seen, main = json_stream(raw, 606), [], set(), 0
+    for ordinal, record in enumerate(records, 1):
+        allowed = {'Path', 'Version', 'Query', 'Replace', 'Time', 'Main', 'Indirect', 'Dir',
+                   'GoMod', 'GoVersion', 'Sum', 'GoModSum', 'Origin', 'Reuse'}
+        public_metadata(record, allowed, 'module_graph_invalid')
+        if record.get('Main') is True:
+            need(record.get('Path') == 'code.vikunja.io/api' and Path(record.get('Dir', '')) == SOURCE
+                 and 'Replace' not in record and 'Version' not in record
+                 and record.get('GoVersion') == '1.27.0'
+                 and Path(record.get('GoMod', '')) == SOURCE / 'go.mod', 'module_graph_invalid')
+            main += 1
+            continue
+        path, version = record.get('Path'), record.get('Version')
+        validate_pair(path, version)
+        need(path not in seen, 'module_graph_invalid')
+        replacement = record.get('Replace')
+        pair = effective(path, version)
+        if path == REPLACED:
+            public_metadata(replacement, allowed - {'Replace', 'Main'}, 'module_graph_invalid')
+            need(type(replacement) is dict and (replacement.get('Path'), replacement.get('Version')) == REPLACEMENT
+                 and not replacement.get('Main'), 'module_graph_invalid')
+            need('Sum' not in record and 'GoModSum' not in record, 'module_graph_invalid')
+        else:
+            need(replacement is None, 'module_graph_invalid')
+        physical = replacement if replacement is not None else record
+        paths = cache_paths(*pair)
+        # Pinned Go mirrors replacement Dir/GoMod onto the logical wrapper.
+        claims = (record, physical) if replacement is not None else (physical,)
+        archive_required = any('Dir' in claim for claim in claims) or 'Sum' in physical
+        gomod_required = any('Dir' in claim or 'GoMod' in claim for claim in claims) or 'GoModSum' in physical
+        for required, key, reason in ((archive_required, pair, 'archive_sum_absent'),
+                (gomod_required, (pair[0], pair[1] + '/go.mod'), 'gomod_sum_absent')):
+            if required:
+                try:
+                    need(key in sums, 'checksum_missing')
+                except PreparationError as caught:
+                    caught.mvs_error_context = mvs_checksum_context(ordinal, path, version, pair, reason)
+                    raise
+        for claim in claims:
+            for key in ('Dir', 'GoMod'):
+                if key in claim:
+                    need(Path(claim[key]) == paths[key], 'module_graph_invalid')
+        for key, expected in (('Sum', sums.get(pair)), ('GoModSum', sums.get((pair[0], pair[1] + '/go.mod')))):
+            if key in physical:
+                try:
+                    need(physical[key] == expected, 'checksum_missing')
+                except PreparationError as caught:
+                    caught.mvs_error_context = mvs_checksum_context(ordinal, path, version, pair,
+                        'archive_sum_mismatch' if key == 'Sum' else 'gomod_sum_mismatch')
+                    raise
+        result.append({'logical_path': path, 'logical_version': version, 'path': pair[0], 'version': pair[1]})
+        seen.add(path)
+    need(main == 1 and 0 < len(result) <= 604, 'module_graph_invalid')
+    return sorted(result, key=lambda item: item['logical_path'])
+
+
+def eligible_mvs(mvs, sums):
+    """Select acquisitions without discarding any record from the complete MVS catalog."""
+    need(type(mvs) is list and 0 < len(mvs) <= 604 and type(sums) is dict, 'module_graph_invalid')
+    result, logical = set(), set()
+    for item in mvs:
+        need(type(item) is dict and set(item) == {'logical_path', 'logical_version', 'path', 'version'},
+             'module_graph_invalid')
+        validate_pair(item['logical_path'], item['logical_version'])
+        pair = validate_pair(item['path'], item['version'])
+        need(item['logical_path'] not in logical and pair == effective(item['logical_path'], item['logical_version']),
+             'module_graph_invalid')
+        logical.add(item['logical_path'])
+        if pair in sums and (pair[0], pair[1] + '/go.mod') in sums:
+            result.add(pair)
+    return sorted(result)
+
+
+def validate_acquired_cache(inventory, acquired, sums):
+    """Check metadata paths before reading cached archive or extracted source bytes."""
+    need(type(inventory) is dict and type(inventory.get('entries')) is list
+         and type(acquired) in {set, frozenset} and len(acquired) <= 604 and type(sums) is dict,
+         'module_download_invalid')
+    roots, archives = set(), set()
+    for pair in acquired:
+        need(type(pair) is tuple and len(pair) == 2, 'module_download_invalid')
+        validate_pair(pair[0], pair[1], 'module_download_invalid')
+        need(pair in sums and (pair[0], pair[1] + '/go.mod') in sums, 'checksum_missing')
+        paths = cache_paths(*pair)
+        roots.add(paths['Dir'].relative_to(HERE / 'mod-cache').as_posix())
+        archives.add(paths['Zip'].relative_to(HERE / 'mod-cache').as_posix())
+    need(len(inventory['entries']) <= 165000, 'resource_limit')
+    seen, present_roots, present_archives = set(), set(), set()
+    for entry in inventory['entries']:
+        need(type(entry) is dict and set(entry) == {'path', 'directory', 'size'}
+             and type(entry['directory']) is bool and type(entry['size']) is int and entry['size'] >= 0,
+             'module_download_invalid')
+        relative_name(entry['path'])
+        name = entry['path']
+        need(name not in seen, 'module_download_invalid')
+        seen.add(name)
+        if name == 'cache' or name.startswith('cache/'):
+            need(name != 'cache' or entry['directory'], 'module_download_invalid')
+            if name.endswith('.mod'):
+                parts = Path(name).parts
+                need(not entry['directory'] and parts[:2] == ('cache', 'download')
+                     and len(parts) >= 5 and parts[-2] == '@v', 'module_download_invalid')
+                path, version = unescape('/'.join(parts[2:-2])), unescape(parts[-1][:-4])
+                validate_pair(path, version, 'module_download_invalid')
+                canonical = cache_paths(path, version)['GoMod'].relative_to(HERE / 'mod-cache').as_posix()
+                need(name == canonical, 'module_download_invalid')
+                need((path, version + '/go.mod') in sums, 'checksum_missing')
+            if name.endswith(('.zip', '.ziphash')):
+                archive = name.removesuffix('hash') if name.endswith('.ziphash') else name
+                need(not entry['directory'] and archive in archives, 'module_download_invalid')
+                if name == archive:
+                    present_archives.add(archive)
+            continue
+        inside = any(name == root or name.startswith(root + '/') for root in roots)
+        if entry['directory']:
+            need(inside or any(root.startswith(name + '/') for root in roots), 'module_download_invalid')
+            if name in roots:
+                present_roots.add(name)
+        else:
+            need(any(name.startswith(root + '/') for root in roots), 'module_download_invalid')
+    need(present_roots == roots and present_archives == archives, 'module_download_invalid')
+
+
+def verify_acquired_cache(acquired, sums, budget):
+    inventory = tree_inventory(HERE / 'mod-cache', budget)
+    validate_acquired_cache(inventory, acquired, sums)
+    return inventory
+
+
+def graph_records(raw, sums, *, loaded=None):
+    need(type(loaded) is list and len(loaded) <= 604, 'module_graph_invalid')
+    loaded_pairs = set()
+    for item in loaded:
+        need(type(item) is dict and {'path', 'version', 'go_mod_sum'}.issubset(item)
+             and set(item).issubset({'path', 'version', 'go_mod_sum', 'bytes', 'sha256'}), 'module_graph_invalid')
+        pair = validate_pair(item['path'], item['version'])
+        need(pair not in loaded_pairs and (pair[0], pair[1] + '/go.mod') in sums
+             and item['go_mod_sum'] == sums[(pair[0], pair[1] + '/go.mod')], 'checksum_missing')
+        if 'bytes' in item:
+            need(type(item['bytes']) is int and 0 <= item['bytes'] <= 8 << 20, 'module_graph_invalid')
+        if 'sha256' in item:
+            need(type(item['sha256']) is str and S_HASH.fullmatch(item['sha256']), 'module_graph_invalid')
+        loaded_pairs.add(pair)
+    try:
+        lines = raw.decode('utf-8', errors='strict').splitlines()
+    except UnicodeError:
+        raise PreparationError('module_graph_invalid') from None
+    need(0 < len(lines) <= 20000, 'resource_limit')
+    vertices, virtual, edges, seen_edges = set(), set(), [], set()
+    for line in lines:
+        parts = line.split(' ')
+        need(len(parts) == 2 and all(parts) and tuple(parts) not in seen_edges, 'module_graph_invalid')
+        for offset, value in enumerate(parts):
+            if value == 'code.vikunja.io/api':
+                continue
+            need(value.count('@') == 1, 'module_graph_invalid')
+            path, version = value.split('@')
+            if path in {'go', 'toolchain'}:
+                need(re.fullmatch(r'(?:go)?\d+\.\d+(?:\.\d+)?', version), 'module_graph_invalid')
+                virtual.add(value)
+                continue
+            validate_pair(path, version)
+            pair = effective(path, version)
+            if offset == 0:
+                need(pair in loaded_pairs, 'module_graph_invalid')
+            vertices.add(pair)
+        seen_edges.add(tuple(parts))
+        edges.append(parts)
+    need(len(vertices) <= 604, 'resource_limit')
+    return {'edges': sorted(edges), 'effective_dependency_vertices': [list(pair) for pair in sorted(vertices)],
+            'virtual_vertices': sorted(virtual)}
+
+
+def hash_cache(budget):
+    result = tree_inventory(HERE / 'mod-cache', budget)
+    for entry in result['entries']:
+        if not entry['directory']:
+            entry['sha256'] = sha(HERE / 'mod-cache' / entry['path'], budget)
+    return result
+
+
+def discovery_records(raw, test, budget, *, mvs=None, sums=None, acquired=None):
+    need(type(test) is bool, 'discovery_invalid')
+    records, files, packages = json_stream(raw, 2500), {}, []
+    allowed_keys = set(METADATA_FIELDS.split(','))
+    target_seen, total, seen_packages = False, 0, set()
+    module_catalog = {} if mvs is None else {item['logical_path']: item for item in mvs}
+    main_path = 'code.vikunja.io/api'
+    target_path = main_path + '/cmd/read-observation'
+    for record in records:
+        need(set(record).issubset(allowed_keys) and 'Error' not in record and not record.get('DepsErrors')
+             and record.get('Incomplete', False) is False, 'discovery_invalid')
+        need(type(record.get('Dir')) is str and type(record.get('ImportPath')) is str
+             and type(record.get('Name')) is str and record['Name'], 'discovery_invalid')
+        name, directory = record['ImportPath'], Path(record['Dir'])
+        need(name and name not in seen_packages and directory.is_absolute() and '..' not in directory.parts
+             and type(record.get('Standard', False)) is bool, 'discovery_invalid')
+        seen_packages.add(name)
+        roots = (SOURCE, INPUT / 'inputs/go/src', HERE / 'mod-cache')
+        need(any(directory.is_relative_to(root) for root in roots), 'discovery_invalid')
+        need(name != main_path + '/pkg/routes' and not name.startswith(main_path + '/pkg/routes ['), 'discovery_invalid')
+        for field in ('Root', 'ForTest'):
+            if field in record:
+                need(type(record[field]) is str and record[field], 'discovery_invalid')
+        module = record.get('Module')
+        if record.get('Standard', False):
+            need(directory.is_relative_to(INPUT / 'inputs/go/src') and module is None
+                 and Path(record.get('Root', '')) == INPUT / 'inputs/go', 'discovery_invalid')
+        else:
+            need(type(module) is dict, 'discovery_invalid')
+            if directory.is_relative_to(SOURCE):
+                need(Path(record.get('Root', '')) == SOURCE, 'discovery_invalid')
+            public_metadata(module, {'Path', 'Version', 'Query', 'Replace', 'Time', 'Main', 'Indirect',
+                'Dir', 'GoMod', 'GoVersion', 'Sum', 'GoModSum', 'Origin', 'Reuse'}, 'discovery_invalid')
+            if directory.is_relative_to(SOURCE):
+                need(module.get('Main') is True and module.get('Path') == main_path
+                     and Path(module.get('Dir', '')) == SOURCE and Path(module.get('GoMod', '')) == SOURCE / 'go.mod'
+                     and module.get('GoVersion') == '1.27.0' and 'Replace' not in module
+                     and 'Version' not in module and name.startswith(main_path + '/'), 'discovery_invalid')
+            else:
+                need(mvs is not None and sums is not None and type(acquired) in {set, frozenset}
+                     and directory.is_relative_to(HERE / 'mod-cache')
+                     and module.get('Main', False) is False, 'discovery_invalid')
+                logical = module.get('Path')
+                need(logical in module_catalog, 'discovery_invalid')
+                item = module_catalog[logical]
+                need(module.get('Version') == item['logical_version'], 'discovery_invalid')
+                pair = (item['path'], item['version'])
+                need(pair == effective(logical, item['logical_version']), 'discovery_invalid')
+                need(pair in sums and (pair[0], pair[1] + '/go.mod') in sums, 'checksum_missing')
+                need(pair in acquired, 'discovery_invalid')
+                if logical == REPLACED:
+                    need(type(module.get('Replace')) is dict and 'Sum' not in module and 'GoModSum' not in module,
+                         'discovery_invalid')
+                else:
+                    need('Replace' not in module, 'discovery_invalid')
+                physical = module.get('Replace', module)
+                public_metadata(physical, {'Path', 'Version', 'Query', 'Time', 'Indirect', 'Dir', 'GoMod',
+                    'GoVersion', 'Sum', 'GoModSum', 'Origin', 'Reuse'}, 'discovery_invalid')
+                need((physical.get('Path'), physical.get('Version')) == (item['path'], item['version']), 'discovery_invalid')
+                paths = cache_paths(item['path'], item['version'])
+                for key in ('Dir', 'GoMod'):
+                    if key in module:
+                        need(Path(module[key]) == paths[key], 'discovery_invalid')
+                need(Path(physical.get('Dir', '')) == paths['Dir'] and directory.is_relative_to(paths['Dir'])
+                     and Path(physical.get('GoMod', '')) == paths['GoMod']
+                     and (name == logical or name.startswith(logical + '/')), 'discovery_invalid')
+                for key, expected in (('Sum', sums[(item['path'], item['version'])]),
+                    ('GoModSum', sums[(item['path'], item['version'] + '/go.mod')])):
+                    if key in physical:
+                        need(physical[key] == expected, 'checksum_missing')
+        if name == target_path:
+            target_seen = True
+        if record.get('ForTest'):
+            need(test and record['ForTest'] == target_path, 'discovery_invalid')
+        for field in ('Imports', 'Deps', 'TestImports', 'XTestImports', 'IgnoredGoFiles', 'IgnoredOtherFiles',
+                'EmbedPatterns', 'TestEmbedPatterns', 'XTestEmbedPatterns', 'CgoCFLAGS', 'CgoCPPFLAGS',
+                'CgoCXXFLAGS', 'CgoFFLAGS', 'CgoLDFLAGS', 'CgoPkgConfig'):
+            if field in record:
+                need(type(record[field]) is list and len(record[field]) <= 25000
+                     and all(type(value) is str and value and len(value) <= 4096 for value in record[field]), 'discovery_invalid')
+        if 'ImportMap' in record:
+            need(type(record['ImportMap']) is dict and all(type(key) is str and type(value) is str
+                 and key and value for key, value in record['ImportMap'].items()), 'discovery_invalid')
+        need(type(record.get('DepsErrors', [])) is list, 'discovery_invalid')
+        fields = list(FILE_FIELDS)
+        if test and record.get('ForTest') == 'code.vikunja.io/api/cmd/read-observation':
+            fields += ['TestGoFiles', 'XTestGoFiles', 'TestEmbedFiles', 'XTestEmbedFiles']
+        package_files = []
+        for field in fields:
+            names = record.get(field, [])
+            need(type(names) is list and len(names) <= 25000, 'discovery_invalid')
+            for value in names:
+                need(type(value) is str and value, 'discovery_invalid')
+                need(value != 'main_test.go' or directory == SOURCE / 'cmd/read-observation', 'discovery_invalid')
+                raw_path = Path(value)
+                if raw_path.is_absolute():
+                    path = raw_path
+                    need(test and path.is_relative_to(HERE / 'go-cache') and path.name.endswith('-d'), 'discovery_invalid')
+                else:
+                    path = directory / relative_name(value)
+                need(any(path.is_relative_to(root) for root in (*roots, HERE / 'go-cache')), 'discovery_invalid')
+                info = no_link(path)
+                need(stat.S_ISREG(info.st_mode) and info.st_size <= 64 << 20, 'resource_limit')
+                relative = path.relative_to(ROOT).as_posix()
+                if relative not in files:
+                    total += info.st_size
+                    need(total <= 512 << 20 and len(files) < 25000, 'resource_limit')
+                    files[relative] = {'path': relative, 'bytes': info.st_size, 'sha256': sha(path, budget, 64 << 20),
+                                       'effect': 'UNKNOWN', 'selected_by': []}
+                files[relative]['selected_by'].append({'package': name, 'field': field})
+                package_files.append(relative)
+        packages.append({'metadata': record, 'selected_files': sorted(set(package_files)), 'init_effect': 'UNKNOWN'})
+    need(target_seen and records, 'discovery_invalid')
+    return {'kind': 'selected_test' if test else 'selected_runtime', 'closure_admission': 'UNKNOWN',
+            'source_init_execution': False, 'packages': packages, 'files': sorted(files.values(), key=lambda item: item['path']),
+            'selected_bytes': total}
+
+
+def main():
+    beginning = time.monotonic()
+    budget, timer, started = Budget(), None, False
+    try:
+        timer = threading.Timer(budget.remaining(), lambda: os._exit(70))
+        timer.daemon = True
+        timer.start()
+    except BaseException:
+        os._exit(70)
+    api = job = None
+    result = {'protocol': 1, 'status': 'FAILED_NOT_QUALIFIED', 'stage': 'preflight', 'code': 'unclassified_failure',
+        'activation_supported': False, 'native_api_qualified': False, 'full_r4_qualified': False,
+        'mapped_image_provenance': False, 'root_card_closed': False, 'closure_admission': 'UNKNOWN',
+        'source_init_execution': False, 'builds': 0, 'tests': 0, 'sql_calls': 0,
+        'paid_calls': 0, 'owner_calls': 0, 'host_mutations': 0, 'commands': []}
+    held_sessions, full_ids = {}, {}
+    input_traces = {}
+
+    def stage(name):
+        need(name in STAGES, 'scope_invalid')
+        result['stage'] = name
+        print('stage:' + name, flush=True)
+
+    def command(name, arguments, cwd, env, online=False, discovery=False):
+        need(len(result['commands']) < MAX_COMMANDS, 'resource_limit')
+        record, output = run_owned(name, [str(EXES['go'][0])] + arguments, cwd, env, api, job, budget,
+                                  120 if name.startswith(('declared-', 'remaining-')) else 90,
+                                  16 << 20 if discovery else 4 << 20, online or name == 'module-graph')
+        result['commands'].append(record)
+        return output
+
+    def download(label, modules, sums, env):
+        records = []
+        for index, batch in enumerate(batches(modules), 1):
+            expected = [tuple(item.rsplit('@', 1)) for item in batch]
+            output = command(label + '-' + str(index).zfill(3), ['mod', 'download', '-json'] + batch,
+                             HERE / 'download-root', env, online=True)
+            records.extend(download_records(output, expected, sums, budget))
+            verify_cached_mods(sums, budget)
+        return records
+
+    try:
+        need(os.name == 'nt' and sys.dont_write_bytecode and sys.argv[1:] == ['--dependency-metadata-only'], 'scope_invalid')
+        stage('preflight')
+        result['launch_pins_sha256'] = check_pins(budget)
+        need(not os.path.lexists(win(HERE / 'attempt.json')), 'already_attempted')
+        save('attempt.json', {'kind': 'DEPENDENCY_METADATA_ONLY', 'run_count': 1, 'contract_sha256': CONTRACT_SHA}, MAX_RECEIPT)
+        started = True
+        sys.path.insert(0, str(ROOT / 'backend'))
+        from secretary.infrastructure.restore_operator import protected_scope, create_private_directory
+        from secretary.infrastructure.restore_native_custody import _native_file_custody
+        with protected_scope(HERE), protected_scope(INPUT), protected_scope(PROFILE), protected_scope(PYTHON_CARD):
+            result['source_before'] = source_check(budget)
+            result['source_profile_before'] = profile_check(budget)
+            result['original_source_before'] = original_source_check(budget)
+            input_traces['before'] = TraceRecorder()
+            result['inputs_before'] = observe_inputs(sys.modules[__name__], input_traces['before'], budget)
+            result['runtime_before'] = runtime_check(budget)
+            api = WinAPI()
+            job = OwnJob(api)
+            result['job_owner'] = asdict(job.verify_owned_identity())
+            need(result['job_owner']['pid'] == os.getpid() and result['job_owner']['executable_sha256'] == PHYSICAL_PYTHON_SHA,
+                 'scope_invalid')
+            need(api.accounting(job) == {'active_processes': 1, 'total_processes': 1, 'terminated_processes': 0}, 'job_invalid')
+            env = create_environment(api, create_private_directory)
+            result['environment_manifest'] = save('child-environment.json', env, MAX_RECEIPT)
+            bound_files = {'python': (PYTHON, PHYSICAL_PYTHON_SHA), **EXES,
+                'go_mod': (SOURCE / 'go.mod', GO_MOD_SHA), 'go_sum': (SOURCE / 'go.sum', GO_SUM_SHA),
+                'profile_manifest': (PROFILE / 'source-preparation-manifest.json', PROFILE_MANIFEST_SHA),
+                'source_closure': (PROFILE / 'closed-source-profile-card.json', SOURCE_CLOSURE_SHA),
+                'telemetry_mode': (HERE / 'profile/appdata/go/telemetry/mode', hashlib.sha256(b'off\n').hexdigest())}
+            with ExitStack() as held, cleanup_barrier(api, job):
+                for name, (path, expected) in bound_files.items():
+                    session = held.enter_context(_native_file_custody(path))
+                    need(session.baseline.sha256 == expected and session.state == 'initial_nowrite', 'pin_changed')
+                    held_sessions[name] = session
+                    identity = full_handle_identity(session._api, session._current)
+                    full_ids[name] = {'before': list(identity)}
+                declared, sums = declared_modules()
+                stage('declared_download')
+                downloads = download('declared-download', declared, sums, env)
+                stage('mvs_graph')
+                list_env = dict(env, GOFLAGS='-mod=readonly -buildvcs=false')
+                result['list_environment_manifest'] = save('list-environment.json', list_env, MAX_RECEIPT)
+                mvs = mvs_records(command('mvs-list', ['list', '-mod=readonly', '-buildvcs=false', '-m', '-json', 'all'],
+                                          SOURCE, list_env, online=True), sums)
+                acquired = {(item['path'], item['version']) for item in downloads}
+                verify_acquired_cache(acquired, sums, budget)
+                cached = verify_cached_mods(sums, budget)
+                graph_env = dict(env, GOPROXY='off', GOSUMDB='off', GOFLAGS='')
+                result['graph_environment_manifest'] = save('graph-environment.json', graph_env, MAX_RECEIPT)
+                graph_cache_before = hash_cache(budget)
+                graph_raw = command('module-graph', ['mod', 'graph'], SOURCE, graph_env)
+                verify_acquired_cache(acquired, sums, budget)
+                graph_cached = verify_cached_mods(sums, budget)
+                need(graph_cached == cached, 'module_source_changed')
+                graph_cache_after = hash_cache(budget)
+                need(graph_cache_before == graph_cache_after, 'module_source_changed')
+                graph = graph_records(graph_raw, sums, loaded=cached)
+                stage('remaining_download')
+                remaining = sorted(set(eligible_mvs(mvs, sums)) - acquired)
+                downloads += download('remaining-download', remaining, sums, env)
+                acquired = {(item['path'], item['version']) for item in downloads}
+                verify_acquired_cache(acquired, sums, budget)
+                cached = verify_cached_mods(sums, budget)
+                selected_pairs = {(item['path'], item['version']) for item in mvs}
+                need(selected_pairs.issubset({tuple(pair) for pair in graph['effective_dependency_vertices']}), 'module_graph_invalid')
+                tools = []
+                for package, module_name in (('github.com/magefile/mage', 'github.com/magefile/mage'),
+                        ('github.com/swaggo/swag/cmd/swag', 'github.com/swaggo/swag'),
+                        ('src.techknowlogick.com/xgo', 'src.techknowlogick.com/xgo')):
+                    selected = [item for item in mvs if item['logical_path'] == module_name]
+                    need(len(selected) == 1, 'module_graph_invalid')
+                    tools.append({'package': package, 'module': selected[0], 'execution': 'NOT_RUN'})
+                result['module_manifest'] = save('module-download-manifest.json', {'modules': downloads, 'cached_go_mods': cached})
+                result['graph_manifest'] = save('module-graph-manifest.json', {'mvs': mvs, 'tool_modules': tools, **graph})
+                cache_before = hash_cache(budget)
+                offline = dict(list_env, GOPROXY='off', GOSUMDB='off')
+                result['offline_environment_manifest'] = save('offline-environment.json', offline, MAX_RECEIPT)
+                stage('runtime_discovery')
+                arguments = ['list', '-mod=readonly', '-buildvcs=false', '-deps', '-json=' + METADATA_FIELDS]
+                runtime = discovery_records(command('runtime-discovery', arguments + ['./cmd/read-observation'], SOURCE,
+                                                     offline, discovery=True), False, budget, mvs=mvs, sums=sums, acquired=acquired)
+                result['runtime_manifest'] = save('runtime-discovery-manifest.json', runtime)
+                stage('test_discovery')
+                verify_acquired_cache(acquired, sums, budget)
+                verify_cached_mods(sums, budget)
+                tests = discovery_records(command('test-discovery', arguments + ['-test', './cmd/read-observation'], SOURCE,
+                                                   offline, discovery=True), True, budget, mvs=mvs, sums=sums, acquired=acquired)
+                result['test_manifest'] = save('test-discovery-manifest.json', tests)
+                verify_acquired_cache(acquired, sums, budget)
+                verify_cached_mods(sums, budget)
+                cache_after = hash_cache(budget)
+                need(cache_before == cache_after, 'module_source_changed')
+                result['module_cache_manifest'] = save('module-cache-manifest.json', cache_after)
+                for name, session in held_sessions.items():
+                    identity = full_handle_identity(session._api, session._current)
+                    need(list(identity) == full_ids[name]['before'] and session.state == 'initial_nowrite', 'custody_invalid')
+                    full_ids[name]['after'] = list(identity)
+            result['custody_closed_receipts'] = {name: asdict(session.receipt) for name, session in held_sessions.items()}
+            result['custody_full_ids'] = full_ids
+            need(all(item['closed'] is True for item in result['custody_closed_receipts'].values()), 'custody_invalid')
+            stage('final_verification')
+            result['source_after'] = source_check(budget)
+            result['source_profile_after'] = profile_check(budget)
+            result['original_source_after'] = original_source_check(budget)
+            input_traces['after'] = TraceRecorder()
+            result['inputs_after'] = observe_inputs(sys.modules[__name__], input_traces['after'], budget)
+            result['runtime_after'] = runtime_check(budget)
+            need(result['source_before'] == result['source_after'] and result['source_profile_before'] == result['source_profile_after']
+                 and result['inputs_before'] == result['inputs_after'] and result['runtime_before'] == result['runtime_after'], 'pin_changed')
+            need(result['original_source_before'] == result['original_source_after'], 'pin_changed')
+            result['job_final'] = api.accounting(job)
+            need(result['job_final'] == {'active_processes': 1, 'total_processes': len(result['commands']) + 1,
+                                         'terminated_processes': 0}, 'job_invalid')
+            job.verify_owned_identity()
+            result['resources_final'] = resource_scan(budget)
+            need(read(HERE / 'profile/appdata/go/telemetry/mode', budget) == b'off\n', 'pin_changed')
+            check_pins(budget)
+        result.update(status='METADATA_PREPARATION_ONLY_PASS', code=None)
+        stage('closed')
+    except BaseException as caught:
+        result.update(status='FAILED_NOT_QUALIFIED', code=caught.code if isinstance(caught, PreparationError) else 'unclassified_failure')
+        if started and api is not None and job is not None:
+            try:
+                need(api.accounting(job)['active_processes'] == 1, 'cleanup_unverified')
+                job.verify_owned_identity()
+            except BaseException:
+                abort_worker('worker_final')
+        if (isinstance(caught, PreparationError) and result['status'] == 'FAILED_NOT_QUALIFIED'
+                and result['stage'] == 'mvs_graph' and result['code'] == 'checksum_missing'):
+            context = getattr(caught, 'mvs_error_context', None)
+            if context is not None:
+                result['mvs_error_context'] = context
+    try:
+        budget.remaining()
+        for label, trace in input_traces.items():
+            result['inputs_trace_' + label] = trace.snapshot()
+        result['elapsed_seconds'] = time.monotonic() - beginning
+        need(math.isfinite(result['elapsed_seconds']) and 0 <= result['elapsed_seconds'] <= 1500, 'deadline')
+        save('dependency-receipt.json', result, MAX_RECEIPT)
+        print(json.dumps({key: result[key] for key in ('status', 'stage', 'code')}, sort_keys=True), flush=True)
+        budget.remaining()
+        timer.cancel()
+        if timer.ident is not None:
+            timer.join(1)
+        need(not timer.is_alive(), 'cleanup_unverified')
+        need(time.monotonic() - beginning <= 1500, 'deadline')
+    except BaseException:
+        abort_worker('final_publication')
+    return 0 if result['status'] == 'METADATA_PREPARATION_ONLY_PASS' else 70
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

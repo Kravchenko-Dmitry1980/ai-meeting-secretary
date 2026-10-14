@@ -1,5 +1,9 @@
 # Secretary Team: журнал реализации
 
+> Текущая точка входа на 14.10.2026: [аудит готовности](PRODUCTION_AUDIT_2026-10-14.md)
+> и [план Luna на 7 дней](DEVELOPMENT_PLAN_LUNA6_7_DAYS.md). Ниже сохранена история;
+> старые fixture URL и описания процессов не означают, что они работают сейчас.
+
 ## Текущая проверка — 2026-10-14, 00:54 МСК: новый fixture и read-only doctor
 
 После истечения предыдущей fixture запущен свежий `HTTP_SYNTHETIC_UI_ONLY` run `t9-http-ui-85cd1fb3f87e4d7fb76dd4f8657af177` на `localhost:62637` (PID 3384, TTL 30 минут). `/fixture`, `/team/`, `/fixture/status` → HTTP 200; анонимный `/api/team/v1/me` → 401. Только синтетические данные и mock Vikunja. Ручной PASS за видимость карточек относится к предыдущему run; предпросмотр команды пока ожидает ответа.

@@ -1,0 +1,40 @@
+{
+  "schema": "secretary-offline-egress-reproduction-todo-v1",
+  "status": "SOURCE_REPRODUCTION_TODO_NOT_LAUNCHABLE",
+  "reason": "Current worker/parent bind historical host directories, runtime receipts and private toolchain inventories. Their code is archived byte-identically as .py.txt, without portable launch qualification.",
+  "retained_local_sources": [
+    {
+      "name": "check_dependencies.py",
+      "bytes": 98056,
+      "sha256": "d03d86ddf05f5b5deaf3491a8fc97472bafb917310c06cb338e814fe137a1f00"
+    },
+    {
+      "name": "run_dependencies.py",
+      "bytes": 50593,
+      "sha256": "16ccf65d6483c34f3ae2f1592dbcff3a1ed3d69dfcb27f2cbe5f968be37bad10"
+    },
+    {
+      "name": "test_dependency_egress_guard.py",
+      "bytes": 4177,
+      "sha256": "b9b88b51440f215d06519894c38e995283b30cac4c1a7cf1ac60348fe58bf592"
+    },
+    {
+      "name": "test_worker_error_receipt.py",
+      "bytes": 3181,
+      "sha256": "a9d7d026dd8408048bfa095b5fef30f945ab78dcefde5fc672b7d0a70a298212"
+    }
+  ],
+  "required_work": [
+    "Make input binding explicit and fail closed before filesystem/process/network activity.",
+    "Retain deny-all Go environment key-set/value guard before child launch.",
+    "Port the two pure test sources without native or Go invocation.",
+    "Create fresh launch evidence and independent review; do not reuse historical receipts."
+  ],
+  "not_included": [
+    "private runtime receipts",
+    "Go module path/version candidate list",
+    "toolchain binaries or caches",
+    "upstream source archive"
+  ],
+  "network_authorization": "OFFLINE_ONLY"
+}

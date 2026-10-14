@@ -2,6 +2,21 @@
 
 Локальное приложение для русских совещаний на Windows: запись микрофона и системного звука, импорт аудио/видео, хранение на диске, облачная обработка через Polza, протокол с ссылками на расшифровку. Запись и импорт доступны без API-ключа. Реальное качество облачных моделей ещё не измерено.
 
+## Текущий этап и дальнейшая работа — 14.10.2026
+
+Основной локальный сценарий просмотра готовой встречи проверен. Командные
+сценарии имеют автоматизированные проверки, но полный цикл с реальными MAX,
+телефонами и восстановлением ещё не принят. Это подготовка к пилоту, а не
+объявление готовности production.
+
+- [Аудит текущего состояния и критерии готовности](docs/PRODUCTION_AUDIT_2026-10-14.md)
+- [План на 7 дней для Luna 6](docs/DEVELOPMENT_PLAN_LUNA6_7_DAYS.md)
+- [Стартовый промпт для Luna 6](docs/LUNA6_IMPLEMENTATION_PROMPT.md)
+- [Проверка сохранённой 69-минутной встречи](docs/SAVED_MEETING_REVIEW_2026-10-14.md)
+
+Начинайте продолжение с этих документов. Старые журналы содержат исторические
+checkpoint и истёкшие адреса временных стендов; они не являются текущей очередью задач.
+
 ## Запуск
 
 Из PowerShell, независимо от текущей папки:
@@ -49,7 +64,7 @@ API/OpenAPI: `/docs`, `/openapi.json`; префикс `/api/v1`. Браузер�
 
 ```powershell
 Set-Location -LiteralPath 'D:\AI\Projects\Active\Secretary'
-& '.\.venv\Scripts\python.exe' -m pytest -q
+& '.\.venv\Scripts\python.exe' -B scripts/run_offline_tests.py tests audit/tests -q
 Push-Location frontend
 npm.cmd run test:processing
 npm.cmd run typecheck
@@ -57,6 +72,11 @@ npm.cmd run lint
 npm.cmd run build
 Pop-Location
 ```
+
+Guarded offline runner изолирует проверки и ограничивает хранение новых
+`pytest-temp`; прямой вызов `pytest` не использует эту политику. Подробности:
+[OFFLINE_TEST_RETENTION.md](docs/OFFLINE_TEST_RETENTION.md). Полный набор запускайте
+перед release candidate; для небольшого изменения достаточно затронутых проверок.
 
 Актуальные результаты и непроверенные сценарии: [docs/VALIDATION.md](docs/VALIDATION.md). Аудит и повторное использование: [docs/AUDIT_REUSE.md](docs/AUDIT_REUSE.md), архитектура: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), лицензии: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

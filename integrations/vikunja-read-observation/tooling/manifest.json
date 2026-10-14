@@ -1,0 +1,42 @@
+{
+  "schema": "secretary-native-offline-egress-source-archive-v1",
+  "status": "ORIGINAL_HOST_BOUND_NOT_LAUNCHABLE",
+  "files": [
+    {
+      "path": "source-only/check_dependencies.py.txt",
+      "original_filename": "check_dependencies.py",
+      "bytes": 98056,
+      "original_sha256": "d03d86ddf05f5b5deaf3491a8fc97472bafb917310c06cb338e814fe137a1f00",
+      "export_sha256": "d03d86ddf05f5b5deaf3491a8fc97472bafb917310c06cb338e814fe137a1f00",
+      "transformation": null
+    },
+    {
+      "path": "source-only/run_dependencies.py.txt",
+      "original_filename": "run_dependencies.py",
+      "bytes": 50593,
+      "original_sha256": "16ccf65d6483c34f3ae2f1592dbcff3a1ed3d69dfcb27f2cbe5f968be37bad10",
+      "export_sha256": "16ccf65d6483c34f3ae2f1592dbcff3a1ed3d69dfcb27f2cbe5f968be37bad10",
+      "transformation": null
+    },
+    {
+      "path": "source-only/test_dependency_egress_guard.py.txt",
+      "original_filename": "test_dependency_egress_guard.py",
+      "bytes": 4177,
+      "original_sha256": "b9b88b51440f215d06519894c38e995283b30cac4c1a7cf1ac60348fe58bf592",
+      "export_sha256": "b9b88b51440f215d06519894c38e995283b30cac4c1a7cf1ac60348fe58bf592",
+      "transformation": null
+    },
+    {
+      "path": "source-only/test_worker_error_receipt.py.txt",
+      "original_filename": "test_worker_error_receipt.py",
+      "bytes": 3181,
+      "original_sha256": "a9d7d026dd8408048bfa095b5fef30f945ab78dcefde5fc672b7d0a70a298212",
+      "export_sha256": "a9d7d026dd8408048bfa095b5fef30f945ab78dcefde5fc672b7d0a70a298212",
+      "transformation": null
+    }
+  ],
+  "contains_absolute_historical_project_paths": true,
+  "launch_evidence_included": false,
+  "module_candidate_list_included": false,
+  "export_executed_source": false
+}

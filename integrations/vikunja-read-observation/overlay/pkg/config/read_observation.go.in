@@ -1,0 +1,121 @@
+// Vikunja is a to-do list application to facilitate your life.
+// Copyright 2018-present Vikunja and contributors. All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package config
+
+import (
+	"errors"
+	"time"
+
+	"code.vikunja.io/api/pkg/log"
+
+	"github.com/spf13/viper"
+)
+
+const readObservationRoot = "@READ_OBSERVATION_ROOT@"
+
+var readObservationConfigured bool
+
+// InitReadObservation is called once, before memory KV and any profile database access.
+func InitReadObservation() error {
+	if readObservationConfigured {
+		return errors.New("read observation configuration already initialized")
+	}
+
+	// Default initialization discovers host paths and generates secrets; this profile does neither.
+	viper.Reset()
+	values := map[Key]any{
+		ServiceSecret:                              "",
+		ServiceJWTSecret:                           "",
+		ServiceInterface:                           "",
+		ServiceUnixSocket:                          "",
+		ServicePublicURL:                           "",
+		ServiceRootpath:                            readObservationRoot,
+		ServiceMaxItemsPerPage:                     100,
+		ServiceTimeZone:                            "GMT",
+		ServiceDemoMode:                            false,
+		ServiceEnableCaldav:                        false,
+		ServiceEnableLinkSharing:                   false,
+		ServiceEnableRegistration:                  false,
+		ServiceEnableTaskAttachments:               false,
+		ServiceEnableTaskComments:                  false,
+		ServiceEnableTotp:                          false,
+		ServiceEnableEmailReminders:                false,
+		ServiceEnableUserDeletion:                  false,
+		ServiceEnablePublicTeams:                   false,
+		ServiceEnableOpenIDTeamUserOnlySearch:       false,
+		ServiceIPExtractionMethod:                  "direct",
+		ServiceTrustedProxies:                      []string{},
+		AuthLocalEnabled:                           true,
+		AuthOpenIDEnabled:                          false,
+		AuthLdapEnabled:                            false,
+		AuthLdapGroupSyncEnabled:                   false,
+		DatabaseType:                               "sqlite",
+		DatabasePath:                               "",
+		DatabaseMaxOpenConnections:                 1,
+		DatabaseMaxIdleConnections:                 1,
+		DatabaseMaxConnectionLifetime:              0,
+		SentryEnabled:                              false,
+		SentryDsn:                                  "",
+		SentryFrontendEnabled:                      false,
+		SentryFrontendDsn:                          "",
+		MailerEnabled:                              false,
+		RedisEnabled:                               false,
+		KeyvalueType:                               "memory",
+		LicenseKey:                                 "",
+		LogEnabled:                                 false,
+		LogStandard:                                "off",
+		LogLevel:                                   "ERROR",
+		LogFormat:                                  "text",
+		LogDatabase:                                "off",
+		LogDatabaseLevel:                           "ERROR",
+		LogHTTP:                                    "off",
+		LogHTTPLevel:                               "ERROR",
+		LogPath:                                    readObservationRoot + "/disabled-logs",
+		LogEvents:                                  "off",
+		LogEventsLevel:                             "ERROR",
+		LogMail:                                    "off",
+		LogMailLevel:                               "ERROR",
+		RateLimitEnabled:                           false,
+		RateLimitStore:                             "memory",
+		FilesBasePath:                              readObservationRoot + "/disabled-files",
+		FilesType:                                  "local",
+		CorsEnable:                                false,
+		MetricsEnabled:                            false,
+		MetricsPprof:                              false,
+		PluginsEnabled:                            false,
+		BackgroundsEnabled:                        false,
+		BackgroundsUploadEnabled:                  false,
+		BackgroundsUnsplashEnabled:                false,
+		WebhooksEnabled:                           false,
+		AuditEnabled:                              false,
+		AuditLogfile:                              "",
+		AutoTLSEnabled:                            false,
+		OutgoingRequestsProxyURL:                  "",
+		OutgoingRequestsProxyPassword:             "",
+		DefaultSettingsAvatarProvider:             "initials",
+		DefaultSettingsTimezone:                   "GMT",
+		DefaultSettingsOverdueTaskRemindersEnabled: true,
+		DefaultSettingsOverdueTaskRemindersTime:    "9:00",
+	}
+	for key, value := range values {
+		key.Set(value)
+	}
+	timezone = time.FixedZone("GMT", 0)
+	log.ConfigureStandardLogger(false, "off", readObservationRoot+"/disabled-logs", "ERROR", "text")
+	readObservationConfigured = true
+	return nil
+}
