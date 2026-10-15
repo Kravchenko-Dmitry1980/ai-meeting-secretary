@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -225,6 +226,29 @@ def prepare_manual(runtime):
     return {"state": "terminal_archived", "supervisor_run_id": state["supervisor_run_id"]}
 
 
+def capture_runtime_candidate():
+    """Candidate evidence is optional for startup, mandatory for P6 qualification."""
+    try:
+        from local_candidate import capture_candidate
+        value = capture_candidate(ROOT)
+        if not isinstance(value, dict) or value.get("state") not in ("bound", "unbound"):
+            raise ValueError("invalid_candidate_capture")
+        if value["state"] == "bound":
+            if (set(value) != {"state", "project", "git_sha", "frontend_sha256"}
+                    or value["project"] != str(ROOT)
+                    or not re.fullmatch(r"[0-9a-f]{40}", str(value["git_sha"]))
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(value["frontend_sha256"]))):
+                raise ValueError("invalid_candidate_capture")
+        elif (set(value) != {"state", "code"} or not isinstance(value["code"], str)
+              or not re.fullmatch(r"[a-z0-9_]{1,80}", value["code"])):
+            raise ValueError("invalid_candidate_capture")
+        return value
+    except Exception:
+        # An unavailable Git executable, dirty developer checkout or failing
+        # diagnostic helper must not disable otherwise valid local operation.
+        return {"state": "unbound", "code": "candidate_capture_failed"}
+
+
 def run_loop(host):
     """Public policy seam: the host owns process I/O; this never infers identity."""
     restart_count = 0
@@ -278,6 +302,27 @@ class WindowsHost:
                       "supervisor_identity": self.owner, "attempt_identities": [],
                       "pid": self.owner["pid"], "launcher": str(ROOT / "scripts/local_supervisor.py"),
                       "restart_limit": len(RESTART_DELAYS), "configuration_sha256": self.fingerprint}
+        self.initialize_candidate_binding()
+
+    def initialize_candidate_binding(self):
+        binding = capture_runtime_candidate()
+        self._candidate_binding_invalidated = binding["state"] != "bound"
+        self.state.update(candidate_binding=binding, candidate_binding_verified=False,
+                          candidate_binding_reason=binding.get("code", "not_ready"))
+
+    def check_candidate_binding(self, *, ready=False):
+        current = capture_runtime_candidate()
+        if self._candidate_binding_invalidated:
+            return
+        if current != self.state["candidate_binding"]:
+            # Never bind a later checkout to a process launched from earlier
+            # code, even if the files subsequently return to their old state.
+            self._candidate_binding_invalidated = True
+            self.state.update(candidate_binding_verified=False,
+                              candidate_binding_reason=current.get("code", "candidate_changed"))
+        else:
+            self.state.update(candidate_binding_verified=ready,
+                              candidate_binding_reason="verified" if ready else "not_ready")
 
     def configuration_fingerprint(self):
         digest = hashlib.sha256()
@@ -312,6 +357,7 @@ class WindowsHost:
                 raise SupervisorError("port_occupied") from None
 
     def start_attempt(self):
+        self.check_candidate_binding()
         self.validate_start()
         from check_lifecycle import build_server_command
         child_run_id = str(uuid4())
@@ -385,6 +431,7 @@ class WindowsHost:
                                 and ready.status_code == 200 and ready.json().get("status") == "local_ok"
                                 and config.status_code == 200 and config.json().get("cloud_enabled") is False
                                 and self.discover_listener(attempt)):
+                            self.check_candidate_binding(ready=True)
                             return
                     except (httpx.HTTPError, ValueError):
                         pass

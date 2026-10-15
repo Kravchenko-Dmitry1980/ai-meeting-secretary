@@ -183,6 +183,10 @@ Done: owner runbook работает; чужой процесс не остан�
 
 ### P6 — release candidate и 24 часа
 
+Подготовка сборщика и условия его запуска:
+[LOCAL_OBSERVATION_P6_PREPARATION.md](LOCAL_OBSERVATION_P6_PREPARATION.md).
+Синтетические проверки подготовки не закрывают P6; рабочий суточный прогон не начат.
+
 Вход: P1–P5; для Team дополнительно T2–T5. Зафиксировать SHA кандидата, дату начала,
 процесс и выбранный scope. Наблюдать реальные 24 часа: health, возраст worker,
 очереди, ошибки, место, расход, backup и отсутствие дублей. Team sync, командные
@@ -213,6 +217,7 @@ Done: завершённый журнал, а не старый файл `RUNNIN
 бота/токена/модерации, домена, публичного HTTPS, маршрута через мобильную сеть и
 возможности резервного хранения. Ключи владелец вводит локально, не в чат.
 Выход: конкретная таблица «есть/нет/кто обеспечивает/срок», без секретных значений.
+Текущий read-only срез: [TEAM_T1_READINESS_2026-10-16.md](TEAM_T1_READINESS_2026-10-16.md).
 Не покупать адрес/хостинг и не открывать порты автоматически. Long Polling — только DEV.
 
 ### T2 — рабочий проект и права
@@ -319,8 +324,9 @@ Pop-Location
 | P3 | OWNER_INPUT_REQUIRED | Способ записи ещё не принят; импорт/микрофон требуют пользовательского сценария |
 | P5-L | IMPLEMENTED / SYNTHETIC_NATIVE_VERIFIED / PREVIEW_READY | Supervisor и preview проверены; для регистрации задания и перевода основного приложения нужно решение владельца. См. `LOCAL_RUNTIME_P5_PREPARATION.md`; P5 ещё не принят |
 | P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
-| P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятый scope, кандидат и полный период наблюдения |
-| T1 | CONFIGURATION_REQUIRED / OWNER_CONFIRMED_NOT_READY | Владелец 15.10 подтвердил: бот MAX и внешний адрес ещё не готовы. Штатной Team runtime config нет |
+| P6-PREP | IMPLEMENTATION_REVIEW | Сборщик, привязка запуска к кандидату и ограниченный журнал: `LOCAL_OBSERVATION_P6_PREPARATION.md`. Подготовка не запускает реальный P6 |
+| P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятые P1–P5, кандидат, явный запуск и полный период наблюдения |
+| T1 | READ_ONLY_PREFLIGHT_DONE / CONFIGURATION_REQUIRED | Таблица наличия и ответственности: `TEAM_T1_READINESS_2026-10-16.md`. Бот/HTTPS не готовы; компоненты подготовлены, штатной Team runtime config нет |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
 | Speaker quality / 3h STT | AFTER_PILOT | Отдельная небольшая разметка и калибровка, без автоматической оплаты 3h |
 | R4–R6 Team recovery | BLOCKED / REVIEW_REQUIRED | Отдельное архитектурное решение и review, offline-only Go сохраняется |

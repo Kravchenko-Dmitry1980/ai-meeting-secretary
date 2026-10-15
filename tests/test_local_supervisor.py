@@ -272,3 +272,82 @@ def test_backoff_error_is_visible_without_resetting_restart_counter():
     with pytest.raises(module.SupervisorError, match="configuration_changed"):
         module.run_loop(host)
     assert host.events[-1] == ("failed", {"restart_count": 1, "error": "configuration_changed"})
+
+
+def bound_candidate(module, sha="a" * 40, frontend="b" * 64):
+    return {"state": "bound", "project": str(module.ROOT), "git_sha": sha,
+            "frontend_sha256": frontend}
+
+
+def candidate_host(module, monkeypatch, initial):
+    host = module.WindowsHost.__new__(module.WindowsHost)
+    host.state = {}
+    monkeypatch.setattr(module, "capture_runtime_candidate", lambda: dict(initial))
+    host.initialize_candidate_binding()
+    return host
+
+
+def test_candidate_requires_same_binding_at_readiness_and_preserves_initial(monkeypatch):
+    module = load_supervisor()
+    initial = bound_candidate(module)
+    host = candidate_host(module, monkeypatch, initial)
+    assert host.state["candidate_binding"] == initial
+    assert host.state["candidate_binding_verified"] is False
+    host.check_candidate_binding(ready=False)
+    assert host.state["candidate_binding_verified"] is False
+    host.check_candidate_binding(ready=True)
+    assert host.state["candidate_binding_verified"] is True
+    assert host.state["candidate_binding_reason"] == "verified"
+    assert host.state["candidate_binding"] == initial
+
+
+@pytest.mark.parametrize("change", ["git", "frontend", "unavailable"])
+def test_candidate_drift_cannot_requalify_same_supervisor_lifetime(monkeypatch, change):
+    module = load_supervisor()
+    initial = bound_candidate(module)
+    host = candidate_host(module, monkeypatch, initial)
+    host.check_candidate_binding(ready=True)
+    changed = ({"state": "unbound", "code": "git_unavailable"} if change == "unavailable" else
+               bound_candidate(module, sha="c" * 40) if change == "git" else
+               bound_candidate(module, frontend="d" * 64))
+    monkeypatch.setattr(module, "capture_runtime_candidate", lambda: changed)
+    host.check_candidate_binding(ready=False)
+    assert host.state["candidate_binding_verified"] is False
+    assert host.state["candidate_binding"] == initial
+    reason = host.state["candidate_binding_reason"]
+    monkeypatch.setattr(module, "capture_runtime_candidate", lambda: initial)
+    host.check_candidate_binding(ready=True)
+    assert host.state["candidate_binding_verified"] is False
+    assert host.state["candidate_binding_reason"] == reason
+
+
+def test_dirty_start_stays_unbound_when_checkout_later_becomes_clean(monkeypatch):
+    module = load_supervisor()
+    initial = {"state": "unbound", "code": "git_dirty"}
+    host = candidate_host(module, monkeypatch, initial)
+    monkeypatch.setattr(module, "capture_runtime_candidate", lambda: bound_candidate(module))
+    host.check_candidate_binding(ready=True)
+    assert host.state["candidate_binding_verified"] is False
+    assert host.state["candidate_binding_reason"] == "git_dirty"
+    assert host.state["candidate_binding"] == initial
+
+
+def test_candidate_capture_failure_remains_diagnostic(monkeypatch):
+    module = load_supervisor()
+    helper = type(sys)("local_candidate")
+
+    def unavailable(root):
+        raise RuntimeError("synthetic helper failure")
+
+    helper.capture_candidate = unavailable
+    monkeypatch.setitem(sys.modules, "local_candidate", helper)
+    assert module.capture_runtime_candidate() == {"state": "unbound", "code": "candidate_capture_failed"}
+
+
+@pytest.mark.parametrize("invalid", [{"state": "bound"}, {"state": "unbound"}, None])
+def test_malformed_candidate_capture_cannot_claim_binding(monkeypatch, invalid):
+    module = load_supervisor()
+    helper = type(sys)("local_candidate")
+    helper.capture_candidate = lambda root: invalid
+    monkeypatch.setitem(sys.modules, "local_candidate", helper)
+    assert module.capture_runtime_candidate() == {"state": "unbound", "code": "candidate_capture_failed"}
