@@ -324,7 +324,7 @@ Pop-Location
 | P3 | OWNER_INPUT_REQUIRED | Способ записи ещё не принят; импорт/микрофон требуют пользовательского сценария |
 | P5-L | IMPLEMENTED / SYNTHETIC_NATIVE_VERIFIED / PREVIEW_READY | Supervisor и preview проверены; для регистрации задания и перевода основного приложения нужно решение владельца. См. `LOCAL_RUNTIME_P5_PREPARATION.md`; P5 ещё не принят |
 | P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
-| P6-PREP | IMPLEMENTATION_REVIEW | Сборщик, привязка запуска к кандидату и ограниченный журнал: `LOCAL_OBSERVATION_P6_PREPARATION.md`. Подготовка не запускает реальный P6 |
+| P6-PREP | IMPLEMENTED / SYNTHETIC_NATIVE_VERIFIED | Реальный тестовый процесс: два samples за 5,75 с, technical PASS / observation INCOMPLETE. `LOCAL_OBSERVATION_P6_PREPARATION.md`; рабочий P6 не начат |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятые P1–P5, кандидат, явный запуск и полный период наблюдения |
 | T1 | READ_ONLY_PREFLIGHT_DONE / CONFIGURATION_REQUIRED | Таблица наличия и ответственности: `TEAM_T1_READINESS_2026-10-16.md`. Бот/HTTPS не готовы; компоненты подготовлены, штатной Team runtime config нет |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
