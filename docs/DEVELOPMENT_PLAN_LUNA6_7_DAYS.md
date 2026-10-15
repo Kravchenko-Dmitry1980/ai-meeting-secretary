@@ -134,6 +134,7 @@ Done: выбранный способ записи принят человеко
 
 Вход: `scripts/local_backup.py`, `backend/secretary/infrastructure/local_backup.py`,
 `tests/test_secretary_backup.py`, `tests/test_local_backup_cli.py`.
+Пошаговая подготовленная инструкция: [LOCAL_BACKUP_ACCEPTANCE.md](LOCAL_BACKUP_ACCEPTANCE.md).
 Выбрать с владельцем защищённое место для резервной копии и время штатной остановки.
 Подтвердить фактический `DATA_DIR` текущего запуска, не угадывая его по default.
 15.10 исправлена валидация повреждённых database metadata manifest: 31 focused PASS;
@@ -303,7 +304,7 @@ Pop-Location
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
 | P3 / P5 | TODO | Capture/import acceptance и эксплуатация |
-| P4 | PREPARED / BUGFIX_OFFLINE_PASS / REAL_DRILL_NOT_RUN | 31 focused PASS; нужны место копии и окно остановки |
+| P4 | PREPARED / BUGFIX_OFFLINE_PASS / REAL_DRILL_NOT_RUN | 31 focused PASS; `LOCAL_BACKUP_ACCEPTANCE.md`; нужны место копии и окно остановки |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятый scope, кандидат и полный период наблюдения |
 | T1 | CONFIGURATION_REQUIRED / EXTERNAL_UNKNOWN | Штатной Team runtime config нет; подтвердить другой адрес либо подготовить первый запуск; MAX/HTTPS неизвестны |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
