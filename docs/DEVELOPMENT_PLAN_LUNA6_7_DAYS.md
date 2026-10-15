@@ -162,6 +162,11 @@ Done: реальная копия проверена, восстановленн
 
 ### P5 — эксплуатационный запуск
 
+Read-only preflight 16.10 и узкая следующая карточка P5-L:
+[LOCAL_RUNTIME_P5_PREPARATION.md](LOCAL_RUNTIME_P5_PREPARATION.md).
+Автозапуск не установлен; текущий launcher не отслеживает поздние падения процесса.
+Сон от сети уже отключён. Старый журнал 10 октября не является активным P6.
+
 Вход: `scripts/start.ps1`, `stop.ps1`, `doctor.ps1`, `check_lifecycle.py`,
 `TEAM_WINDOWS_RUNBOOK.md` для Team-ветки. Зафиксировать один checkout/data_dir,
 версию, адрес, владельца процесса и инструкцию обычного restart.
@@ -309,7 +314,7 @@ Pop-Location
 | D0: cleanup/retention/current audit/Git handoff | Исходная передача опубликована: `eca987c`, draft PR №2; обновление аудита 15.10 | `STORAGE_CLEANUP_2026-10-14.md`, `OFFLINE_TEST_RETENTION.md`, текущий аудит; main отдельно |
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
-| P3 / P5 | OWNER_INPUT_REQUIRED / PARTIAL_NATIVE_PASS | Способ записи ещё не принят; P4 подтвердил штатную остановку и возврат оригинала, автозапуск/питание/сбой остаются P5 |
+| P3 / P5 | OWNER_INPUT_REQUIRED / PARTIAL_NATIVE_PASS | Способ записи ещё не принят; P4 подтвердил штатную остановку/возврат. P5-L: read-only preflight готов, автозапуск/supervision не реализованы; сон от сети уже отключён |
 | P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятый scope, кандидат и полный период наблюдения |
 | T1 | CONFIGURATION_REQUIRED / OWNER_CONFIRMED_NOT_READY | Владелец 15.10 подтвердил: бот MAX и внешний адрес ещё не готовы. Штатной Team runtime config нет |
