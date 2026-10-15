@@ -1,8 +1,9 @@
 # План Secretary на 7 дней — исполнитель Luna 6
 
-Дата аудита: **14.10.2026**, актуализация **15.10.2026**. Плановое окно: **15–21.10.2026, Europe/Moscow**.
-Если выполнение начинается позже, пересчитать даты, сохранив полные 24 часа
-эксплуатационной проверки. Входная точка: [аудит](PRODUCTION_AUDIT_2026-10-14.md).
+Дата аудита: **14.10.2026**, актуализация **16.10.2026**. Плановое окно: **15–21.10.2026, Europe/Moscow**.
+При новом старте позже этого окна предложить обновлённые даты, сохранив полные
+24 часа эксплуатационной проверки. Продолжение уже начатого плана не переносит
+дедлайн автоматически. Входная точка: [аудит](PRODUCTION_AUDIT_2026-10-14.md).
 
 ## Результат недели и границы
 
@@ -135,6 +136,11 @@ Done: выбранный способ записи принят человеко
 Вход: `scripts/local_backup.py`, `backend/secretary/infrastructure/local_backup.py`,
 `tests/test_secretary_backup.py`, `tests/test_local_backup_cli.py`.
 Пошаговая подготовленная инструкция: [LOCAL_BACKUP_ACCEPTANCE.md](LOCAL_BACKUP_ACCEPTANCE.md).
+16.10 реальный drill согласованного состава прошёл технически:
+[LOCAL_BACKUP_REVIEW_2026-10-16.md](LOCAL_BACKUP_REVIEW_2026-10-16.md).
+Исключён только разрешённый владельцем `test-audio-tmp`, исходник сохранён;
+V2 явно `full_recovery=false`. Повторять backup без новой причины не требуется.
+Смысловая приёмка результата владельцем пока ожидается.
 Выбрать с владельцем защищённое место для резервной копии и время штатной остановки.
 Подтвердить фактический `DATA_DIR` текущего запуска, не угадывая его по default.
 15.10 исправлена валидация повреждённых database metadata manifest: 31 focused PASS;
@@ -303,8 +309,8 @@ Pop-Location
 | D0: cleanup/retention/current audit/Git handoff | Исходная передача опубликована: `eca987c`, draft PR №2; обновление аудита 15.10 | `STORAGE_CLEANUP_2026-10-14.md`, `OFFLINE_TEST_RETENTION.md`, текущий аудит; main отдельно |
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
-| P3 / P5 | TODO | Capture/import acceptance и эксплуатация |
-| P4 | PREFLIGHT_BLOCKED / REAL_DRILL_NOT_RUN | Хранение внутри Secretary выбрано; 15 старых pytest-ссылок в data/test-audio-tmp; исходный каталог сохранён, решение по составу копии ожидается; `LOCAL_BACKUP_ACCEPTANCE.md` |
+| P3 / P5 | OWNER_INPUT_REQUIRED / PARTIAL_NATIVE_PASS | Способ записи ещё не принят; P4 подтвердил штатную остановку и возврат оригинала, автозапуск/питание/сбой остаются P5 |
+| P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятый scope, кандидат и полный период наблюдения |
 | T1 | CONFIGURATION_REQUIRED / OWNER_CONFIRMED_NOT_READY | Владелец 15.10 подтвердил: бот MAX и внешний адрес ещё не готовы. Штатной Team runtime config нет |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
