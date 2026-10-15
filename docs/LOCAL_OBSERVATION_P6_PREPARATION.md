@@ -152,6 +152,18 @@ Fixture проверяет техническую связность, штатн
 **35 PASS**, 2,48 с, exit 0; JUnit
 `.runtime/team-rollout/offline-05e7548fadbe49c096b8c0ee99b3ee05/junit.xml`.
 
+Первый native прогон на `130bc02edd85e17289d672d479043bb339664265` выявил
+`boot_identity_unavailable`: Windows вернула `STATUS_INFO_LENGTH_MISMATCH` для
+128-байтового buffer. Для `SystemTimeOfDayInformation` нужен точный размер 48 байт;
+исправлены размер и ctypes signature. Добавленная проверка настоящего Windows clock
+сначала упала, затем затронутый модуль прошёл **36 PASS**, 2,50 с, exit 0:
+`.runtime/team-rollout/offline-8cb9ce4cf5a74c4786dd370681d4e18d/junit.xml`.
+Первое native evidence сохранено как FAILED в
+`.runtime/p6-native-8d570d462c584c65ac2c84d30b80f9de/fixture-receipt.json`;
+стартовая привязка прошла, все тестовые процессы штатно завершились,
+main state hash/health сохранились. Ранний отказ CLI теперь сохраняется в receipt
+fixture, чтобы отсутствие report.json не маскировало исходную причину.
+
 HTTP timeout ограничивает ожидание сетевой активности; общего принудительного
 deadline на весь sample нет. При зависшем сборе итоговый PASS не возникает,
 но может потребоваться явное прерывание и разбор незавершённого журнала.

@@ -402,3 +402,14 @@ def test_changed_acceptance_receipt_cannot_change_final_or_replayed_decision(tmp
     changed = module.observe(config, tmp_path / "changed", probe, clock=Clock(), duration_seconds=60)
     assert changed["status"] == "NEEDS_REVIEW"
     assert "owner_acceptance_evidence_changed" in changed["issues"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="The production clock reads Windows boot identity")
+def test_real_windows_clock_produces_stable_boot_identity_and_monotonic_utc_stamps():
+    module = observer()
+    clock = module.SystemClock()
+    first, second = clock.stamp(), clock.stamp()
+    assert first["boot_id"] == second["boot_id"]
+    assert int(first["boot_id"]) > 0
+    assert module.utc(first["utc"]).utcoffset().total_seconds() == 0
+    assert 0 <= second["monotonic"] - first["monotonic"] < 5

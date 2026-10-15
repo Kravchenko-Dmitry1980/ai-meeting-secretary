@@ -247,10 +247,25 @@ def cli():
                 "excluded_directories": []}}
         config_path, output = base / "observation-input.json", base / "observation"
         write_json(config_path, config)
-        with redirect_stdout(io.StringIO()):
+        cli_stdout = io.StringIO()
+        with redirect_stdout(cli_stdout):
             code = observation.main(["observe", "--config", str(config_path), "--output", str(output),
                                      "--duration-seconds", "5"])
-        report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        receipt["observer_cli_exit_code"] = code
+        raw_cli_report = cli_stdout.getvalue()
+        if len(raw_cli_report) > 65536:
+            raise RuntimeError("observer_cli_report_bound_exceeded")
+        cli_report = json.loads(raw_cli_report)
+        if not isinstance(cli_report, dict):
+            raise RuntimeError("observer_cli_report_invalid")
+        receipt["observer_cli_report"] = cli_report
+        report_path = output / "report.json"
+        if not report_path.is_file():
+            receipt.update(observation_status=cli_report.get("status"),
+                           observation_issues=cli_report.get("issues", []),
+                           observation_report_missing=True)
+            raise RuntimeError("observer_report_missing")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
         assert code == 2, code
         assert report["status"] == "INCOMPLETE", report
         assert report["issues"] == ["full_day_not_observed"], report

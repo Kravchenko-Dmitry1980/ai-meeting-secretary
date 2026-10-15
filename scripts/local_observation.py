@@ -492,10 +492,15 @@ class SystemClock:
         import ctypes
         # SystemTimeOfDayInformation begins with exact boot FILETIME. This avoids
         # deriving a boot identity from a mutable wall clock / rounded uptime.
-        buffer = ctypes.create_string_buffer(128)
+        # This information class requires its exact 48-byte layout; a larger
+        # scratch buffer returns STATUS_INFO_LENGTH_MISMATCH on Windows.
+        buffer = ctypes.create_string_buffer(48)
         length = ctypes.c_ulong()
-        status = ctypes.WinDLL("ntdll").NtQuerySystemInformation(3, buffer, len(buffer), ctypes.byref(length))
-        if status != 0 or length.value < 8:
+        query = ctypes.WinDLL("ntdll").NtQuerySystemInformation
+        query.argtypes = [ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
+        query.restype = ctypes.c_long
+        status = query(3, buffer, len(buffer), ctypes.byref(length))
+        if status != 0 or length.value != 48:
             raise ObservationError("boot_identity_unavailable")
         boot = int.from_bytes(buffer.raw[:8], "little", signed=True)
         return {"utc": datetime.now(timezone.utc).isoformat(), "monotonic": time.monotonic(), "boot_id": str(boot)}
