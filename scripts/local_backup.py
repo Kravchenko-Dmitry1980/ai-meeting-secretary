@@ -28,6 +28,8 @@ def _parser() -> argparse.ArgumentParser:
     backup = commands.add_parser("backup", help="Create a new full backup (the app must be stopped).")
     backup.add_argument("--data-dir", type=Path, required=True, help="Absolute Secretary data directory.")
     backup.add_argument("--destination", type=Path, required=True, help="New absolute backup directory.")
+    backup.add_argument("--exclude-test-audio-tmp", action="store_true",
+                        help="Explicitly exclude only the real top-level test-audio-tmp directory; creates a scoped V2 backup.")
 
     verify = commands.add_parser("verify", help="Verify manifest, files, hashes, SQLite integrity, and references.")
     verify.add_argument("--backup-dir", type=Path, required=True, help="Absolute backup directory.")
@@ -36,6 +38,8 @@ def _parser() -> argparse.ArgumentParser:
     restore.add_argument("--backup-dir", type=Path, required=True, help="Absolute backup directory.")
     restore.add_argument("--destination", type=Path, required=True, help="New absolute restore directory.")
     restore.add_argument("--restore-root", type=Path, required=True, help="Existing parent directory for the isolated restore.")
+    restore.add_argument("--accept-excluded-test-audio-tmp", action="store_true",
+                         help="Acknowledge the declared test-audio-tmp exclusion before restoring a V2 backup.")
     return parser
 
 
@@ -43,11 +47,13 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "backup":
-            result = create_backup(args.data_dir, args.destination)
+            result = create_backup(args.data_dir, args.destination,
+                                   exclude_test_audio_tmp=args.exclude_test_audio_tmp)
         elif args.command == "verify":
             result = verify_backup(args.backup_dir)
         else:
-            result = restore_backup(args.backup_dir, args.destination, restore_root=args.restore_root)
+            result = restore_backup(args.backup_dir, args.destination, restore_root=args.restore_root,
+                                    accept_excluded_test_audio_tmp=args.accept_excluded_test_audio_tmp)
         print(json.dumps({"ok": True, **result}, sort_keys=True, ensure_ascii=True))
         return 0
     except LocalBackupError as exc:

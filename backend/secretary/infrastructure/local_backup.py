@@ -24,6 +24,8 @@ from secretary.infrastructure.instance_lock import DataDirectoryLock, DataDirect
 
 
 SCHEMA_VERSION = 1
+EXCLUSION_SCHEMA_VERSION = 2
+_EXCLUDED_TEST_DIRECTORY = "test-audio-tmp"
 MANIFEST_NAME = "manifest.json"
 PARTIAL_NAME = "manifest.partial.json"
 RESTORE_NAME = "restore.json"
@@ -188,7 +190,8 @@ def _copy_verified_file(source: Path, destination: Path, expected: dict) -> None
         raise LocalBackupError("backup_hash_mismatch")
 
 
-def _walk_regular_files(root: Path):
+def _walk_regular_files(root: Path, *, exclude_test_audio_tmp=False):
+    """Scan strictly; the single opt-in exclusion is used only for the source."""
     stack = [root]
     while stack:
         current = stack.pop()
@@ -204,6 +207,13 @@ def _walk_regular_files(root: Path):
                 raise LocalBackupError("backup_scan_failed") from None
             if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & _REPARSE_POINT:
                 raise LocalBackupError("backup_reparse_forbidden")
+            if (exclude_test_audio_tmp and current == root
+                    and entry.name.casefold() == _EXCLUDED_TEST_DIRECTORY):
+                # Check the entry itself before skipping its contents. A root
+                # link, file or differently spelled name must never be hidden.
+                if entry.name != _EXCLUDED_TEST_DIRECTORY or not stat.S_ISDIR(info.st_mode):
+                    raise LocalBackupError("backup_excluded_directory_invalid")
+                continue
             if stat.S_ISDIR(info.st_mode):
                 stack.append(path)
             elif stat.S_ISREG(info.st_mode):
@@ -368,8 +378,18 @@ def _validate_references(archive: Path, source_root: Path, databases: dict, asse
             raise LocalBackupError("backup_capture_manifest_invalid") from None
 
 
-def create_backup(data_dir, destination) -> dict:
+def _exclusion_scope(enabled: bool) -> dict:
+    if not enabled:
+        return {}
+    return {"schema_version": EXCLUSION_SCHEMA_VERSION, "full_recovery": False,
+            "excluded_directories": [_EXCLUDED_TEST_DIRECTORY]}
+
+
+def create_backup(data_dir, destination, *, exclude_test_audio_tmp=False) -> dict:
     """Create a verified, non-overwriting cold snapshot from an explicit data root."""
+    if type(exclude_test_audio_tmp) is not bool:
+        raise LocalBackupError("backup_exclusion_option_invalid")
+    scope = _exclusion_scope(exclude_test_audio_tmp)
     source_root = _safe_path(data_dir, must_exist=True, directory=True)
     if not (source_root / _DATABASES[0]).is_file():
         raise LocalBackupError("backup_secretary_database_missing")
@@ -381,7 +401,7 @@ def create_backup(data_dir, destination) -> dict:
         raise LocalBackupError("backup_data_directory_in_use") from None
     try:
         target.mkdir(parents=False, exist_ok=False)
-        _write_json(target / PARTIAL_NAME, {"schema_version": SCHEMA_VERSION, "state": "copying"})
+        _write_json(target / PARTIAL_NAME, {"schema_version": SCHEMA_VERSION, "state": "copying", **scope})
         (target / "databases").mkdir()
         (target / "assets").mkdir()
         databases = {}
@@ -396,7 +416,7 @@ def create_backup(data_dir, destination) -> dict:
 
         assets = []
         asset_map = {}
-        for source in _walk_regular_files(source_root):
+        for source in _walk_regular_files(source_root, exclude_test_audio_tmp=exclude_test_audio_tmp):
             relative = source.relative_to(source_root).as_posix()
             if _excluded_root_file(PurePosixPath(relative)):
                 continue
@@ -417,6 +437,7 @@ def create_backup(data_dir, destination) -> dict:
             "source_data_dir": str(source_root),
             "databases": databases,
             "assets": sorted(assets, key=lambda item: item["path"]),
+            **scope,
         }
         _write_json(target / "manifest.ready.json", manifest)
         os.replace(target / "manifest.ready.json", target / MANIFEST_NAME)
@@ -424,7 +445,7 @@ def create_backup(data_dir, destination) -> dict:
         return {"state": "complete", "backup_id": manifest["backup_id"],
                 "database_count": len(databases), "asset_count": len(assets),
                 "total_bytes": sum(item["bytes"] for item in assets)
-                + sum(item["bytes"] for item in databases.values())}
+                + sum(item["bytes"] for item in databases.values()), **scope}
     except LocalBackupError:
         raise
     except OSError:
@@ -440,8 +461,14 @@ def _validate_manifest(backup_dir: Path) -> tuple[dict, dict]:
     manifest = _read_json(backup_dir / MANIFEST_NAME)
     required = {"schema_version", "state", "full_recovery", "backup_id", "created_at",
                 "application_version", "source_data_dir", "databases", "assets"}
-    if (set(manifest) != required or manifest["schema_version"] != SCHEMA_VERSION
-            or manifest["state"] != "complete" or manifest["full_recovery"] is not True
+    version = manifest.get("schema_version")
+    has_exclusion = type(version) is int and version == EXCLUSION_SCHEMA_VERSION
+    if has_exclusion:
+        required.add("excluded_directories")
+    if (set(manifest) != required or type(version) is not int
+            or version not in (SCHEMA_VERSION, EXCLUSION_SCHEMA_VERSION)
+            or manifest["state"] != "complete" or manifest["full_recovery"] is not (not has_exclusion)
+            or (has_exclusion and manifest["excluded_directories"] != [_EXCLUDED_TEST_DIRECTORY])
             or not isinstance(manifest["source_data_dir"], str)):
         raise LocalBackupError("backup_incomplete")
     source_root = _safe_path(manifest["source_data_dir"])
@@ -474,6 +501,8 @@ def _validate_manifest(backup_dir: Path) -> tuple[dict, dict]:
         if not isinstance(entry, dict) or set(entry) != {"path", "bytes", "sha256"}:
             raise LocalBackupError("backup_manifest_invalid")
         relative = _relative(entry.get("path"))
+        if has_exclusion and relative.parts[0].casefold() == _EXCLUDED_TEST_DIRECTORY:
+            raise LocalBackupError("backup_manifest_invalid")
         if len(relative.parts) == 1 and _excluded_root_file(relative):
             raise LocalBackupError("backup_manifest_invalid")
         if type(entry["bytes"]) is not int or entry["bytes"] < 0 or not re.fullmatch(r"[0-9a-f]{64}", str(entry["sha256"])):
@@ -515,7 +544,8 @@ def verify_backup(backup_dir) -> dict:
     return {"state": "verified", "backup_id": manifest["backup_id"],
             "database_count": len(manifest["databases"]), "asset_count": len(assets),
             "total_bytes": sum(item["bytes"] for item in assets.values())
-            + sum(item["bytes"] for item in manifest["databases"].values())}
+            + sum(item["bytes"] for item in manifest["databases"].values()),
+            **_exclusion_scope(manifest["schema_version"] == EXCLUSION_SCHEMA_VERSION)}
 
 
 def _relocated(value: str, source_root: Path, target_root: Path, asset_map: dict) -> str:
@@ -604,16 +634,22 @@ def _verify_restored(target_root: Path) -> None:
         raise LocalBackupError("restore_integrity_failed") from None
 
 
-def restore_backup(backup_dir, destination, *, restore_root) -> dict:
+def restore_backup(backup_dir, destination, *, restore_root, accept_excluded_test_audio_tmp=False) -> dict:
     """Restore a verified backup into a fresh child directory with cloud disabled."""
+    if type(accept_excluded_test_audio_tmp) is not bool:
+        raise LocalBackupError("restore_exclusion_option_invalid")
     archive = _safe_path(backup_dir, must_exist=True, directory=True)
     manifest, asset_map = _validate_manifest(archive)
+    has_exclusion = manifest["schema_version"] == EXCLUSION_SCHEMA_VERSION
+    if has_exclusion and not accept_excluded_test_audio_tmp:
+        raise LocalBackupError("restore_exclusion_acknowledgement_required")
+    scope = _exclusion_scope(has_exclusion)
     root = _safe_path(restore_root, must_exist=True, directory=True)
     source_root = _safe_path(manifest["source_data_dir"])
     target = _new_destination(destination, parent=root, disallow=(archive, source_root))
     target.mkdir(parents=False, exist_ok=False)
     restore_id = str(uuid4())
-    partial = {"schema_version": 1, "restore_id": restore_id, "state": "copying", "outbound_enabled": False}
+    partial = {"schema_version": 1, "restore_id": restore_id, "state": "copying", "outbound_enabled": False, **scope}
     _write_json(target / "restore.partial.json", partial)
     (target / "databases").mkdir()
     try:
@@ -630,7 +666,7 @@ def restore_backup(backup_dir, destination, *, restore_root) -> dict:
                   "backup_id": manifest["backup_id"],
                   "backup_manifest_sha256": _hash_file(archive / MANIFEST_NAME)[0],
                   "restored_at": datetime.now(timezone.utc).isoformat(),
-                  "outbound_enabled": False}
+                  "outbound_enabled": False, **scope}
         _write_json(target / RESTORE_NAME, report)
         (target / "restore.partial.json").unlink()
         return report

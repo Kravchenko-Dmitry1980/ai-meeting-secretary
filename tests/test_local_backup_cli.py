@@ -79,3 +79,37 @@ def test_cli_invalid_database_manifest_returns_path_free_json_without_restore(tm
         assert str(source) not in result.stderr
         assert str(archive) not in result.stderr
         assert not destination.exists()
+
+
+def test_cli_explicit_test_exclusion_and_restore_acknowledgement(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    Database(source / "secretary.sqlite3").create_meeting("Synthetic exclusion")
+    legacy = source / "test-audio-tmp"
+    legacy.mkdir()
+    (legacy / "old.txt").write_text("synthetic", encoding="utf-8")
+    archive = tmp_path / "backup"
+    receipt = _run("backup", "--data-dir", source, "--destination", archive, "--exclude-test-audio-tmp")
+    verified = _run("verify", "--backup-dir", archive)
+    for value in (receipt, verified):
+        assert value["schema_version"] == 2
+        assert value["full_recovery"] is False
+        assert value["excluded_directories"] == ["test-audio-tmp"]
+        assert str(source) not in json.dumps(value)
+    restore_root = tmp_path / "restores"
+    restore_root.mkdir()
+    destination = restore_root / "copy"
+    arguments = ("restore", "--backup-dir", archive, "--destination", destination, "--restore-root", restore_root)
+    refused = subprocess.run([sys.executable, str(SCRIPT), *(str(arg) for arg in arguments)],
+                             cwd=ROOT, text=True, capture_output=True, timeout=30, check=False)
+    assert refused.returncode == 2
+    assert refused.stdout == ""
+    assert json.loads(refused.stderr) == {"ok": False, "code": "restore_exclusion_acknowledgement_required"}
+    assert not destination.exists()
+    restored = _run(*arguments, "--accept-excluded-test-audio-tmp")
+    assert restored["schema_version"] == 2
+    assert restored["full_recovery"] is False
+    assert restored["excluded_directories"] == ["test-audio-tmp"]
+    assert restored["outbound_enabled"] is False
+    assert (legacy / "old.txt").read_text("utf-8") == "synthetic"
+    assert not (destination / "test-audio-tmp").exists()
