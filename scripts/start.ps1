@@ -14,8 +14,16 @@ if ($TeamRuntimeConfig) {
     $TeamRuntimeConfig = (Resolve-Path -LiteralPath $TeamRuntimeConfig).Path
 }
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
+$OwnerLeasePath = Join-Path $RuntimeDir 'local-owner.lock'
+try { $OwnerLease = [IO.File]::Open($OwnerLeasePath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+catch { throw 'Secretary local ownership is busy. No process was adopted or started.' }
+try {
 if (Test-Path -LiteralPath $StatePath) {
     $State = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
+    if ($State.owner_kind -eq 'local_supervisor') {
+        & $PythonExe -B (Join-Path $PSScriptRoot 'local_supervisor.py') prepare-manual --runtime-root $RuntimeDir
+        if ($LASTEXITCODE -ne 0) { throw 'Supervisor ownership is active or unverified. No state was replaced.' }
+    }
     $StateCreatedStamp = if ($State.creation_time -is [datetime]) { $State.creation_time.ToUniversalTime().ToString('o') } else { [string]$State.creation_time }
     $Existing = Get-CimInstance Win32_Process -Filter "ProcessId=$($State.pid)" -ErrorAction SilentlyContinue
     if ($Existing -and $Existing.CommandLine -like "*$LauncherPath*" -and $Existing.CreationDate.ToUniversalTime().ToString('o') -eq $StateCreatedStamp) {
@@ -92,3 +100,4 @@ if (-not $Ready) { throw 'Secretary did not become healthy within 30 seconds. Pr
 Write-Output "Secretary: http://127.0.0.1:$Port"
 if ($Offline) { Write-Output 'Outbound integrations are disabled for this process.' }
 if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$Port" }
+} finally { $OwnerLease.Dispose() }

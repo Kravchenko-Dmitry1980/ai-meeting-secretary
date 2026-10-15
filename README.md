@@ -14,6 +14,7 @@
 - [Стартовый промпт для Luna 6](docs/LUNA6_IMPLEMENTATION_PROMPT.md)
 - [Проверка сохранённой 69-минутной встречи](docs/SAVED_MEETING_REVIEW_2026-10-14.md)
 - [Реальная проверка backup/restore 16 октября](docs/LOCAL_BACKUP_REVIEW_2026-10-16.md)
+- [Проверенный локальный supervisor и preview автозапуска](docs/LOCAL_RUNTIME_P5_PREPARATION.md) — задание Windows ещё не установлено
 
 Начинайте продолжение с этих документов. Старые журналы содержат исторические
 checkpoint и истёкшие адреса временных стендов; они не являются текущей очередью задач.
