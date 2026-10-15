@@ -453,8 +453,20 @@ def _validate_manifest(backup_dir: Path) -> tuple[dict, dict]:
         raise LocalBackupError("backup_manifest_invalid")
 
     expected: dict[str, dict] = {}
+    database_fields = {"path", "bytes", "sha256", "schema_sha256", "row_counts", "user_version"}
     for name, entry in manifest["databases"].items():
-        if not isinstance(entry, dict) or entry.get("path") != "databases/" + name:
+        if (not isinstance(entry, dict) or not database_fields <= entry.keys()
+                or entry["path"] != "databases/" + name):
+            raise LocalBackupError("backup_manifest_invalid")
+        if (type(entry["bytes"]) is not int or entry["bytes"] < 0
+                or type(entry["user_version"]) is not int):
+            raise LocalBackupError("backup_manifest_invalid")
+        if any(not isinstance(entry[key], str) or not re.fullmatch(r"[0-9a-f]{64}", entry[key])
+               for key in ("sha256", "schema_sha256")):
+            raise LocalBackupError("backup_manifest_invalid")
+        if (not isinstance(entry["row_counts"], dict)
+                or any(not isinstance(table, str) or type(count) is not int or count < 0
+                       for table, count in entry["row_counts"].items())):
             raise LocalBackupError("backup_manifest_invalid")
         expected[entry["path"]] = entry
     asset_map = {}

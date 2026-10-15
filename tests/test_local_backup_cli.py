@@ -48,3 +48,34 @@ def test_cli_backup_verify_and_restore_emits_path_free_receipts(tmp_path):
     with sqlite3.connect(restore_root / "copy" / "secretary.sqlite3") as conn:
         settings = dict(conn.execute("SELECT key,value FROM configuration"))
     assert json.loads(settings["cloud_enabled"]) is False
+
+
+def test_cli_invalid_database_manifest_returns_path_free_json_without_restore(tmp_path):
+    source = tmp_path / "source-data"
+    source.mkdir()
+    Database(source / "secretary.sqlite3").create_meeting("Synthetic invalid manifest")
+    archive = tmp_path / "backup"
+    _run("backup", "--data-dir", source, "--destination", archive)
+    manifest_path = archive / "manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    del manifest["databases"]["secretary.sqlite3"]["bytes"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    restore_root = tmp_path / "restores"
+    restore_root.mkdir()
+    destination = restore_root / "copy"
+
+    for arguments in [
+        ("verify", "--backup-dir", archive),
+        ("restore", "--backup-dir", archive, "--destination", destination, "--restore-root", restore_root),
+    ]:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), *(str(argument) for argument in arguments)],
+            cwd=ROOT, text=True, capture_output=True, timeout=30, check=False,
+        )
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert json.loads(result.stderr) == {"ok": False, "code": "backup_manifest_invalid"}
+        assert "Traceback" not in result.stderr
+        assert str(source) not in result.stderr
+        assert str(archive) not in result.stderr
+        assert not destination.exists()

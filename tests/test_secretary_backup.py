@@ -163,3 +163,74 @@ def test_restore_refuses_to_overlap_original_data_directory(tmp_path):
         restore_backup(archive, source / "restored-copy", restore_root=source)
 
     assert not (source / "restored-copy").exists()
+
+
+@pytest.mark.parametrize("field", ["path", "bytes", "sha256", "schema_sha256", "row_counts", "user_version"])
+def test_missing_database_manifest_fields_are_rejected_before_restore(tmp_path, field):
+    source = tmp_path / "source-data"
+    source.mkdir()
+    _fixture(source)
+    archive = tmp_path / "backup"
+    create_backup(source, archive)
+    manifest_path = archive / "manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    del manifest["databases"]["secretary.sqlite3"][field]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    restore_root = tmp_path / "restores"
+    restore_root.mkdir()
+    destination = restore_root / "copy"
+
+    with pytest.raises(LocalBackupError, match="^backup_manifest_invalid$"):
+        verify_backup(archive)
+    with pytest.raises(LocalBackupError, match="^backup_manifest_invalid$"):
+        restore_backup(archive, destination, restore_root=restore_root)
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("bytes", None), ("bytes", True), ("bytes", -1), ("bytes", 1.0),
+    ("sha256", None), ("sha256", "g" * 64),
+    ("schema_sha256", None), ("schema_sha256", "f" * 63),
+    ("row_counts", None), ("row_counts", []),
+    ("row_counts", {"meetings": True}), ("row_counts", {"meetings": -1}),
+    ("row_counts", {"meetings": 1.0}),
+    ("user_version", None), ("user_version", False), ("user_version", 1.0),
+])
+def test_invalid_database_manifest_field_types_are_rejected_before_restore(tmp_path, field, value):
+    source = tmp_path / "source-data"
+    source.mkdir()
+    _fixture(source)
+    archive = tmp_path / "backup"
+    create_backup(source, archive)
+    manifest_path = archive / "manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    manifest["databases"]["secretary.sqlite3"][field] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    restore_root = tmp_path / "restores"
+    restore_root.mkdir()
+    destination = restore_root / "copy"
+
+    with pytest.raises(LocalBackupError, match="^backup_manifest_invalid$"):
+        verify_backup(archive)
+    with pytest.raises(LocalBackupError, match="^backup_manifest_invalid$"):
+        restore_backup(archive, destination, restore_root=restore_root)
+    assert not destination.exists()
+
+
+def test_database_manifest_keeps_extension_fields_and_signed_sqlite_version_compatible(tmp_path):
+    source = tmp_path / "source-data"
+    source.mkdir()
+    _fixture(source)
+    with sqlite3.connect(source / "secretary.sqlite3") as conn:
+        conn.execute("PRAGMA user_version=-1")
+    archive = tmp_path / "backup"
+    create_backup(source, archive)
+    manifest_path = archive / "manifest.json"
+    manifest = json.loads(manifest_path.read_text("utf-8"))
+    manifest["databases"]["secretary.sqlite3"]["extension_note"] = "synthetic"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert verify_backup(archive)["state"] == "verified"
+    restore_root = tmp_path / "restores"
+    restore_root.mkdir()
+    assert restore_backup(archive, restore_root / "copy", restore_root=restore_root)["state"] == "verified"
