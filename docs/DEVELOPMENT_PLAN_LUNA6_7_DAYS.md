@@ -304,9 +304,9 @@ Pop-Location
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
 | P3 / P5 | TODO | Capture/import acceptance и эксплуатация |
-| P4 | PREPARED / BUGFIX_OFFLINE_PASS / REAL_DRILL_NOT_RUN | 31 focused PASS; `LOCAL_BACKUP_ACCEPTANCE.md`; нужны место копии и окно остановки |
+| P4 | PREFLIGHT_BLOCKED / REAL_DRILL_NOT_RUN | Хранение внутри Secretary выбрано; 15 старых pytest-ссылок в data/test-audio-tmp; исходный каталог сохранён, решение по составу копии ожидается; `LOCAL_BACKUP_ACCEPTANCE.md` |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятый scope, кандидат и полный период наблюдения |
-| T1 | CONFIGURATION_REQUIRED / EXTERNAL_UNKNOWN | Штатной Team runtime config нет; подтвердить другой адрес либо подготовить первый запуск; MAX/HTTPS неизвестны |
+| T1 | CONFIGURATION_REQUIRED / OWNER_CONFIRMED_NOT_READY | Владелец 15.10 подтвердил: бот MAX и внешний адрес ещё не готовы. Штатной Team runtime config нет |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
 | Speaker quality / 3h STT | AFTER_PILOT | Отдельная небольшая разметка и калибровка, без автоматической оплаты 3h |
 | R4–R6 Team recovery | BLOCKED / REVIEW_REQUIRED | Отдельное архитектурное решение и review, offline-only Go сохраняется |
