@@ -17,11 +17,44 @@ test('voice workflow has four stages; unavailable is not completed and ordinary 
 
 function workflowRunner(overrides = {}) {
   const runtime = hookRuntime();
-  const props = { meetingId: 'A', version: 1 };
+  const props = { meetingId: 'A', version: 1, onStaleVersion: () => {} };
   const api = { roster: async (id) => ({ meeting_id: id, roster_revision: 2, participants: [] }), attribution: async (id, version) => ({ meeting_id: id, transcript_version: version, revision: 3, participants: [], items: [] }), profiles: async () => [], ...overrides };
   const { useSpeakerWorkflow } = load('hooks/useSpeakerWorkflow.ts', { react: runtime.react, '../services/speakers': { speakersApi: api }, '../services/api': { errorMessage: (e) => e.message } }, { crypto: { randomUUID: () => 'operation' } });
-  return { props, render: () => runtime.render(() => useSpeakerWorkflow(props.meetingId, props.version), true) };
+  return { props, render: () => runtime.render(() => useSpeakerWorkflow(props.meetingId, props.version, 0, props.onStaleVersion), true) };
 }
+
+test('stale transcript version refreshes meeting scope without surfacing a transient 404', async () => {
+  const refreshes = [];
+  const missingVersion = Object.assign(new Error('Transcript version not found'), { status: 404 });
+  const runner = workflowRunner({ attribution: async (id, version) => {
+    if (version === 1) throw missingVersion;
+    return { meeting_id: id, transcript_version: version, revision: 4, items: [], participants: [] };
+  } });
+  runner.props.onStaleVersion = (id, version) => refreshes.push([id, version]);
+
+  let model = runner.render();
+  await model.refresh();
+  model = runner.render();
+
+  assert.deepEqual(refreshes, [['A', 1]]);
+  assert.equal(model.error, '');
+  assert.equal(model.snapshot, null);
+
+  runner.props.version = 2;
+  model = runner.render();
+  await model.refresh();
+  model = runner.render();
+  assert.equal(model.error, '');
+  assert.equal(model.snapshot.transcript_version, 2);
+});
+
+test('unrelated speaker read failures remain visible', async () => {
+  const runner = workflowRunner({ attribution: async () => { throw Object.assign(new Error('Roster not found'), { status: 404 }); } });
+  let model = runner.render();
+  await model.refresh();
+  model = runner.render();
+  assert.equal(model.error, 'Roster not found');
+});
 
 test('late roster/attribution read cannot cross meeting or transcript version', async () => {
   const old = deferred();

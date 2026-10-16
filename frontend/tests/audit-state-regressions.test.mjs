@@ -56,26 +56,39 @@ test('F1: a delayed playback rejection from a source cannot report an error in a
 test('F2: changes made while saving are preserved but never labeled as saved', async () => {
   const runtime = hookRuntime(), gate = deferred(); let submitted;
   const props = { config, catalog: null, busy: false, onClose() {}, onSave(payload) { submitted = payload; return gate.promise; } };
-  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react });
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
   let tree = runtime.render(() => SettingsPanel(props));
+  get(tree, (node) => node.type === 'input' && node.props.value === 120).props.onChange({ target: { value: '100' } });
+  tree = runtime.render(() => SettingsPanel(props));
   get(tree, (node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
   props.busy = true; tree = runtime.render(() => SettingsPanel(props));
-  get(tree, (node) => node.type === 'input' && node.props.value === 120).props.onChange({ target: { value: '90' } });
+  get(tree, (node) => node.type === 'input' && node.props.value === 100).props.onChange({ target: { value: '90' } });
   gate.resolve(true); await flush(); tree = runtime.render(() => SettingsPanel(props));
-  assert.equal(submitted.chunk_seconds, 120);
+  assert.equal(submitted.chunk_seconds, 100);
   assert.ok(walk(tree).some((node) => node.type === 'input' && node.props.value === 90));
   assert.equal(walk(tree).some((node) => node.props?.role === 'status' && text(node) === 'Настройки сохранены'), false);
-  assert.equal(submitted.local_cost_limits_enabled, false);
+  assert.equal('local_cost_limits_enabled' in submitted, false);
 });
 
 test('F2: unchanged settings confirm success, and a second synchronous submit is ignored', async () => {
   const runtime = hookRuntime(), gate = deferred(); let calls = 0;
   const props = { config, catalog: null, busy: false, onClose() {}, onSave() { calls++; return gate.promise; } };
-  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react });
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
   let tree = runtime.render(() => SettingsPanel(props)); const submit = get(tree, (node) => node.type === 'form').props.onSubmit;
   submit({ preventDefault() {} }); submit({ preventDefault() {} }); assert.equal(calls, 1);
   gate.resolve(true); await flush(); tree = runtime.render(() => SettingsPanel(props));
   assert.ok(walk(tree).some((node) => node.props?.role === 'status' && text(node) === 'Настройки сохранены'));
+});
+
+test('F2: per-request tariff ceilings are distinguished from the monthly Polza account limit', () => {
+  const runtime = hookRuntime();
+  const props = { config: { ...config, local_cost_limits_enabled: true }, catalog: null, busy: false, onClose() {}, onSave: async () => true };
+  const { SettingsPanel } = load('components/SettingsPanel.tsx', { react: runtime.react, './CloudBudgetPanel': { CloudBudgetPanel: () => null } });
+  const tree = runtime.render(() => SettingsPanel(props));
+  const rendered = text(tree);
+  assert.match(rendered, /предел цены одного запроса в Polza/);
+  assert.match(rendered, /остаток месячного лимита не повышает доступный тариф маршрута/);
+  assert.match(rendered, /Лимит расходов на встречу действует отдельно/);
 });
 
 test('F3: global refresh cannot clear a failed meeting read; successful meeting refresh clears its own error', async () => {

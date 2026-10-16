@@ -1,4 +1,6 @@
-import type { AppConfig, AudioChunk, DeviceList, IdentificationState, Meeting, ModelCatalog, PendingSummary, ProcessingJob, ProcessingMode, RecordingState, SegmentPage, Speaker, Summary, Usage } from '../types/api';
+import type { AppConfig, AudioChunk, CloudBudgetOperationDetails, CloudBudgetOperationPage, DeviceList, IdentificationState, Meeting, ModelCatalog, PendingSummary, ProcessingJob, ProcessingMode, RecordingState, SegmentPage, Speaker, Summary, Usage } from '../types/api';
+import { editableConfig } from '../utils/config.ts';
+import type { ConfigChanges } from '../utils/config';
 
 let sessionToken: string | null = null;
 let sessionRequest: Promise<string> | null = null;
@@ -46,6 +48,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
         return `${(detail.loc ?? []).join('.')}: ${detail.msg ?? 'Некорректное значение'}`;
       }).join('; ');
     } catch { /* Preserve the real HTTP error if its body is not JSON. */ }
+    if (message === 'runtime_outbound_disabled') message = 'Secretary открыт в режиме просмотра. Для обработки записей запустите приложение в обычном режиме.';
     if (response.status === 403) sessionToken = null;
     throw new ApiError(message, response.status);
   }
@@ -66,15 +69,19 @@ export const api = {
   recording: (id: string) => request<RecordingState>(`/meetings/${encodeURIComponent(id)}/recording`),
   devices: () => request<DeviceList>('/audio/devices'),
   config: () => request<AppConfig>('/config'),
-  saveConfig: (config: Omit<AppConfig, 'key_configured'>) => write<AppConfig>('/config', config, 'PATCH'),
+  saveConfig: (config: ConfigChanges) => write<AppConfig>('/config', editableConfig(config), 'PATCH'),
   models: () => request<ModelCatalog>('/models'),
   usage: (id?: string) => request<Usage>(`/usage${id ? `?meeting_id=${encodeURIComponent(id)}` : ''}`),
+  cloudBudgetOperations: (status = 'uncertain', limit = 50, offset = 0) => request<CloudBudgetOperationPage>(`/cloud-budget/operations?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`),
+  cloudBudgetOperation: (id: string) => request<CloudBudgetOperationDetails>(`/cloud-budget/operations/${encodeURIComponent(id)}`),
+  reconcileCloudBudgetOperation: (id: string) => write<{ operation_id: string; status: string; budget: unknown }>(`/cloud-budget/operations/${encodeURIComponent(id)}/reconcile`),
   upload: (id: string, file: File) => {
     const body = new FormData(); body.append('file', file);
     return request<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/upload`, { method: 'POST', body });
   },
   process: (id: string, stage: 'prepare' | 'transcribe' | 'summarize' = 'transcribe', retry = false, newTranscriptVersion = false) => write<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/process`, { stage, retry, ...(newTranscriptVersion ? { new_transcript_version: true } : {}) }),
   regenerateSummary: (id: string) => write<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/process`, { stage: 'summarize', regenerate_summary: true }),
+  resumeSummary: (id: string, command: { source_job_id: string; transcript_version: number; operation_id: string; acknowledge_possible_duplicate_charge: true }) => write<{ job_id: string; source_job_id: string }>(`/meetings/${encodeURIComponent(id)}/summary-resume`, command),
   identificationRun: (id: string, runId: string) => request<IdentificationState>(`/meetings/${encodeURIComponent(id)}/identification-runs/${encodeURIComponent(runId)}`),
   cancel: (id: string) => write<ProcessingJob>(`/jobs/${encodeURIComponent(id)}/cancel`),
   startRecording: (id: string, microphoneId: string, systemId: string, autoProcess: boolean) => write<RecordingState>(`/meetings/${encodeURIComponent(id)}/recording/start`, {

@@ -8,6 +8,19 @@ Selected React presentation files originated from **Kravchenko-Dmitry1980/ai-mee
 
 No source files from Meetily, meetscribe, Minutes or Amazon LMA were directly copied. Their respective MIT/GPL/file-specific notices do not become a license for this application. No Meetily Pro components, donor binary models, local credentials or environment files are included.
 
+## Source-only Vikunja read-observation overlay (2026-10-14)
+
+`integrations/vikunja-read-observation/` preserves eight prepared additions
+(one host-bound configuration as a template) and patches for two upstream files
+against Vikunja v2.7.0, commit `a16be96aa454671fdf213b0fbe411dd38a098418`.
+Original copyright headers are retained, and the upstream AGPL license text is
+included as [LICENSE](integrations/vikunja-read-observation/LICENSE).
+The overlay/patch follows those source headers (AGPL-3.0-or-later); this notice
+does not relicense the rest of Secretary. No Vikunja binary, database, credentials,
+toolchain or dependency cache is distributed here. The profile is source-only,
+not built or qualified for runtime use. See its [README](integrations/vikunja-read-observation/README.md)
+for provenance, hashes and the limits of the archived development helpers.
+
 ## Installed runtime dependencies
 
 Python dependencies are fixed in `uv.lock`; npm versions/integrity are fixed in `frontend/package-lock.json`. The full actual Python distribution inventory and npm lock inventory, including transitive/dev/optional entries and metadata limitations, is [docs/licenses/inventory.json](docs/licenses/inventory.json). Shipped license/notice texts are preserved under `docs/licenses/python/` and `docs/licenses/npm/`; installed packages retain their original notices too.

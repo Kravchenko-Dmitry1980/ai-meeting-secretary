@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import * as configUtils from '../src/utils/config.ts';
 
 // Execute the real TS/TSX with deterministic hooks and synthetic APIs. This
 // tests async ownership independently of browser/network timing or user data.
@@ -30,6 +31,7 @@ export function load(relative, imports, context = {}) {
   const exports = {};
   vm.runInNewContext(output, { exports, require: (id) => {
     if (id in imports) return imports[id];
+    if (id === '../utils/config' || id === '../utils/config.ts') return configUtils;
     if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
     if (id === 'lucide-react' || id.startsWith('./components') || id.startsWith('./ui/')) return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(`Unexpected dependency: ${id}`);
@@ -44,7 +46,7 @@ export function walk(node) {
 export const text = (node) => Array.isArray(node) ? node.map(text).join('') : node && typeof node === 'object' ? text(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
 export const get = (tree, predicate) => { const value = walk(tree).find(predicate); assert.ok(value, 'Required control present'); return value; };
 export const meeting = (id) => ({ id, title: `Synthetic ${id}`, status: 'ready', created_at: '2026-10-02T10:00:00Z', transcript_version: 1, duration_ms: 1000 });
-export const config = { key_configured: true, cloud_enabled: true, local_cost_limits_enabled: false, stt_model: 'stt', summary_model: 'llm', chunk_seconds: 120, request_timeout_seconds: 180, meeting_budget_rub: 100, stt_price_rub_per_minute: 1, summary_input_rub_per_million: 1, summary_output_rub_per_million: 1, allow_unknown_price: false, unknown_request_reservation_rub: null };
+export const config = { key_configured: true, max_upload_bytes: 2 * 1024**3, cloud_enabled: true, local_cost_limits_enabled: false, stt_model: 'stt', summary_model: 'llm', chunk_seconds: 120, request_timeout_seconds: 180, meeting_budget_rub: 100, stt_price_rub_per_minute: 1, summary_input_rub_per_million: 1, summary_output_rub_per_million: 1, allow_unknown_price: false, unknown_request_reservation_rub: null };
 export function appRunner(api = {}, options = {}) {
   const runtime = hookRuntime();
   const current = meeting('A');
@@ -52,8 +54,9 @@ export function appRunner(api = {}, options = {}) {
   const model = { meeting: current, meetings: [current, meeting('B')], selectedId: 'A', devices: { available: true, devices: [] }, config, jobs: [], chunks: [{ id: 'chunk', status: 'ready' }], segments: { items: [], total: 0 }, speakers: [], loading: false, summary: null, summaryStatus: 'new', sseConnected: true,
     setError(value) { errors.push(value); }, invalidateActions() {}, selectMeeting(id) { this.meeting = this.meetings.find((item) => item.id === id); this.selectedId = id; } };
   const processing = load('utils/processing.ts', {});
+  const format = { ...load('utils/format.ts', {}), timeOffset: () => '0:01' };
   const workflow = { snapshot: null, roster: null, profiles: [], busy: false, pending: false, error: '', refresh: async () => {}, ...options.workflow };
-  const { default: App } = load('App.tsx', { react: runtime.react, './hooks/useSecretary': { useSecretary: () => model }, './hooks/useSpeakerWorkflow': { useSpeakerWorkflow: () => workflow }, './services/speakers': { speakersApi: options.speakersApi ?? {} }, './services/api': { api: { exportUrl: () => '#', audioUrl: () => '#', ...api }, errorMessage: (error) => error.message }, './utils/processing': processing, './utils/format': { timeOffset: () => '0:01' } }, { crypto: { randomUUID: () => 'synthetic-operation' } });
+  const { default: App } = load('App.tsx', { react: runtime.react, './hooks/useSecretary': { useSecretary: () => model }, './hooks/useSpeakerWorkflow': { useSpeakerWorkflow: () => workflow }, './services/speakers': { speakersApi: options.speakersApi ?? {} }, './services/api': { api: { exportUrl: () => '#', audioUrl: () => '#', ...api }, errorMessage: (error) => error.message }, './utils/processing': processing, './utils/format': format }, { crypto: { randomUUID: () => 'synthetic-operation' }, ...options.context });
   return { render: (effects = false) => runtime.render(App, effects), model, workflow, errors };
 }
 export function secretaryRunner(overrides = {}) {

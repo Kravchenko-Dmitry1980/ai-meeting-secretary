@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-03T16:53:03.067999Z",
+  "qualification": "LOCAL_INTEGRATION",
+  "vikunja": {
+    "version": "2.7.0",
+    "architecture": "amd64",
+    "artifact": "vikunja-v2.7.0-windows-4.0-amd64.exe-full.zip",
+    "source_url": "https://dl.vikunja.io/vikunja/v2.7.0/vikunja-v2.7.0-windows-4.0-amd64.exe-full.zip",
+    "signature_url": "https://dl.vikunja.io/vikunja/v2.7.0/vikunja-v2.7.0-windows-4.0-amd64.exe-full.zip.sig",
+    "key_url": "https://dl.vikunja.io/repos/gpg.key",
+    "sha256": "eefefec0de369b01e16edf168061d0394dae44cdf0e66c768db0c976e03fbc92",
+    "signing_key_id": "FF054DACD908493A",
+    "signing_fingerprint": "7D061A4AA61436B40713D42EFF054DACD908493A",
+    "signature_check": "verified",
+    "api_version": "v2",
+    "license": "AGPL-3.0-or-later",
+    "license_url": "https://github.com/go-vikunja/vikunja/blob/v2.7.0/LICENSE",
+    "windows_artifact_size_bytes": 38658556,
+    "binary_sha256": "e485792c33f537124fb187658a84099a74ab0f1b948a44dee9049fede1ad66b6",
+    "openapi_sha256": "3636e5083f4df9a2110a9c9165cfe0cccbdc77743e61bbf1c95650537920fc75",
+    "openapi_normalization": "Remove only the ephemeral fixture absolute servers URL; preserve raw bytes in ignored evidence.",
+    "read_etag_supported": true,
+    "conditional_write_cas_enforced": false,
+    "token_creation_denial_status": 401,
+    "bot_username_prefix": "bot-",
+    "release_channel": "pinned",
+    "free_core_only": true
+  },
+  "max": {
+    "contract": "docs/contracts/max-contract.json",
+    "sdk_revision_sha": "d6d330b5915236055856ca382380be7cbf9517c5",
+    "tls_probe": "VERIFIED_SYSTEM_ROOTS_UNAUTHENTICATED_HTTP_401",
+    "authenticated_probe": "NOT_RUN",
+    "native_voice": "NOT_QUALIFIED"
+  }
+}

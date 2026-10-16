@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+import sys
+import unittest
+
+
+HELPER_PATH = Path(__file__).with_name('check_dependencies.py')
+SPEC = importlib.util.spec_from_file_location('offline_egress_candidate', HELPER_PATH)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError('candidate_helper_unavailable')
+HELPER = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = HELPER
+SPEC.loader.exec_module(HELPER)
+
+_SAFE_OFFLINE_ENV = {
+    'SYSTEMROOT': r'C:\Windows', 'WINDIR': r'C:\Windows', 'HOME': r'C:\fixture\profile',
+    'USERPROFILE': r'C:\fixture\profile', 'APPDATA': r'C:\fixture\profile\appdata',
+    'LOCALAPPDATA': r'C:\fixture\profile\localappdata', 'TEMP': r'C:\fixture\temp',
+    'TMP': r'C:\fixture\temp', 'GOTMPDIR': r'C:\fixture\temp',
+    'PATH': r'C:\fixture\gcc;C:\Windows\System32', 'GOENV': 'off', 'GOWORK': 'off',
+    'GO111MODULE': 'on', 'GOAUTH': 'off', 'GOVCS': '*:off', 'GOTOOLCHAIN': 'local',
+    'GOOS': 'windows', 'GOARCH': 'amd64', 'CGO_ENABLED': '1', 'GOMAXPROCS': '2',
+    'GOROOT': r'C:\fixture\go', 'CC': r'C:\fixture\gcc\gcc.exe',
+    'GOPATH': r'C:\fixture\go-path', 'GOCACHE': r'C:\fixture\go-cache',
+    'GOMODCACHE': r'C:\fixture\mod-cache', 'TEST_TELEMETRY_DIR': r'C:\fixture\telemetry',
+    'GOPROXY': 'off', 'GOSUMDB': 'off', 'GOPRIVATE': '', 'GONOPROXY': '',
+    'GONOSUMDB': '', 'GOINSECURE': '', 'GOFLAGS': '',
+}
+
+
+def offline_environment():
+    return dict(_SAFE_OFFLINE_ENV)
+
+
+class _ForbiddenProcessProbe:
+    def accounting(self, _job):
+        raise AssertionError('network gate must run before process/job inspection')
+
+
+class DependencyEgressGuardTests(unittest.TestCase):
+    def test_network_capable_mvs_child_is_refused_before_process_probe(self):
+        with self.assertRaises(HELPER.PreparationError) as raised:
+            HELPER.run_owned(
+                'mvs-list',
+                [r'C:\synthetic\go.exe', 'list', '-m', 'example.invalid/private/unapproved@v0.0.0'],
+                Path('.'),
+                {'GOPROXY': 'https://proxy.golang.org', 'GOSUMDB': 'sum.golang.org'},
+                _ForbiddenProcessProbe(), None, None, 1, 1024, online=True,
+            )
+        self.assertEqual(raised.exception.code, 'dependency_egress_disabled')
+
+    def test_public_proxy_is_refused_even_if_command_is_mislabeled_offline(self):
+        with self.assertRaises(HELPER.PreparationError) as raised:
+            HELPER.run_owned(
+                'mvs-list',
+                [r'C:\synthetic\go.exe', 'list', '-m', 'all'],
+                Path('.'),
+                {'GOPROXY': 'https://proxy.golang.org', 'GOSUMDB': 'sum.golang.org'},
+                _ForbiddenProcessProbe(), None, None, 1, 1024, online=False,
+            )
+        self.assertEqual(raised.exception.code, 'dependency_egress_disabled')
+
+    def test_declared_offline_environment_passes_policy_without_launching(self):
+        environment = offline_environment()
+        self.assertIsNone(HELPER.require_offline_go_execution(environment, online=False))
+
+    def test_online_intent_is_refused_even_with_offline_environment(self):
+        environment = offline_environment()
+        with self.assertRaises(HELPER.PreparationError) as raised:
+            HELPER.require_offline_go_execution(environment, online=True)
+        self.assertEqual(raised.exception.code, 'dependency_egress_disabled')
+
+    def test_go_exec_and_proxy_overrides_are_refused_before_process_probe(self):
+        for name, value in (
+            ('GOFLAGS', '-toolexec=C:\\fixture\\unexpected.exe'),
+            ('GOCACHEPROG', 'C:\\fixture\\network-cache.exe'),
+            ('HTTPS_PROXY', 'http://proxy.invalid:8080'),
+            ('goproxy', 'https://proxy.invalid'),
+        ):
+            with self.subTest(name=name):
+                environment = offline_environment()
+                environment[name] = value
+                with self.assertRaises(HELPER.PreparationError) as raised:
+                    HELPER.require_offline_go_execution(environment, online=False)
+                self.assertEqual(raised.exception.code, 'dependency_egress_disabled')
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

@@ -4,6 +4,75 @@
  */
 
 export interface paths {
+    "/api/v1/team/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create */
+        post: operations["create_api_v1_team_invitations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/team/invitations/{invitation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read */
+        get: operations["read_api_v1_team_invitations__invitation_id__get"];
+        put?: never;
+        post?: never;
+        /** Revoke Invitation */
+        delete: operations["revoke_invitation_api_v1_team_invitations__invitation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/team/invitations/{invitation_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm */
+        post: operations["confirm_api_v1_team_invitations__invitation_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/team/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Member */
+        delete: operations["revoke_member_api_v1_team_members__member_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/{path}": {
         parameters: {
             query?: never;
@@ -17,6 +86,125 @@ export interface paths {
         delete?: never;
         /** Preflight */
         options: operations["preflight__path__options"];
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Monthly Budget Snapshot */
+        get: operations["monthly_budget_snapshot_api_v1_cloud_budget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cloud Budget Operations */
+        get: operations["list_cloud_budget_operations_api_v1_cloud_budget_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cloud Budget Operation Details */
+        get: operations["cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Monthly Budget */
+        post: operations["refresh_monthly_budget_api_v1_cloud_budget_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Budget Scope */
+        post: operations["create_budget_scope_api_v1_cloud_budget_scopes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/scopes/{scope_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Budget Scope Snapshot */
+        get: operations["budget_scope_snapshot_api_v1_cloud_budget_scopes__scope_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cloud-budget/operations/{operation_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Cloud Operation */
+        post: operations["reconcile_cloud_operation_api_v1_cloud_budget_operations__operation_id__reconcile_post"];
+        delete?: never;
+        options?: never;
         head?: never;
         patch?: never;
         trace?: never;
@@ -37,6 +225,75 @@ export interface paths {
         head?: never;
         /** Review Task Assignments */
         patch: operations["review_task_assignments_api_v1_meetings__meeting_id__task_assignments_patch"];
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/task-publications/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Task Publication Context */
+        get: operations["task_publication_context_api_v1_meetings__meeting_id__task_publications_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/task-publications/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Task Publications */
+        post: operations["preview_task_publications_api_v1_meetings__meeting_id__task_publications_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/task-publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Task Publications */
+        get: operations["list_task_publications_api_v1_meetings__meeting_id__task_publications_get"];
+        put?: never;
+        /** Confirm Task Publications */
+        post: operations["confirm_task_publications_api_v1_meetings__meeting_id__task_publications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/task-publications/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Task Publication */
+        get: operations["read_task_publication_api_v1_meetings__meeting_id__task_publications__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/participants/{person_id}/enrollments": {
@@ -264,6 +521,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sanitized local readiness diagnostics; not production qualification */
+        get: operations["readiness_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ready/storage-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create and remove a one-byte file in the configured data directory */
+        post: operations["readiness_storage_probe_ready_storage_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/session": {
         parameters: {
             query?: never;
@@ -429,6 +720,23 @@ export interface paths {
         put?: never;
         /** Process */
         post: operations["process_api_v1_meetings__meeting_id__process_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/summary-resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Summary */
+        post: operations["resume_summary_api_v1_meetings__meeting_id__summary_resume_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -695,6 +1003,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptanceReceipt */
+        AcceptanceReceipt: {
+            /** Operation Id */
+            operation_id: string;
+            /** Payload Hash */
+            payload_hash: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Error Code */
+            error_code?: string | null;
+        };
         /** ActionItem */
         ActionItem: {
             /** Text */
@@ -922,10 +1249,99 @@ export interface components {
              */
             status: "proposed" | "confirmed" | "needs_review";
         };
+        /** CloudBudgetOperationDetails */
+        CloudBudgetOperationDetails: {
+            operation: components["schemas"]["CloudBudgetOperationView"];
+            /** Events */
+            events: components["schemas"]["CloudBudgetReconciliationEventView"][];
+        };
+        /** CloudBudgetOperationPage */
+        CloudBudgetOperationPage: {
+            /** Items */
+            items: components["schemas"]["CloudBudgetOperationView"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Next Offset */
+            next_offset: number | null;
+        };
+        /** CloudBudgetOperationView */
+        CloudBudgetOperationView: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Category */
+            category: string;
+            /** Period */
+            period: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reserved" | "submitted" | "uncertain" | "confirmed" | "released";
+            /** Estimated Rub */
+            estimated_rub: number;
+            /** Reserved Rub */
+            reserved_rub: number;
+            /** Observed Rub */
+            observed_rub: number | null;
+            /** Confirmed Rub */
+            confirmed_rub: number | null;
+            /** Provider Request Id */
+            provider_request_id: string | null;
+            /** Provider Job Id */
+            provider_job_id: string | null;
+            /** Confirmed Period */
+            confirmed_period: string | null;
+            /** Created Ms */
+            created_ms: number;
+            /** Updated Ms */
+            updated_ms: number;
+        };
+        /** CloudBudgetReconciliationEventView */
+        CloudBudgetReconciliationEventView: {
+            /** Event Id */
+            event_id: number;
+            /** Occurred Ms */
+            occurred_ms: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "lookup_started" | "lookup_blocked" | "provider_pending" | "receipt_applied" | "receipt_unresolved";
+            /** Reason Code */
+            reason_code: string | null;
+            /** Provider Status */
+            provider_status: ("pending" | "completed" | "failed") | null;
+            /** Provider Request Id */
+            provider_request_id: string | null;
+            /** Provider Job Id */
+            provider_job_id: string | null;
+            /** Provider Cost Rub */
+            provider_cost_rub: number | null;
+            /** Provider Period */
+            provider_period: string | null;
+        };
+        /** CommandReceipt */
+        CommandReceipt: {
+            acceptance_receipt: components["schemas"]["AcceptanceReceipt"];
+            execution_state: components["schemas"]["ExecutionState"];
+            current?: components["schemas"]["TaskSnapshot"] | null;
+        };
         /** ConfigurationResponse */
         ConfigurationResponse: {
             /** Key Configured */
             key_configured: boolean;
+            /** Max Upload Bytes */
+            max_upload_bytes: number;
+            /**
+             * Runtime Outbound Enabled
+             * @description Whether this process permits outbound cloud requests; read-only until restart.
+             */
+            readonly runtime_outbound_enabled: boolean;
             /** Stt Model */
             stt_model: string;
             /** Summary Model */
@@ -966,6 +1382,25 @@ export interface components {
             /** Operation Id */
             operation_id: string;
         };
+        /** ConfirmInvitation */
+        ConfirmInvitation: {
+            member: components["schemas"]["TeamMember"];
+        };
+        /** CreateBudgetScope */
+        CreateBudgetScope: {
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Cap Rub */
+            cap_rub: number | string;
+        };
+        /** CreateInvitation */
+        CreateInvitation: {
+            /** Project Ids */
+            project_ids: string[];
+        };
         /** CreateMeeting */
         CreateMeeting: {
             /**
@@ -979,6 +1414,8 @@ export interface components {
              * @enum {string}
              */
             processing_mode: "ordinary" | "voice_identification";
+            /** Cloud Budget Scope Id */
+            cloud_budget_scope_id?: string | null;
         };
         /** CreateProfile */
         CreateProfile: {
@@ -1000,6 +1437,15 @@ export interface components {
             expected_revision: number;
             /** Operation Id */
             operation_id: string;
+        };
+        /** DeliveryReceipt */
+        DeliveryReceipt: {
+            /** Operation Id */
+            operation_id: string;
+            scope: components["schemas"]["PublicationScope"];
+            acceptance_receipt: components["schemas"]["AcceptanceReceipt"];
+            /** Items */
+            items: components["schemas"]["PublicationItemReceipt"][];
         };
         /** DraftAction */
         DraftAction: {
@@ -1115,6 +1561,37 @@ export interface components {
              */
             evidence_quote: string;
         };
+        /** ExecutionState */
+        ExecutionState: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "reconciling" | "applied" | "conflict" | "uncertain" | "rejected";
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            /** Task Id */
+            task_id?: string | null;
+            /** Verified At */
+            verified_at?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Retry After */
+            retry_after?: number | null;
+        };
+        /** FrontendBuildRequiredResponse */
+        FrontendBuildRequiredResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "frontend_build_required";
+            /** Message */
+            message: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1150,10 +1627,115 @@ export interface components {
             /** Bypass Attribution Revision */
             bypass_attribution_revision?: number | null;
         };
+        /** InvitationGrant */
+        InvitationGrant: {
+            /** Id */
+            id: string;
+            /** Value */
+            value: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** InvitationView */
+        InvitationView: {
+            /** Id */
+            id: string;
+            /** Project Ids */
+            project_ids: string[];
+            /** Candidate User Id */
+            candidate_user_id: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Confirmed Member Id */
+            confirmed_member_id: string | null;
+            /** Revoked */
+            revoked: boolean;
+        };
         /** JobAccepted */
         JobAccepted: {
             /** Job Id */
             job_id: string;
+        };
+        /** LocalReadinessComponent */
+        LocalReadinessComponent: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "degraded" | "not_configured" | "disabled" | "waiting_config" | "configured_unqualified" | "available" | "missing" | "not_qualified" | "not_checked" | "unavailable" | "mismatch";
+            /** Code */
+            code?: string | null;
+            /** Integrity */
+            integrity?: "ok" | null;
+            /** Directory Writable */
+            directory_writable?: boolean | null;
+            /** Free Bytes */
+            free_bytes?: number | null;
+            /** Minimum Free Bytes */
+            minimum_free_bytes?: number | null;
+            /** Heartbeat Age Seconds */
+            heartbeat_age_seconds?: number | null;
+            /** Heartbeat Stale After Seconds */
+            heartbeat_stale_after_seconds?: number | null;
+            /** Live Qualified */
+            live_qualified?: boolean | null;
+            /** Backend Version */
+            backend_version?: string | null;
+            /** Manifest Backend Version */
+            manifest_backend_version?: string | null;
+            /** Frontend Version */
+            frontend_version?: string | null;
+            /** Build Check */
+            build_check?: string | null;
+            /** Lockfiles Verified */
+            lockfiles_verified?: boolean | null;
+        };
+        /** LocalReadinessJobs */
+        LocalReadinessJobs: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "unavailable";
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Stale Running Candidate Count */
+            stale_running_candidate_count: number | null;
+            /** Stale After Seconds */
+            stale_after_seconds: number;
+        };
+        /** LocalReadinessReport */
+        LocalReadinessReport: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "local_ok" | "degraded";
+            /**
+             * Production Qualified
+             * @constant
+             */
+            production_qualified: false;
+            /** Blockers */
+            blockers: string[];
+            /** Components */
+            components: {
+                [key: string]: components["schemas"]["LocalReadinessComponent"];
+            };
+            jobs: components["schemas"]["LocalReadinessJobs"];
+        };
+        /** LocalTeamError */
+        LocalTeamError: {
+            /** Detail */
+            detail: string;
         };
         /** Meeting */
         Meeting: {
@@ -1261,6 +1843,12 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** PreviewPublications */
+        PreviewPublications: {
+            scope: components["schemas"]["PublicationScope"];
+            /** Selections */
+            selections: components["schemas"]["PublicationSelection"][];
+        };
         /** ProcessRequest */
         ProcessRequest: {
             /**
@@ -1316,6 +1904,8 @@ export interface components {
             run_id?: string | null;
             /** Local Outcome */
             local_outcome?: string | null;
+            /** Resumed From Job Id */
+            resumed_from_job_id?: string | null;
             /**
              * Status
              * @enum {string}
@@ -1329,6 +1919,229 @@ export interface components {
             created_at: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** PublicationCandidate */
+        PublicationCandidate: {
+            /** Action Id */
+            action_id: string;
+            /** Title */
+            title: string;
+            /** Participant Id */
+            participant_id?: string | null;
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Assignee Name */
+            assignee_name?: string | null;
+            /** Due Phrase */
+            due_phrase?: string | null;
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Source Segment Ids */
+            source_segment_ids: string[];
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Reason Codes
+             * @default []
+             */
+            reason_codes: string[];
+            /**
+             * Possible Supersedes
+             * @default []
+             */
+            possible_supersedes: components["schemas"]["SupersedesCandidate"][];
+            /** Existing Publication Id */
+            existing_publication_id?: string | null;
+        };
+        /** PublicationContext */
+        PublicationContext: {
+            scope: components["schemas"]["PublicationScope"];
+            watermarks: components["schemas"]["PublicationWatermarks"];
+            /** Project Name */
+            project_name: string;
+            /** Members */
+            members: components["schemas"]["PublicationMember"][];
+            /** Candidates */
+            candidates: components["schemas"]["PublicationCandidate"][];
+        };
+        /** PublicationItemReceipt */
+        PublicationItemReceipt: {
+            /** Publication Id */
+            publication_id: string;
+            /** Delivery Operation Id */
+            delivery_operation_id: string;
+            /** Action Id */
+            action_id: string;
+            /**
+             * Intent
+             * @enum {string}
+             */
+            intent: "publish" | "link" | "propose_update" | "create_separate";
+            execution_state: components["schemas"]["ExecutionState"];
+            gateway_receipt?: components["schemas"]["CommandReceipt"] | null;
+            /**
+             * Source Stale
+             * @default false
+             */
+            source_stale: boolean;
+            /**
+             * Correction Required
+             * @default false
+             */
+            correction_required: boolean;
+        };
+        /** PublicationMember */
+        PublicationMember: {
+            /** Id */
+            id: string;
+            /** Display Name */
+            display_name: string;
+            /** Revision */
+            revision: number;
+        };
+        /** PublicationPreviewResult */
+        PublicationPreviewResult: {
+            /** Candidates */
+            candidates: components["schemas"]["PublicationCandidate"][];
+            preview?: components["schemas"]["PublishPreview"] | null;
+        };
+        /** PublicationScope */
+        PublicationScope: {
+            /** Meeting Id */
+            meeting_id: string;
+            /** Transcript Version */
+            transcript_version: number;
+            /** Summary Version */
+            summary_version: number;
+            /** Destination Project Id */
+            destination_project_id: string;
+        };
+        /**
+         * PublicationSelection
+         * @description Owner choices; source text/evidence and current mappings are server-owned.
+         */
+        PublicationSelection: {
+            /** Action Id */
+            action_id: string;
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Due Resolution
+             * @default unresolved
+             * @enum {string}
+             */
+            due_resolution: "unresolved" | "date" | "none";
+            /** Due At */
+            due_at?: string | null;
+            /**
+             * Intent
+             * @default publish
+             * @enum {string}
+             */
+            intent: "publish" | "link" | "propose_update" | "create_separate";
+            /** Target Publication Id */
+            target_publication_id?: string | null;
+            /** Separate Id */
+            separate_id?: string | null;
+        };
+        /** PublicationTask */
+        PublicationTask: {
+            /** Action Id */
+            action_id: string;
+            /** Title */
+            title: string;
+            /** Assignee Id */
+            assignee_id: string;
+            /** Source Segment Ids */
+            source_segment_ids: string[];
+            /** Evidence Quote */
+            evidence_quote: string;
+            /** Due At */
+            due_at?: string | null;
+            /** Due Phrase */
+            due_phrase?: string | null;
+            /**
+             * Due Confirmed
+             * @default false
+             */
+            due_confirmed: boolean;
+            /**
+             * Due Timezone
+             * @default Europe/Moscow
+             * @constant
+             */
+            due_timezone: "Europe/Moscow";
+            /** Publication Id */
+            publication_id?: string | null;
+            /**
+             * Member Revision
+             * @default 0
+             */
+            member_revision: number;
+            /** Participant Id */
+            participant_id?: string | null;
+            /** Source Fingerprint */
+            source_fingerprint?: string | null;
+            /**
+             * Intent
+             * @default publish
+             * @enum {string}
+             */
+            intent: "publish" | "link" | "propose_update" | "create_separate";
+            /** Target Publication Id */
+            target_publication_id?: string | null;
+            /** Target Task Id */
+            target_task_id?: string | null;
+            /** Expected Task Revision */
+            expected_task_revision?: number | null;
+            /** Expected Task Fingerprint */
+            expected_task_fingerprint?: string | null;
+            target_snapshot?: components["schemas"]["TaskSnapshot"] | null;
+            /** Separate Id */
+            separate_id?: string | null;
+        };
+        /** PublicationWatermarks */
+        PublicationWatermarks: {
+            /** Assignment Revision */
+            assignment_revision: number;
+            /** Roster Revision */
+            roster_revision: number;
+            /** Attribution Revision */
+            attribution_revision: number;
+            /** Context Hash */
+            context_hash: string;
+        };
+        /** PublishCommand */
+        PublishCommand: {
+            /** Preview Id */
+            preview_id: string;
+            scope: components["schemas"]["PublicationScope"];
+            watermarks: components["schemas"]["PublicationWatermarks"];
+            /** Items */
+            items: components["schemas"]["PublicationTask"][];
+            /** Actor Id */
+            actor_id?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Operation Id */
+            operation_id: string;
+            /** Preview Hash */
+            preview_hash: string;
+        };
+        /** PublishPreview */
+        PublishPreview: {
+            /** Preview Id */
+            preview_id: string;
+            scope: components["schemas"]["PublicationScope"];
+            watermarks: components["schemas"]["PublicationWatermarks"];
+            /** Items */
+            items: components["schemas"]["PublicationTask"][];
+            /** Actor Id */
+            actor_id?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Preview Hash */
+            readonly preview_hash: string;
         };
         /** QuoteAnchor */
         QuoteAnchor: {
@@ -1388,6 +2201,23 @@ export interface components {
             revision: number;
             previous_provenance?: components["schemas"]["CarryoverProvenance"] | null;
         };
+        /** ResumeSummaryRequest */
+        ResumeSummaryRequest: {
+            /**
+             * Source Job Id
+             * Format: uuid
+             */
+            source_job_id: string;
+            /** Transcript Version */
+            transcript_version: number;
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Acknowledge Possible Duplicate Charge */
+            acknowledge_possible_duplicate_charge: boolean;
+        };
         /** ReviewAttribution */
         ReviewAttribution: {
             /** Transcript Version */
@@ -1415,6 +2245,11 @@ export interface components {
             operation_id: string;
             /** Changes */
             changes: components["schemas"]["TaskAssignmentChange"][];
+        };
+        /** RevokeMember */
+        RevokeMember: {
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** SegmentsPage */
         SegmentsPage: {
@@ -1524,6 +2359,16 @@ export interface components {
             /** Operation Id */
             operation_id: string;
         };
+        /** StorageWriteProbeReport */
+        StorageWriteProbeReport: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "healthy" | "degraded";
+            /** Code */
+            code?: "storage_write_probe_failed" | null;
+        };
         /** Summary */
         Summary: {
             /** Meeting Id */
@@ -1553,6 +2398,27 @@ export interface components {
              */
             status: string;
         };
+        /** SummaryResumeAccepted */
+        SummaryResumeAccepted: {
+            /** Job Id */
+            job_id: string;
+            /** Source Job Id */
+            source_job_id: string;
+        };
+        /** SupersedesCandidate */
+        SupersedesCandidate: {
+            /** Publication Id */
+            publication_id: string;
+            /** Title */
+            title: string;
+            /** Task Id */
+            task_id?: string | null;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+        };
         /** TaskAssignmentChange */
         TaskAssignmentChange: {
             /** Action Id */
@@ -1564,6 +2430,110 @@ export interface components {
             decision: "confirm_proposal" | "set_manual" | "clear";
             /** Participant Id */
             participant_id?: string | null;
+        };
+        /** TaskOrigin */
+        TaskOrigin: {
+            /**
+             * Source Kind
+             * @default manual
+             * @enum {string}
+             */
+            source_kind: "manual" | "meeting" | "max";
+            /** Publication Id */
+            publication_id?: string | null;
+            /** Meeting Id */
+            meeting_id?: string | null;
+            /** Transcript Version */
+            transcript_version?: number | null;
+            /** Summary Version */
+            summary_version?: number | null;
+            /** Action Id */
+            action_id?: string | null;
+        };
+        /** TaskSnapshot */
+        TaskSnapshot: {
+            /** Task Id */
+            task_id: string;
+            /** Project Id */
+            project_id: string;
+            /** Revision */
+            revision: number;
+            /** Remote Fingerprint */
+            remote_fingerprint: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Bucket
+             * @default inbox
+             * @enum {string}
+             */
+            bucket: "inbox" | "accepted" | "doing" | "blocked" | "review" | "done" | "cancelled";
+            /** Important */
+            important?: boolean | null;
+            /** Urgent */
+            urgent?: boolean | null;
+            /**
+             * Classification Confirmed
+             * @default false
+             */
+            classification_confirmed: boolean;
+            /** Due At */
+            due_at?: string | null;
+            /** Due Phrase */
+            due_phrase?: string | null;
+            /**
+             * Due Timezone
+             * @default Europe/Moscow
+             * @constant
+             */
+            due_timezone: "Europe/Moscow";
+            /**
+             * Due Confirmed
+             * @default false
+             */
+            due_confirmed: boolean;
+            origin?: components["schemas"]["TaskOrigin"] | null;
+        };
+        /** TeamMember */
+        TeamMember: {
+            /** Id */
+            id: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Role
+             * @default member
+             * @enum {string}
+             */
+            role: "owner" | "member";
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Max User Id */
+            max_user_id: string;
+            /** Vikunja User Id */
+            vikunja_user_id: string;
+            /** Person Profile Id */
+            person_profile_id?: string | null;
+            /**
+             * Project Ids
+             * @default []
+             */
+            project_ids: string[];
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
         };
         /** TranscriptSegment */
         TranscriptSegment: {
@@ -1654,6 +2624,394 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    create_api_v1_team_invitations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationGrant"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+        };
+    };
+    read_api_v1_team_invitations__invitation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+        };
+    };
+    revoke_invitation_api_v1_team_invitations__invitation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+        };
+    };
+    confirm_api_v1_team_invitations__invitation_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmInvitation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMember"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+        };
+    };
+    revoke_member_api_v1_team_members__member_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeMember"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMember"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalTeamError"];
+                };
+            };
+        };
+    };
     preflight__path__options: {
         parameters: {
             query?: never;
@@ -1673,6 +3031,219 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    monthly_budget_snapshot_api_v1_cloud_budget_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_cloud_budget_operations_api_v1_cloud_budget_operations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                status?: ("reserved" | "submitted" | "uncertain" | "confirmed" | "released") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudBudgetOperationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudBudgetOperationDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_monthly_budget_api_v1_cloud_budget_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Облачные запросы выключены в offline-режиме */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_budget_scope_api_v1_cloud_budget_scopes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBudgetScope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    budget_scope_snapshot_api_v1_cloud_budget_scopes__scope_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_cloud_operation_api_v1_cloud_budget_operations__operation_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Облачные запросы выключены или квитанцию нельзя безопасно применить */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1754,6 +3325,350 @@ export interface operations {
             };
         };
     };
+    task_publication_context_api_v1_meetings__meeting_id__task_publications_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationContext"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_task_publications_api_v1_meetings__meeting_id__task_publications_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewPublications"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicationPreviewResult"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_task_publications_api_v1_meetings__meeting_id__task_publications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryReceipt"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_task_publications_api_v1_meetings__meeting_id__task_publications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryReceipt"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_task_publication_api_v1_meetings__meeting_id__task_publications__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryReceipt"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     enrollments_api_v1_participants__person_id__enrollments_get: {
         parameters: {
             query?: never;
@@ -1818,6 +3733,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Недостаточно места для загрузки или сохранения записи */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     enrollment_recording_start_api_v1_participants__person_id__enrollment_recording_start_post: {
@@ -1851,6 +3775,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Недостаточно места для локальной аудиозаписи */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -2305,6 +4238,46 @@ export interface operations {
             };
         };
     };
+    readiness_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalReadinessReport"];
+                };
+            };
+        };
+    };
+    readiness_storage_probe_ready_storage_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageWriteProbeReport"];
+                };
+            };
+        };
+    };
     session_api_v1_session_get: {
         parameters: {
             query?: never;
@@ -2442,6 +4415,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Недостаточно места для загрузки аудиозаписи */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     chunks_api_v1_meetings__meeting_id__chunks_get: {
@@ -2559,6 +4541,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Недостаточно места для локальной аудиозаписи */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     recording_stop_api_v1_meetings__meeting_id__recording_stop_post: {
@@ -2615,6 +4606,48 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_summary_api_v1_meetings__meeting_id__summary_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResumeAccepted"];
+                };
+            };
+            /** @description Source/context conflict, or outbound processing is disabled */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -3014,6 +5047,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Недостаточно места на диске или активный плеер занят в пределах кэша */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     export_api_v1_meetings__meeting_id__export_get: {
@@ -3168,13 +5210,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Frontend build required */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["FrontendBuildRequiredResponse"];
                 };
             };
         };

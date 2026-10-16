@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import importlib.util
+import hashlib
+import json
+from pathlib import Path
+import sys
+import unittest
+
+
+PARENT_PATH = Path(__file__).with_name('run_dependencies.py')
+SPEC = importlib.util.spec_from_file_location('offline_egress_parent', PARENT_PATH)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError('candidate_parent_unavailable')
+PARENT = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = PARENT
+SPEC.loader.exec_module(PARENT)
+
+
+class WorkerErrorReceiptTests(unittest.TestCase):
+    def test_parent_launches_only_the_isolated_worker_copy(self):
+        candidate_worker = PARENT.HERE.as_posix() + '/check_dependencies.py'
+        self.assertEqual(PARENT.ARGV[-1], PARENT.BOOTSTRAP)
+        self.assertEqual(PARENT.BOOTSTRAP.count(candidate_worker), 2)
+
+    def test_parent_accepts_fixed_offline_egress_failure_terminal(self):
+        terminal = {
+            'status': 'FAILED_NOT_QUALIFIED',
+            'stage': 'preflight',
+            'code': 'dependency_egress_disabled',
+        }
+        encoded = json.dumps(terminal, sort_keys=True, separators=(',', ':')).encode('ascii')
+        raw = b'stage:preflight\n' + encoded + b'\n'
+        self.assertEqual(PARENT.terminal_record(raw), terminal)
+
+    def test_parent_propagates_egress_failure_receipt_without_qualification(self):
+        identity = {
+            'pid': 317,
+            'creation_time': '134000000000000001',
+            'executable_sha256': PARENT.PHYSICAL_SHA,
+            'argv_sha256': hashlib.sha256(json.dumps(PARENT.ARGV, ensure_ascii=True,
+                sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest(),
+        }
+        empty_sha = hashlib.sha256(b'').hexdigest()
+        lifetime = {
+            'identity': identity, 'signaled': True, 'original_handle_closed': True,
+            'readers_joined': True, 'timed_out': False, 'error_code': None,
+            'exit_code': 70, 'stream_overflow': False,
+            'streams': [
+                {'bytes': 0, 'sha256': empty_sha, 'failed': False, 'eof': True},
+                {'bytes': 0, 'sha256': empty_sha, 'failed': False, 'eof': True},
+            ],
+            'combined_stream_bytes': 0, 'stderr_bytes': 0, 'elapsed_seconds': 0.1,
+        }
+        terminal = {
+            'status': 'FAILED_NOT_QUALIFIED',
+            'stage': 'declared_download',
+            'code': 'dependency_egress_disabled',
+        }
+        receipt = {
+            **terminal, 'protocol': 1, 'launch_pins_sha256': 'a' * 64,
+            'elapsed_seconds': 0.1, 'closure_admission': 'UNKNOWN',
+            'source_init_execution': False, 'root_card_closed': False,
+            'activation_supported': False, 'native_api_qualified': False,
+            'mapped_image_provenance': False, 'full_r4_qualified': False,
+            'builds': 0, 'tests': 0, 'sql_calls': 0, 'paid_calls': 0,
+            'owner_calls': 0, 'host_mutations': 0, 'commands': [], 'job_owner': identity,
+        }
+        self.assertEqual(PARENT.validate_failed_worker_receipt(
+            receipt, terminal, lifetime, launch_pins_sha256='a' * 64), terminal)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

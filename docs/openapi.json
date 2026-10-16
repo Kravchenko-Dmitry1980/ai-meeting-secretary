@@ -5,6 +5,465 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/team/invitations": {
+      "post": {
+        "summary": "Create",
+        "operationId": "create_api_v1_team_invitations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationGrant"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/team/invitations/{invitation_id}": {
+      "get": {
+        "summary": "Read",
+        "operationId": "read_api_v1_team_invitations__invitation_id__get",
+        "parameters": [
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invitation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke Invitation",
+        "operationId": "revoke_invitation_api_v1_team_invitations__invitation_id__delete",
+        "parameters": [
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invitation Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/team/invitations/{invitation_id}/confirm": {
+      "post": {
+        "summary": "Confirm",
+        "operationId": "confirm_api_v1_team_invitations__invitation_id__confirm_post",
+        "parameters": [
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invitation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmInvitation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMember"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/team/members/{member_id}": {
+      "delete": {
+        "summary": "Revoke Member",
+        "operationId": "revoke_member_api_v1_team_members__member_id__delete",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeMember"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMember"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalTeamError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/{path}": {
       "options": {
         "summary": "Preflight",
@@ -28,6 +487,273 @@
                 "schema": {}
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget": {
+      "get": {
+        "summary": "Monthly Budget Snapshot",
+        "operationId": "monthly_budget_snapshot_api_v1_cloud_budget_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/operations": {
+      "get": {
+        "summary": "List Cloud Budget Operations",
+        "operationId": "list_cloud_budget_operations_api_v1_cloud_budget_operations_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "reserved",
+                    "submitted",
+                    "uncertain",
+                    "confirmed",
+                    "released"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudBudgetOperationPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/operations/{operation_id}": {
+      "get": {
+        "summary": "Cloud Budget Operation Details",
+        "operationId": "cloud_budget_operation_details_api_v1_cloud_budget_operations__operation_id__get",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudBudgetOperationDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/refresh": {
+      "post": {
+        "summary": "Refresh Monthly Budget",
+        "operationId": "refresh_monthly_budget_api_v1_cloud_budget_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "409": {
+            "description": "Облачные запросы выключены в offline-режиме"
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/scopes": {
+      "post": {
+        "summary": "Create Budget Scope",
+        "operationId": "create_budget_scope_api_v1_cloud_budget_scopes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBudgetScope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/scopes/{scope_id}": {
+      "get": {
+        "summary": "Budget Scope Snapshot",
+        "operationId": "budget_scope_snapshot_api_v1_cloud_budget_scopes__scope_id__get",
+        "parameters": [
+          {
+            "name": "scope_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scope Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-budget/operations/{operation_id}/reconcile": {
+      "post": {
+        "summary": "Reconcile Cloud Operation",
+        "operationId": "reconcile_cloud_operation_api_v1_cloud_budget_operations__operation_id__reconcile_post",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "409": {
+            "description": "Облачные запросы выключены или квитанцию нельзя безопасно применить"
           },
           "422": {
             "description": "Validation Error",
@@ -162,6 +888,433 @@
         }
       }
     },
+    "/api/v1/meetings/{meeting_id}/task-publications/context": {
+      "get": {
+        "summary": "Task Publication Context",
+        "operationId": "task_publication_context_api_v1_meetings__meeting_id__task_publications_context_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationContext"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/task-publications/preview": {
+      "post": {
+        "summary": "Preview Task Publications",
+        "operationId": "preview_task_publications_api_v1_meetings__meeting_id__task_publications_preview_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewPublications"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationPreviewResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/task-publications": {
+      "post": {
+        "summary": "Confirm Task Publications",
+        "operationId": "confirm_task_publications_api_v1_meetings__meeting_id__task_publications_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReceipt"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List Task Publications",
+        "operationId": "list_task_publications_api_v1_meetings__meeting_id__task_publications_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryReceipt"
+                  },
+                  "title": "Response List Task Publications Api V1 Meetings  Meeting Id  Task Publications Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/task-publications/{operation_id}": {
+      "get": {
+        "summary": "Read Task Publication",
+        "operationId": "read_task_publication_api_v1_meetings__meeting_id__task_publications__operation_id__get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReceipt"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/participants/{person_id}/enrollments": {
       "get": {
         "summary": "Enrollments",
@@ -239,6 +1392,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места для загрузки или сохранения записи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -284,6 +1447,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnrollmentRecording"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Недостаточно места для локальной аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -942,6 +2115,42 @@
         }
       }
     },
+    "/ready": {
+      "get": {
+        "summary": "Sanitized local readiness diagnostics; not production qualification",
+        "operationId": "readiness_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalReadinessReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready/storage-probe": {
+      "post": {
+        "summary": "Create and remove a one-byte file in the configured data directory",
+        "operationId": "readiness_storage_probe_ready_storage_probe_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageWriteProbeReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/session": {
       "get": {
         "summary": "Session",
@@ -1091,6 +2300,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места для загрузки аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1234,6 +2453,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места для локальной аудиозаписи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1319,6 +2548,58 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/summary-resume": {
+      "post": {
+        "summary": "Resume Summary",
+        "operationId": "resume_summary_api_v1_meetings__meeting_id__summary_resume_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeSummaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResumeAccepted"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Source/context conflict, or outbound processing is disabled"
           },
           "422": {
             "description": "Validation Error",
@@ -1911,6 +3192,16 @@
               }
             }
           },
+          "507": {
+            "description": "Недостаточно места на диске или активный плеер занят в пределах кэша",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "416": {
             "description": "Запрошенный диапазон вне файла",
             "content": {
@@ -2135,11 +3426,13 @@
         "summary": "Build Required",
         "operationId": "build_required__get",
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "503": {
+            "description": "Frontend build required",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/FrontendBuildRequiredResponse"
+                }
               }
             }
           }
@@ -2149,6 +3442,52 @@
   },
   "components": {
     "schemas": {
+      "AcceptanceReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "payload_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Payload Hash"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision"
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Decided At"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "payload_hash",
+          "decision",
+          "decided_at"
+        ],
+        "title": "AcceptanceReceipt"
+      },
       "ActionItem": {
         "properties": {
           "text": {
@@ -2806,11 +4145,333 @@
         ],
         "title": "CarryoverProvenance"
       },
+      "CloudBudgetOperationDetails": {
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/CloudBudgetOperationView"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CloudBudgetReconciliationEventView"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation",
+          "events"
+        ],
+        "title": "CloudBudgetOperationDetails"
+      },
+      "CloudBudgetOperationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CloudBudgetOperationView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "CloudBudgetOperationPage"
+      },
+      "CloudBudgetOperationView": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "reserved",
+              "submitted",
+              "uncertain",
+              "confirmed",
+              "released"
+            ],
+            "title": "Status"
+          },
+          "estimated_rub": {
+            "type": "number",
+            "title": "Estimated Rub"
+          },
+          "reserved_rub": {
+            "type": "number",
+            "title": "Reserved Rub"
+          },
+          "observed_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Rub"
+          },
+          "confirmed_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Rub"
+          },
+          "provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Request Id"
+          },
+          "provider_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Job Id"
+          },
+          "confirmed_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Period"
+          },
+          "created_ms": {
+            "type": "integer",
+            "title": "Created Ms"
+          },
+          "updated_ms": {
+            "type": "integer",
+            "title": "Updated Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "category",
+          "period",
+          "status",
+          "estimated_rub",
+          "reserved_rub",
+          "observed_rub",
+          "confirmed_rub",
+          "provider_request_id",
+          "provider_job_id",
+          "confirmed_period",
+          "created_ms",
+          "updated_ms"
+        ],
+        "title": "CloudBudgetOperationView"
+      },
+      "CloudBudgetReconciliationEventView": {
+        "properties": {
+          "event_id": {
+            "type": "integer",
+            "title": "Event Id"
+          },
+          "occurred_ms": {
+            "type": "integer",
+            "title": "Occurred Ms"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "lookup_started",
+              "lookup_blocked",
+              "provider_pending",
+              "receipt_applied",
+              "receipt_unresolved"
+            ],
+            "title": "Outcome"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "provider_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "completed",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Status"
+          },
+          "provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Request Id"
+          },
+          "provider_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Job Id"
+          },
+          "provider_cost_rub": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Rub"
+          },
+          "provider_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Period"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "occurred_ms",
+          "outcome",
+          "reason_code",
+          "provider_status",
+          "provider_request_id",
+          "provider_job_id",
+          "provider_cost_rub",
+          "provider_period"
+        ],
+        "title": "CloudBudgetReconciliationEventView"
+      },
+      "CommandReceipt": {
+        "properties": {
+          "acceptance_receipt": {
+            "$ref": "#/components/schemas/AcceptanceReceipt"
+          },
+          "execution_state": {
+            "$ref": "#/components/schemas/ExecutionState"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "acceptance_receipt",
+          "execution_state"
+        ],
+        "title": "CommandReceipt"
+      },
       "ConfigurationResponse": {
         "properties": {
           "key_configured": {
             "type": "boolean",
             "title": "Key Configured"
+          },
+          "max_upload_bytes": {
+            "type": "integer",
+            "title": "Max Upload Bytes"
+          },
+          "runtime_outbound_enabled": {
+            "type": "boolean",
+            "title": "Runtime Outbound Enabled",
+            "description": "Whether this process permits outbound cloud requests; read-only until restart.",
+            "readOnly": true
           },
           "stt_model": {
             "type": "string",
@@ -2900,6 +4561,8 @@
         "type": "object",
         "required": [
           "key_configured",
+          "max_upload_bytes",
+          "runtime_outbound_enabled",
           "stt_model",
           "summary_model",
           "chunk_seconds",
@@ -2949,6 +4612,70 @@
         ],
         "title": "ConfirmEnrollment"
       },
+      "ConfirmInvitation": {
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/TeamMember"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "member"
+        ],
+        "title": "ConfirmInvitation"
+      },
+      "CreateBudgetScope": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "cap_rub": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 3000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              }
+            ],
+            "title": "Cap Rub"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "cap_rub"
+        ],
+        "title": "CreateBudgetScope"
+      },
+      "CreateInvitation": {
+        "properties": {
+          "project_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Project Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project_ids"
+        ],
+        "title": "CreateInvitation"
+      },
       "CreateMeeting": {
         "properties": {
           "title": {
@@ -2966,6 +4693,18 @@
             ],
             "title": "Processing Mode",
             "default": "ordinary"
+          },
+          "cloud_budget_scope_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Budget Scope Id"
           }
         },
         "additionalProperties": false,
@@ -3033,6 +4772,36 @@
           "operation_id"
         ],
         "title": "DeleteEnrollment"
+      },
+      "DeliveryReceipt": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PublicationScope"
+          },
+          "acceptance_receipt": {
+            "$ref": "#/components/schemas/AcceptanceReceipt"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationItemReceipt"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "scope",
+          "acceptance_receipt",
+          "items"
+        ],
+        "title": "DeliveryReceipt"
       },
       "DraftAction": {
         "properties": {
@@ -3333,6 +5102,103 @@
         ],
         "title": "EvidenceItem"
       },
+      "ExecutionState": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "reconciling",
+              "applied",
+              "conflict",
+              "uncertain",
+              "rejected"
+            ],
+            "title": "State"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "retry_after": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ExecutionState"
+      },
+      "FrontendBuildRequiredResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "frontend_build_required",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "FrontendBuildRequiredResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3432,6 +5298,86 @@
         ],
         "title": "IdentificationState"
       },
+      "InvitationGrant": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "value",
+          "expires_at"
+        ],
+        "title": "InvitationGrant"
+      },
+      "InvitationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Project Ids"
+          },
+          "candidate_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate User Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "confirmed_member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Member Id"
+          },
+          "revoked": {
+            "type": "boolean",
+            "title": "Revoked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "project_ids",
+          "candidate_user_id",
+          "expires_at",
+          "confirmed_member_id",
+          "revoked"
+        ],
+        "title": "InvitationView"
+      },
       "JobAccepted": {
         "properties": {
           "job_id": {
@@ -3444,6 +5390,279 @@
           "job_id"
         ],
         "title": "JobAccepted"
+      },
+      "LocalReadinessComponent": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded",
+              "not_configured",
+              "disabled",
+              "waiting_config",
+              "configured_unqualified",
+              "available",
+              "missing",
+              "not_qualified",
+              "not_checked",
+              "unavailable",
+              "mismatch"
+            ],
+            "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "ok"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integrity"
+          },
+          "directory_writable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Writable"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "minimum_free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Free Bytes"
+          },
+          "heartbeat_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat Age Seconds"
+          },
+          "heartbeat_stale_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat Stale After Seconds"
+          },
+          "live_qualified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Qualified"
+          },
+          "backend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend Version"
+          },
+          "manifest_backend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Backend Version"
+          },
+          "frontend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frontend Version"
+          },
+          "build_check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Check"
+          },
+          "lockfiles_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockfiles Verified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "LocalReadinessComponent"
+      },
+      "LocalReadinessJobs": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "unavailable"
+            ],
+            "title": "State"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "stale_running_candidate_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Running Candidate Count"
+          },
+          "stale_after_seconds": {
+            "type": "integer",
+            "title": "Stale After Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "counts",
+          "stale_running_candidate_count",
+          "stale_after_seconds"
+        ],
+        "title": "LocalReadinessJobs"
+      },
+      "LocalReadinessReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "local_ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "production_qualified": {
+            "type": "boolean",
+            "const": false,
+            "title": "Production Qualified"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LocalReadinessComponent"
+            },
+            "type": "object",
+            "title": "Components"
+          },
+          "jobs": {
+            "$ref": "#/components/schemas/LocalReadinessJobs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "production_qualified",
+          "blockers",
+          "components",
+          "jobs"
+        ],
+        "title": "LocalReadinessReport"
+      },
+      "LocalTeamError": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "LocalTeamError"
       },
       "Meeting": {
         "properties": {
@@ -3810,6 +6029,29 @@
         ],
         "title": "PersonProfile"
       },
+      "PreviewPublications": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/PublicationScope"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationSelection"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Selections"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scope",
+          "selections"
+        ],
+        "title": "PreviewPublications"
+      },
       "ProcessRequest": {
         "properties": {
           "stage": {
@@ -3950,6 +6192,17 @@
             ],
             "title": "Local Outcome"
           },
+          "resumed_from_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumed From Job Id"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -4000,6 +6253,770 @@
           "updated_at"
         ],
         "title": "ProcessingJob"
+      },
+      "PublicationCandidate": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Action Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "due_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Phrase"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote"
+          },
+          "source_segment_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "type": "array",
+            "title": "Source Segment Ids"
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes",
+            "default": []
+          },
+          "possible_supersedes": {
+            "items": {
+              "$ref": "#/components/schemas/SupersedesCandidate"
+            },
+            "type": "array",
+            "title": "Possible Supersedes",
+            "default": []
+          },
+          "existing_publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Existing Publication Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action_id",
+          "title",
+          "evidence_quote",
+          "source_segment_ids",
+          "eligible"
+        ],
+        "title": "PublicationCandidate"
+      },
+      "PublicationContext": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/PublicationScope"
+          },
+          "watermarks": {
+            "$ref": "#/components/schemas/PublicationWatermarks"
+          },
+          "project_name": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Project Name"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationMember"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scope",
+          "watermarks",
+          "project_name",
+          "members",
+          "candidates"
+        ],
+        "title": "PublicationContext"
+      },
+      "PublicationItemReceipt": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id"
+          },
+          "delivery_operation_id": {
+            "type": "string",
+            "title": "Delivery Operation Id"
+          },
+          "action_id": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Action Id"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "link",
+              "propose_update",
+              "create_separate"
+            ],
+            "title": "Intent"
+          },
+          "execution_state": {
+            "$ref": "#/components/schemas/ExecutionState"
+          },
+          "gateway_receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommandReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_stale": {
+            "type": "boolean",
+            "title": "Source Stale",
+            "default": false
+          },
+          "correction_required": {
+            "type": "boolean",
+            "title": "Correction Required",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "publication_id",
+          "delivery_operation_id",
+          "action_id",
+          "intent",
+          "execution_state"
+        ],
+        "title": "PublicationItemReceipt"
+      },
+      "PublicationMember": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Display Name"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "revision"
+        ],
+        "title": "PublicationMember"
+      },
+      "PublicationPreviewResult": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublishPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidates"
+        ],
+        "title": "PublicationPreviewResult"
+      },
+      "PublicationScope": {
+        "properties": {
+          "meeting_id": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Meeting Id"
+          },
+          "transcript_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Transcript Version"
+          },
+          "summary_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Summary Version"
+          },
+          "destination_project_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Destination Project Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "meeting_id",
+          "transcript_version",
+          "summary_version",
+          "destination_project_id"
+        ],
+        "title": "PublicationScope"
+      },
+      "PublicationSelection": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Action Id"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "due_resolution": {
+            "type": "string",
+            "enum": [
+              "unresolved",
+              "date",
+              "none"
+            ],
+            "title": "Due Resolution",
+            "default": "unresolved"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "link",
+              "propose_update",
+              "create_separate"
+            ],
+            "title": "Intent",
+            "default": "publish"
+          },
+          "target_publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Publication Id"
+          },
+          "separate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Separate Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action_id"
+        ],
+        "title": "PublicationSelection",
+        "description": "Owner choices; source text/evidence and current mappings are server-owned."
+      },
+      "PublicationTask": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Action Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title"
+          },
+          "assignee_id": {
+            "type": "string",
+            "title": "Assignee Id"
+          },
+          "source_segment_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "type": "array",
+            "title": "Source Segment Ids"
+          },
+          "evidence_quote": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Evidence Quote"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "due_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Phrase"
+          },
+          "due_confirmed": {
+            "type": "boolean",
+            "title": "Due Confirmed",
+            "default": false
+          },
+          "due_timezone": {
+            "type": "string",
+            "const": "Europe/Moscow",
+            "title": "Due Timezone",
+            "default": "Europe/Moscow"
+          },
+          "publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Id"
+          },
+          "member_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Member Revision",
+            "default": 0
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "source_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^assignment-evidence-v1:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Fingerprint"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "publish",
+              "link",
+              "propose_update",
+              "create_separate"
+            ],
+            "title": "Intent",
+            "default": "publish"
+          },
+          "target_publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Publication Id"
+          },
+          "target_task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Task Id"
+          },
+          "expected_task_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Task Revision"
+          },
+          "expected_task_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Task Fingerprint"
+          },
+          "target_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "separate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Separate Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action_id",
+          "title",
+          "assignee_id",
+          "source_segment_ids",
+          "evidence_quote"
+        ],
+        "title": "PublicationTask"
+      },
+      "PublicationWatermarks": {
+        "properties": {
+          "assignment_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Assignment Revision"
+          },
+          "roster_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Roster Revision"
+          },
+          "attribution_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attribution Revision"
+          },
+          "context_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assignment_revision",
+          "roster_revision",
+          "attribution_revision",
+          "context_hash"
+        ],
+        "title": "PublicationWatermarks"
+      },
+      "PublishCommand": {
+        "properties": {
+          "preview_id": {
+            "type": "string",
+            "title": "Preview Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PublicationScope"
+          },
+          "watermarks": {
+            "$ref": "#/components/schemas/PublicationWatermarks"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationTask"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "preview_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preview Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preview_id",
+          "scope",
+          "watermarks",
+          "items",
+          "operation_id",
+          "preview_hash"
+        ],
+        "title": "PublishCommand"
+      },
+      "PublishPreview": {
+        "properties": {
+          "preview_id": {
+            "type": "string",
+            "title": "Preview Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PublicationScope"
+          },
+          "watermarks": {
+            "$ref": "#/components/schemas/PublicationWatermarks"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationTask"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "preview_hash": {
+            "type": "string",
+            "title": "Preview Hash",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preview_id",
+          "scope",
+          "watermarks",
+          "items",
+          "preview_hash"
+        ],
+        "title": "PublishPreview"
       },
       "QuoteAnchor": {
         "properties": {
@@ -4183,6 +7200,38 @@
         ],
         "title": "ResolvedAssignment"
       },
+      "ResumeSummaryRequest": {
+        "properties": {
+          "source_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Job Id"
+          },
+          "transcript_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Transcript Version"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "acknowledge_possible_duplicate_charge": {
+            "type": "boolean",
+            "title": "Acknowledge Possible Duplicate Charge"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_job_id",
+          "transcript_version",
+          "operation_id",
+          "acknowledge_possible_duplicate_charge"
+        ],
+        "title": "ResumeSummaryRequest"
+      },
       "ReviewAttribution": {
         "properties": {
           "transcript_version": {
@@ -4276,6 +7325,21 @@
           "changes"
         ],
         "title": "ReviewTaskAssignments"
+      },
+      "RevokeMember": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "title": "RevokeMember"
       },
       "SegmentsPage": {
         "properties": {
@@ -4640,6 +7704,36 @@
         ],
         "title": "StopEnrollmentRecording"
       },
+      "StorageWriteProbeReport": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded"
+            ],
+            "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "storage_write_probe_failed"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "StorageWriteProbeReport"
+      },
       "Summary": {
         "properties": {
           "meeting_id": {
@@ -4709,6 +7803,64 @@
         ],
         "title": "Summary"
       },
+      "SummaryResumeAccepted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "source_job_id": {
+            "type": "string",
+            "title": "Source Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "source_job_id"
+        ],
+        "title": "SummaryResumeAccepted"
+      },
+      "SupersedesCandidate": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "publication_id",
+          "title"
+        ],
+        "title": "SupersedesCandidate"
+      },
       "TaskAssignmentChange": {
         "properties": {
           "action_id": {
@@ -4747,6 +7899,307 @@
           "decision"
         ],
         "title": "TaskAssignmentChange"
+      },
+      "TaskOrigin": {
+        "properties": {
+          "source_kind": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "meeting",
+              "max"
+            ],
+            "title": "Source Kind",
+            "default": "manual"
+          },
+          "publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Id"
+          },
+          "meeting_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Id"
+          },
+          "transcript_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Version"
+          },
+          "summary_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Version"
+          },
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaskOrigin"
+      },
+      "TaskSnapshot": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Task Id"
+          },
+          "project_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Project Id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          },
+          "remote_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Remote Fingerprint"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "inbox",
+              "accepted",
+              "doing",
+              "blocked",
+              "review",
+              "done",
+              "cancelled"
+            ],
+            "title": "Bucket",
+            "default": "inbox"
+          },
+          "important": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Important"
+          },
+          "urgent": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Urgent"
+          },
+          "classification_confirmed": {
+            "type": "boolean",
+            "title": "Classification Confirmed",
+            "default": false
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "due_phrase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Phrase"
+          },
+          "due_timezone": {
+            "type": "string",
+            "const": "Europe/Moscow",
+            "title": "Due Timezone",
+            "default": "Europe/Moscow"
+          },
+          "due_confirmed": {
+            "type": "boolean",
+            "title": "Due Confirmed",
+            "default": false
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "task_id",
+          "project_id",
+          "revision",
+          "remote_fingerprint",
+          "title"
+        ],
+        "title": "TaskSnapshot"
+      },
+      "TeamMember": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Display Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "member"
+            ],
+            "title": "Role",
+            "default": "member"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "max_user_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Max User Id"
+          },
+          "vikunja_user_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Vikunja User Id"
+          },
+          "person_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Profile Id"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "type": "array",
+            "title": "Project Ids",
+            "default": []
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "max_user_id",
+          "vikunja_user_id"
+        ],
+        "title": "TeamMember"
       },
       "TranscriptSegment": {
         "properties": {

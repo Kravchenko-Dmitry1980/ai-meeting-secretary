@@ -29,9 +29,11 @@ def export_openapi(target: Path | None = None) -> Path:
             isolated = Path(folder)
             settings = Settings(_env_file=None, project_dir=isolated,
                                 data_dir=isolated / "data", polza_api_key="",
-                                cloud_enabled=False, local_cost_limits_enabled=False)
+                                cloud_enabled=False, local_cost_limits_enabled=False,
+                                approved_monthly_external_costs_rub=0)
             app = create_app(settings, provider_factory=_deny_provider,
-                             capture=NoopCapture(), enrollment_capture=NoopCapture(), run_worker=False)
+                             capture=NoopCapture(), enrollment_capture=NoopCapture(), run_worker=False,
+                             enforce_single_instance=False)  # Isolated schema-only app; it never serves requests.
             schema = app.openapi()
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding="utf-8")

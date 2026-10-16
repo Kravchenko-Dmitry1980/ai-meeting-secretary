@@ -2,6 +2,21 @@
 
 `backend/secretary/infrastructure/audio.py` реализует явный `AudioCapture.start`, `stop`, `state`, `close`, read-only `list_devices` и `recover`. Запись создаётся только после действия пользователя в UI/API. Инициализация приложения, список устройств, импорт и recovery не открывают recording stream. Отсутствие Polza API-ключа не влияет на аудиозахват.
 
+## Запуск новых офлайн-проверок — 15.10.2026
+
+Из корня Secretary используйте guarded runner:
+
+```powershell
+& .\.venv\Scripts\python.exe -B scripts/run_offline_tests.py tests/test_audio.py -q
+```
+
+Он размещает новые временные данные в `.runtime` и применяет штатный retention.
+Команда с `--basetemp data/test-audio-tmp` в историческом отчёте ниже описывает
+прогон 1 октября, а не текущий способ запуска. Его 15 pytest-ссылок остались внутри
+DATA_DIR и 15 октября корректно остановили preflight полной резервной копии
+(`backup_reparse_forbidden`). Старый каталог сохранён; новые тесты запускать вне
+рабочих данных. Эта правка инструкции не является новым прогоном аудиотестов.
+
 ## Native API и устройства
 
 Используется установленный в Secretary `.venv` **PyAudioWPatch 0.2.12.8**. Официальные первичные источники проверены 2026-10-01: [PyAudioWPatch README](https://github.com/s0d3s/PyAudioWPatch), [пример WASAPI loopback](https://github.com/s0d3s/PyAudioWPatch/blob/master/examples/pawp_record_wasapi_loopback.py). WASAPI loopback endpoints появляются как отдельные input devices; backend выбирает именно loopback analogue, а не обычный output endpoint. В коде используются документированные `get_host_api_info_by_type(paWASAPI)`, `get_device_info_generator`, `get_default_wasapi_loopback`, `open(... input=True, input_device_index=..., start=False)` и явные stream lifecycle методы.

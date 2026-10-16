@@ -18,11 +18,20 @@ const newestFirst = (a: ProcessingJob, b: ProcessingJob) => b.created_at.localeC
 // The API returns the whole job history. Choose a current attempt per chunk,
 // not the last enqueued chunk (which often remains queued while the first runs).
 function currentStageJobs(meeting: Meeting, jobs: ProcessingJob[], stage: JobStage): ProcessingJob[] {
-  const candidates = jobs.filter((job) => job.stage === stage && (stage === 'prepare' || job.version === meeting.transcript_version)).sort(newestFirst);
+  const candidates = jobs.filter((job) => job.stage === stage && (job.meeting_id == null || job.meeting_id === meeting.id) && (stage === 'prepare' || job.version === meeting.transcript_version)).sort(newestFirst);
   if (stage === 'identify_speakers') {
     // More than one revision intent can exist beside a running stale attempt.
     // Keep every owned active job cancellable, plus the latest terminal state.
     return candidates.filter((job, index) => index === 0 || activeStatuses.includes(job.status));
+  }
+  if (stage === 'summarize') {
+    // A verified local continuation supersedes its uncertain source only in the
+    // processing view. The source job and its unresolved charge remain history.
+    const superseded = new Set(candidates.flatMap((child) => {
+      const source = candidates.find((item) => item.id === child.resumed_from_job_id && item.status === 'uncertain' && item.id !== child.id);
+      return source ? [source.id] : [];
+    }));
+    return candidates.filter((job) => !superseded.has(job.id)).slice(0, 1);
   }
   if (stage !== 'transcribe') return candidates.slice(0, 1);
   const latest = new Map<string, ProcessingJob>();
@@ -37,13 +46,13 @@ function stageDetail(id: JobStage, status: StageStatus, completed: number, total
   if (status === 'running') return id === 'prepare' ? 'Сохраняем и подготавливаем аудио на компьютере.'
     : id === 'transcribe' ? 'Обрабатываем фрагмент аудио через Polza. Готовый текст появится после ответа.' : 'Формируем содержание, решения и задачи по расшифровке.';
   if (status === 'queued') return 'Задание сохранено в очереди. Ожидаем начала обработки.';
-  if (status === 'waiting_config') return id === 'transcribe'
-    ? 'Проверьте ключ и разрешение облачной обработки в настройках, затем нажмите «Продолжить обработку». Модель этой версии закреплена; её замена требует новой платной версии расшифровки.'
-    : 'Проверьте ключ, модель и разрешение облачной обработки в настройках, затем продолжите.';
+  if (status === 'waiting_config') return 'Аудио сохранено. Продолжите обработку с подключённым ключом Polza.';
   if (status === 'paused_budget') return id === 'transcribe'
     ? 'Проверьте лимит встречи и допустимый максимум тарифа закреплённой модели в настройках, затем нажмите «Продолжить обработку».'
     : 'Проверьте лимит встречи и максимальные тарифы в настройках перед продолжением.';
-  if (status === 'uncertain') return 'Polza могла принять и оплатить запрос. Проверьте его статус в кабинете перед повтором.';
+  if (status === 'uncertain') return id === 'summarize'
+    ? 'Ответ последнего запроса Polza не получен. Расшифровка и готовые шаги сохранены. Последний запрос мог быть оплачен.'
+    : 'Polza могла принять и оплатить запрос. Проверьте его статус в кабинете перед повтором.';
   if (status === 'failed') return 'Этап завершился с ошибкой. Сохранённые данные доступны; причина указана ниже.';
   if (status === 'cancelled') return 'Новые запросы этого этапа отменены. Сохранённые результаты доступны.';
   if (status === 'partial') return 'Часть записи ещё не расшифрована. Можно продолжить обработку.';
@@ -121,7 +130,7 @@ export type ProcessingState = ReturnType<typeof buildProcessingState>;
 export function processingErrorPresentation(error: string | null) {
   if (!error) return null;
   if (error.includes('заданный предел тарифа ниже')) {
-    return { message: 'Максимальный тариф ниже доступного тарифа Polza. Проверьте допустимый максимум в настройках, затем нажмите «Продолжить обработку».', details: error };
+    return { message: 'Максимальный тариф для одного запроса в настройках Secretary ниже тарифа доступных маршрутов Polza. Остаток месячного лимита Polza на это не влияет. Проверьте максимум для текущей модели; лимит встречи действует отдельно. Затем нажмите «Продолжить обработку».', details: error };
   }
   const diagnosticStart = error.search(/ \[(?:код Polza|параметр|trace_id):/);
   return diagnosticStart < 0 ? { message: error, details: null }

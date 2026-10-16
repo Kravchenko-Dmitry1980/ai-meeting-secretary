@@ -10,6 +10,16 @@ const job = (id, chunkId, status, options = {}) => ({
   created_at: '2026-10-02T09:00:00Z', updated_at: '2026-10-02T09:00:00Z', ...options,
 });
 
+test('a paused recording with configured Polza offers continuation instead of asking for setup again', () => {
+  const runtime = hookRuntime();
+  const { ProcessingStages } = load('components/ProcessingStages.tsx', { '../utils/processing': { processingErrorPresentation }, '../utils/speakers': { counter: () => null } });
+  const state = buildProcessingState(meeting, [job('stt', 'a', 'waiting_config')], [chunk('a')]);
+  const tree = runtime.render(() => ProcessingStages({ state, busy: false, connected: true, onCancel() {}, onSettings() {},
+    configurationReady: true, setupMessage: 'Polza подключена.', action: { label: 'Начать обработку', disabled: false, onClick() {} } }));
+  assert.equal(text(get(tree, (node) => node.type === 'h2')), 'Запись готова к обработке');
+  assert.doesNotMatch(text(tree), /ждёт настройки|Нужна настройка|Открыть настройки обработки/);
+});
+
 test('the running first chunk remains visible when later chunks are queued', () => {
   const result = buildProcessingState(meeting, [
     job('first', 'a', 'running'),
@@ -116,6 +126,8 @@ test('price rejection has an actionable explanation with technical diagnostics s
   const result = processingErrorPresentation(raw);
   assert.match(result.message, /Максимальный тариф/);
   assert.match(result.message, /настройках/);
+  assert.match(result.message, /месячного лимита Polza на это не влияет/);
+  assert.match(result.message, /лимит встречи действует отдельно/);
   assert.equal(result.message.includes('trace_id'), false);
   assert.equal(result.details, raw);
 });
@@ -151,8 +163,12 @@ test('stage-aware tariff copy preserves acknowledged local bypass without displa
   assert.equal(local.status, 'succeeded'); assert.equal(local.error, null); assert.match(local.detail, /явно пропущено/);
 });
 
-test('unfinished transcription settings guidance preserves the fixed route and explicit human continuation', () => {
-  for (const status of ['waiting_config', 'paused_budget']) {
+test('unfinished transcription has concise continuation and budget recovery keeps the fixed route', () => {
+  const waiting = buildProcessingState(meeting, [job('one', 'a', 'waiting_config')], [chunk('a')]);
+  assert.match(waiting.primaryStage.detail, /Аудио сохранено.*Продолжите обработку/);
+  assert.doesNotMatch(waiting.primaryStage.detail, /настройк|новой платной версии/);
+  assert.equal(waiting.active, false);
+  for (const status of ['paused_budget']) {
     const result = buildProcessingState(meeting, [job('one', 'a', status)], [chunk('a')]);
     assert.match(result.primaryStage.detail, /«Продолжить обработку»/);
     assert.match(result.primaryStage.detail, /модел[ьи].*(закреплена|закреплённой)|закреплённой модели/i);

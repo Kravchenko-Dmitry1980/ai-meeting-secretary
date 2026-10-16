@@ -26,13 +26,13 @@ function StatusIcon({ status, large = false }: { status: StageStatus; large?: bo
   return <Circle size={size} aria-hidden="true" />;
 }
 
-interface Props { state: ProcessingState; busy: boolean; connected: boolean; onCancel: (ids: string[]) => void; onSettings: () => void; onParticipants?: () => void; onIdentify?: () => void; onBypass?: () => void }
-export function ProcessingStages({ state, busy, connected, onCancel, onSettings, onParticipants, onIdentify, onBypass }: Props) {
+interface Props { state: ProcessingState; busy: boolean; connected: boolean; onCancel: (ids: string[]) => void; onSettings: () => void; onParticipants?: () => void; onIdentify?: () => void; onBypass?: () => void; onResumeSummary?: () => void; resumeSummaryDisabled?: boolean; action?: { label: string; disabled: boolean; onClick: () => void }; setupMessage?: string; configurationReady?: boolean }
+export function ProcessingStages({ state, busy, connected, onCancel, onSettings, onParticipants, onIdentify, onBypass, onResumeSummary, resumeSummaryDisabled = false, action, setupMessage, configurationReady = false }: Props) {
   const { primaryStage, stages, totalChunks, completedChunks } = state;
   const hasStarted = state.currentJobs.length > 0;
   const error = primaryStage.id === 'identify_speakers' && primaryStage.error ? { message: primaryStage.detail, details: primaryStage.error } : processingErrorPresentation(primaryStage.error);
   if (!hasStarted && totalChunks === 0) return null;
-  const title = !hasStarted ? 'Запись готова к обработке' : headline[primaryStage.status];
+  const title = !hasStarted || (primaryStage.status === 'waiting_config' && configurationReady) ? 'Запись готова к обработке' : headline[primaryStage.status];
   const local = stages.find((stage) => stage.id === 'identify_speakers');
   const progress = state.identification?.progress;
   const processed = counter(progress, 'observations_processed');
@@ -45,7 +45,7 @@ export function ProcessingStages({ state, busy, connected, onCancel, onSettings,
         <div className="min-w-0 flex-1">
           <p className="processing-eyebrow">{!connected ? 'Последний полученный статус' : primaryStage.label}</p>
           <h2>{title}</h2>
-          <p className="processing-explanation">{error?.message ?? primaryStage.detail}</p>
+          <p className="processing-explanation">{primaryStage.status === 'waiting_config' && setupMessage ? setupMessage : primaryStage.id === 'summarize' && primaryStage.status === 'uncertain' ? primaryStage.detail : error?.message ?? primaryStage.detail}</p>
         </div>
         {state.activeChunkNumber != null && <span className="processing-current-chunk">Фрагмент {state.activeChunkNumber} из {totalChunks}</span>}
       </div>
@@ -57,7 +57,9 @@ export function ProcessingStages({ state, busy, connected, onCancel, onSettings,
           {state.failedChunks > 0 && <span className="processing-failure-count">Требуют внимания: {state.failedChunks}</span>}
         </div>
       </div>}
-      {primaryStage.id !== 'identify_speakers' && ['waiting_config', 'paused_budget', 'failed'].includes(primaryStage.status) && <Button variant="ghost" className="mt-4 px-3 py-2 text-xs" disabled={busy} onClick={onSettings}>Открыть настройки обработки</Button>}
+      {action ? <Button className="mt-4" disabled={action.disabled || busy} onClick={action.onClick}>{action.label}</Button>
+        : primaryStage.id !== 'identify_speakers' && ['waiting_config', 'paused_budget', 'failed'].includes(primaryStage.status) && <Button variant="ghost" className="mt-4 px-3 py-2 text-xs" disabled={busy} onClick={onSettings}>Открыть настройки обработки</Button>}
+      {primaryStage.id === 'summarize' && primaryStage.status === 'uncertain' && onResumeSummary && <Button className="mt-4" disabled={busy || resumeSummaryDisabled} onClick={onResumeSummary}>Продолжить итоги</Button>}
       {error?.details && <details className="processing-diagnostics"><summary>Технические подробности</summary><p>{error.details}</p></details>}
     </div>
     {local && <div className="local-identification-progress">
@@ -70,7 +72,7 @@ export function ProcessingStages({ state, busy, connected, onCancel, onSettings,
     <div className="stage-grid">
       {stages.map((stage) => <div key={stage.id} className={`stage-item ${stage.status === 'succeeded' ? 'done' : stage.status}`}>
         <StatusIcon status={stage.status} />
-        <div className="min-w-0 flex-1"><p className="text-xs font-medium">{stage.label}</p><p className="stage-status">{statusText[stage.status]}</p><p className="stage-detail">{stage.detail}</p></div>
+        <div className="min-w-0 flex-1"><p className="text-xs font-medium">{stage.label}</p><p className="stage-status">{stage.status === 'waiting_config' && configurationReady ? 'Ожидает запуска' : statusText[stage.status]}</p><p className="stage-detail">{stage.detail}</p></div>
         {stage.cancelIds.length > 0 && <Button variant="ghost" className="px-2 py-1 text-[10px]" disabled={busy} onClick={() => onCancel(stage.cancelIds)} aria-label={`Отменить этап: ${stage.label}`}>Отмена</Button>}
       </div>)}
     </div>

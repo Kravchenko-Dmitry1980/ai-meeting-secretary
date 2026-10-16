@@ -8,7 +8,7 @@ type Command = { kind: 'add'; body: AddParticipant } | { kind: 'patch'; particip
   | { kind: 'review'; body: ReviewAttribution } | { kind: 'identify'; body: IdentifyCommand } | { kind: 'bypass'; body: BypassCommand };
 interface Data { scope: string; roster: ParticipantRoster; snapshot: AttributionSnapshot; profiles: PersonProfile[] }
 
-export function useSpeakerWorkflow(meetingId: string, version: number, selectionEpoch = 0) {
+export function useSpeakerWorkflow(meetingId: string, version: number, selectionEpoch = 0, onStaleVersion?: (meetingId: string, version: number) => void) {
   const scope = `${meetingId}:${version}:${selectionEpoch}`;
   const commandKey = `${meetingId}:${version}`;
   const [data, setData] = useState<Data | null>(null);
@@ -30,8 +30,18 @@ export function useSpeakerWorkflow(meetingId: string, version: number, selection
       if (owner !== epoch.current || read !== readEpoch.current) return;
       if (roster.meeting_id !== meetingId || snapshot.meeting_id !== meetingId || snapshot.transcript_version !== version) throw new Error('Сервер вернул данные другой встречи или версии. Обновите состояние.');
       const value = { scope, roster, snapshot, profiles }; setData(value);
-    } catch (failure) { if (owner === epoch.current && read === readEpoch.current) setError(errorMessage(failure)); }
-  }, [meetingId, version, scope, setError]);
+    } catch (failure) {
+      if (owner !== epoch.current || read !== readEpoch.current) return;
+      const response = failure as { status?: number; message?: string };
+      if (response.status === 404 && response.message === 'Transcript version not found') {
+        // Upload may advance the server version before the selected meeting refresh reaches React.
+        setError('');
+        onStaleVersion?.(meetingId, version);
+        return;
+      }
+      setError(errorMessage(failure));
+    }
+  }, [meetingId, version, scope, setError, onStaleVersion]);
   useEffect(() => {
     void Promise.resolve().then(() => { setStatus({ scope, busy: false, pending: false, error: '' }); void refresh(); });
     let polling = false;

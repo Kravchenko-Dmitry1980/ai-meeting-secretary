@@ -1,0 +1,21 @@
+# Copy into ignored .runtime/team and replace every REPLACE_* value.
+# Paths must be absolute. Do not place this file or secrets in frontend bundles.
+service:
+  interface: '127.0.0.1:3456'
+  publicurl: 'http://127.0.0.1:3456/'
+  rootpath: 'D:/AI/Projects/Active/Secretary/.runtime/team/vikunja-data'
+  secret: 'REPLACE_WITH_RANDOM_SECRET'
+  enableregistration: false
+database:
+  type: sqlite
+  path: 'D:/AI/Projects/Active/Secretary/.runtime/team/vikunja-data/vikunja.db'
+files:
+  basepath: 'D:/AI/Projects/Active/Secretary/.runtime/team/vikunja-data/files'
+cors:
+  enable: false
+mailer:
+  enabled: false
+sentry:
+  enabled: false
+log:
+  level: warning

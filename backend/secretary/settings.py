@@ -16,12 +16,14 @@ class Settings(BaseSettings):
     stt_model: str = Field(default="openai/whisper-large-v3-turbo", validation_alias=AliasChoices("POLZA_STT_MODEL", "stt_model"))
     summary_model: str = Field(default="qwen/qwen3-30b-a3b-instruct-2507", validation_alias=AliasChoices("POLZA_SUMMARY_MODEL", "summary_model"))
     chunk_seconds: int = Field(default=120, ge=15, le=240)
-    request_timeout_seconds: int = Field(default=180, ge=10, le=1800)
+    request_timeout_seconds: int = Field(default=600, ge=10, le=1800)
     meeting_budget_rub: float = Field(default=100, ge=0, le=100000)
     local_cost_limits_enabled: bool = True
     allow_unknown_price: bool = False
     unknown_request_reservation_rub: float | None = Field(default=None, gt=0, le=100000)
     cloud_enabled: bool = True
+    # Owner deployment policy, deliberately excluded from editable team/local config.
+    approved_monthly_external_costs_rub: float = Field(default=0, ge=0, le=3000, allow_inf_nan=False)
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     stt_price_rub_per_minute: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -36,7 +38,8 @@ class Settings(BaseSettings):
         return bool(self.polza_api_key.get_secret_value().strip())
 
     def public(self) -> dict:
-        return {"key_configured": self.key_configured, **{k: getattr(self, k) for k in EDITABLE_CONFIG}}
+        return {"key_configured": self.key_configured, "max_upload_bytes": self.max_upload_bytes,
+                **{k: getattr(self, k) for k in EDITABLE_CONFIG}}
 
 
 EDITABLE_CONFIG = {"stt_model", "summary_model", "chunk_seconds", "request_timeout_seconds", "meeting_budget_rub", "local_cost_limits_enabled", "allow_unknown_price", "unknown_request_reservation_rub", "cloud_enabled", "stt_price_rub_per_minute", "summary_input_rub_per_million", "summary_output_rub_per_million", "summary_max_output_tokens", "summary_batch_chars"}

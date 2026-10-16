@@ -1,0 +1,96 @@
+{
+  "format": "secretary.external-contract.v1",
+  "provider": "Polza.ai short voice transcription and structured task intent",
+  "retrieved_at_utc": "2026-10-03T22:15:46Z",
+  "qualification": {
+    "status": "DOCUMENTED_CONTRACT_AND_PUBLIC_CATALOG_ONLY",
+    "authenticated_verified": false,
+    "live_paid_calls": false,
+    "model_quality_verified": false,
+    "method": "Official public documentation and unauthenticated read-only model catalog; local synthetic MockTransport tests."
+  },
+  "sources": [
+    {
+      "url": "https://polza.ai/docs/api-reference/chat/completions.md",
+      "human_url": "https://polza.ai/docs/api-reference/chat/completions",
+      "retrieved_at_utc": "2026-10-03T22:15:45Z",
+      "content_sha256": "cdabbf215d2c29e6f71e276029d78688d8a2f629a3d23af02012d4a3778d0f47",
+      "content_bytes": 51542
+    },
+    {
+      "url": "https://polza.ai/docs/gaidy/structured-output.md",
+      "human_url": "https://polza.ai/docs/gaidy/structured-output",
+      "retrieved_at_utc": "2026-10-03T22:15:45Z",
+      "content_sha256": "5098cccba7ab0903b7d140e34926371ba054f8da25ac21588c7d152f7f932068",
+      "content_bytes": 12445
+    },
+    {
+      "url": "https://polza.ai/api/v1/models/catalog?search=gpt-4.1-mini&page=1&limit=10",
+      "retrieved_at_utc": "2026-10-03T22:15:46Z",
+      "content_sha256": "72d95a9581cff688e1450b1558e0c2c185664eb06eb70d2ee23e65936d1ab130",
+      "content_bytes": 19362
+    },
+    {"url": "https://polza.ai/models/openai/gpt-4.1-mini"},
+    {"url": "https://polza.ai/docs/api-reference/audio/transcriptions"}
+  ],
+  "chat_route": {
+    "method": "POST",
+    "url": "https://polza.ai/api/v1/chat/completions",
+    "authorization": "Bearer token, server only",
+    "model": "openai/gpt-4.1-mini",
+    "local_required_status": 200,
+    "max_tokens": 1024,
+    "max_completion_tokens": "Documented alternative; never sent together locally. Precedence of simultaneous values is unspecified.",
+    "response_format": {"type": "json_schema", "json_schema": {"name": "task_intent", "strict": true}},
+    "schema": "RawIntentReply JSON Schema; object wrapper proposals<=5; all 15 item fields required, nullable where specified; additionalProperties false.",
+    "provider": {"allow_fallbacks": false, "require_parameters": true, "sort": "price"},
+    "unsupported_format_policy": "Reject and surface error; no fallback to plain text, other model, tools or extra paid route.",
+    "tools": false,
+    "plugins": false,
+    "web_search": false,
+    "advertised_model_route": {
+      "endpoints": ["/api/v1/chat/completions"],
+      "top_provider": "azure",
+      "required_supported_parameters_observed": ["max_tokens", "max_completion_tokens", "response_format", "structured_outputs"],
+      "limit": "Advertised route capability is not a successful paid model test or proof that all routes enforce every schema keyword."
+    }
+  },
+  "local_limits": {
+    "literal_text_max_characters": 16000,
+    "context_max_utf8_bytes": 32768,
+    "request_max_utf8_bytes": 131072,
+    "intent_response_max_decoded_bytes_before_json": 65536,
+    "context_members": 10,
+    "context_projects": 10,
+    "context_tasks": 100,
+    "proposals": 5,
+    "schema_repairs": 1,
+    "existing_summary_response_limit_unchanged": 524288,
+    "existing_stt_response_limit_unchanged": 4194304
+  },
+  "trust": {
+    "prompt": "Literal input and exact allowlisted captured server context are untrusted data, not instructions or endpoints.",
+    "event_time": "Aware timestamp normalized to Europe/Moscow; event_timestamp_ms must match; server current date is not a model reference.",
+    "transport_validation": "Strict JSON/schema/type/Unicode validation; duplicate keys and nonfinite values refused.",
+    "application_validation": "Current actor/project/member/task ACL, revisions/fingerprint, literal evidence, negation/reported speech/question and date ambiguity are reviewed before a proposal becomes executable. A well-formed foreign ID is not repaired by a paid model call.",
+    "recovery_provenance": "checkpointed_responses is a private attempt-to-provider-JSON map supplied only after caller proves durable command, frozen source/context/request hash and HTTP200. It is not a signed or self-authenticating transport envelope.",
+    "no_execution": "Model output never calls APIs, grants scope, selects provider endpoints or creates a task directly."
+  },
+  "billing_and_recovery": {
+    "shared_budget": "Existing monthly ledger 3000 RUB total; voice_stt and voice_intent categories, fresh operation UUID for every actual paid POST including repair; per-attempt guard and price estimate.",
+    "before_submission": "Await optional callback with operation_id/category/command_id/stage/attempt/request_hash after reserve and before mark_submitted. Callback failure releases unsubmitted reserve and sends no HTTP.",
+    "response_checkpoint": "After exact budget accounting, before parsing model fields; operation_id/stage/attempt/request_hash/status/full bounded provider_response/usage_receipt. Receipt confirmed_rub is exact decimal spelling as JSON string (or null), never a Decimal object/rounded float. Failed persistence stops with uncertainty, never a paid retry.",
+    "cache": "Attempt0 and optionally attempt1 reparse without POST; bad completed cached attempt0 can lead only to a fresh separately guarded attempt1. Cached STT reparse reads no audio file.",
+    "repair": "Only schema/JSON failure of finish_reason stop without tool/refusal and with known completed price plus provider request ID; at most one correction, fresh available budget required.",
+    "never_repair": ["HTTP rejection", "unsupported format", "timeout", "transport loss", "oversized response", "malformed outer JSON", "truncation", "tool call", "refusal", "unknown price", "failed checkpoint", "semantic foreign IDs"]
+  },
+  "voice_stt": {
+    "model": "openai/whisper-large-v3-turbo",
+    "endpoint": "audio/transcriptions",
+    "language": "ru",
+    "response_format": "json",
+    "media": "Captured bounded WAV bytes; mono PCM16 16000Hz; actual frames <=120 seconds and match duration/hash/size metadata when provided. duration_ms=ceil(frames*1000/16000), aligned with normalization adapter.",
+    "normalization": "Performed by separate CPU media adapter; no GPU/ASR installation by this transport.",
+    "meeting_configuration": "Per-call client/settings/context copy; voice model choice never changes meeting model settings."
+  }
+}

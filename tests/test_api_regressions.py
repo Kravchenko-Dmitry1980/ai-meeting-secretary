@@ -72,6 +72,54 @@ def test_unconfigured_startup_allows_blank_models_without_key(tmp_path, monkeypa
         assert repaired.status_code == 200 and repaired.json()["key_configured"] is False
 
 
+def test_config_rejects_read_only_roundtrip_with_actionable_message_atomically(app_client):
+    ctx = app_client
+    before = ctx.api.get("/api/v1/config").json()
+    # Reproduce the settings form that stripped key_configured but returned
+    # max_upload_bytes alongside the user's edited setting.
+    payload = {key: value for key, value in before.items() if key != "key_configured"}
+    payload["chunk_seconds"] = 30
+    response = ctx.api.patch("/api/v1/config", headers=ctx.headers, json=payload)
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Изменять можно только параметры обработки. Обновите страницу и повторите сохранение."
+    )
+    assert ctx.api.get("/api/v1/config").json() == before
+    assert ctx.db.configuration() == {}
+
+
+@pytest.mark.parametrize("outbound_enabled", [True, False])
+@pytest.mark.parametrize("cloud_enabled", [True, False])
+def test_runtime_outbound_flag_is_distinct_from_saved_cloud_setting_and_read_only(
+        tmp_path, monkeypatch, outbound_enabled, cloud_enabled):
+    monkeypatch.setattr(tempfile, "tempdir", tempfile.tempdir)
+    settings = Settings(_env_file=None, project_dir=tmp_path, data_dir=tmp_path / "data",
+                        polza_api_key="synthetic-offline-flag-only", cloud_enabled=cloud_enabled)
+    app = create_app(settings, capture=SimpleNamespace(close=lambda: None), run_worker=False,
+                     outbound_enabled=outbound_enabled)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as api:
+        headers = {"X-Secretary-Token": api.get("/api/v1/session").json()["csrf_token"]}
+        before = api.get("/api/v1/config").json()
+        assert before["key_configured"] is True
+        assert before["runtime_outbound_enabled"] is outbound_enabled
+        assert before["cloud_enabled"] is (cloud_enabled and outbound_enabled)
+        assert "synthetic-offline-flag-only" not in str(before)
+        rejected = api.patch("/api/v1/config", headers=headers,
+                             json={"runtime_outbound_enabled": not outbound_enabled, "chunk_seconds": 30})
+        assert rejected.status_code == 422
+        assert api.get("/api/v1/config").json() == before
+        assert app.state.db.configuration() == {}
+        updated = api.patch("/api/v1/config", headers=headers, json={"chunk_seconds": 60})
+        assert updated.status_code == 200
+        assert updated.json()["runtime_outbound_enabled"] is outbound_enabled
+        assert app.state.db.configuration() == {"chunk_seconds": 60}
+        if not outbound_enabled:
+            denied = api.patch("/api/v1/config", headers=headers, json={"cloud_enabled": True})
+            assert denied.status_code == 409
+            assert denied.json()["detail"] == "runtime_outbound_disabled"
+            assert api.get("/api/v1/config").json()["cloud_enabled"] is False
+
+
 def audio_fixture(ctx, count):
     meeting = ctx.db.create_meeting("Synthetic missing source")
     folder = ctx.settings.data_dir / "audio" / meeting["id"]
@@ -137,7 +185,11 @@ def test_openapi_distinguishes_ready_pending_and_media(app_client):
         assert set(responses["200"]["content"]) == {media}
     audio = paths["/api/v1/meetings/{meeting_id}/audio"]["get"]["responses"]
     assert "audio/wav" in audio["206"]["content"]
-    assert "404" in audio and "416" in audio
+    assert "404" in audio and "416" in audio and "507" in audio
+    assert "507" in paths["/api/v1/meetings/{meeting_id}/upload"]["post"]["responses"]
+    assert "507" in paths["/api/v1/meetings/{meeting_id}/recording/start"]["post"]["responses"]
+    assert "507" in paths["/api/v1/participants/{person_id}/enrollments"]["post"]["responses"]
+    assert "507" in paths["/api/v1/participants/{person_id}/enrollment-recording/start"]["post"]["responses"]
     exported = paths["/api/v1/meetings/{meeting_id}/export"]["get"]["responses"]["200"]["content"]
     assert set(exported) == {"text/plain", "text/markdown", "application/json",
                              "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}

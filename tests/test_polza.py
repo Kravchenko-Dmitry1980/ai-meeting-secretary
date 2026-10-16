@@ -116,6 +116,12 @@ def test_whisper_one_retains_documented_verbose_timestamps(tmp_path):
     assert payload["timestamp_granularities"] == ["segment"]
 
 
+def test_whisper_large_v3_uses_documented_json_without_unavailable_timestamps(tmp_path):
+    payload = PolzaClient(settings(tmp_path, stt_model="openai/whisper-large-v3"))._stt_payload(wav_file(tmp_path))
+    assert payload["response_format"] == "json"
+    assert "timestamp_granularities" not in payload
+
+
 def test_successful_empty_transcript_is_empty_list(tmp_path):
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"text": "", "duration": 1}))
     assert run(PolzaClient(settings(tmp_path), transport).transcribe(wav_file(tmp_path)))["segments"] == []
@@ -232,6 +238,68 @@ def test_post_timeout_is_uncertain_without_automatic_resubmit(tmp_path):
         run(PolzaClient(settings(tmp_path), httpx.MockTransport(handler)).transcribe(wav_file(tmp_path)))
     assert caught.value.uncertain and not caught.value.retryable
     assert len(calls) == 1
+
+
+def test_default_request_deadline_is_ten_minutes_and_stays_bounded(monkeypatch):
+    from pydantic import ValidationError
+    from secretary.settings import Settings
+
+    monkeypatch.delenv("REQUEST_TIMEOUT_SECONDS", raising=False)
+    assert Settings(_env_file=None, polza_api_key="").request_timeout_seconds == 600
+    for invalid in (0, 1801):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, polza_api_key="", request_timeout_seconds=invalid)
+
+
+@pytest.mark.parametrize("operation", ["transcribe", "summarize", "poll"])
+@pytest.mark.parametrize("failure_kind", ["read_timeout", "connect_timeout", "deadline"])
+def test_timeout_is_distinguishable_sanitized_and_never_replays_post(tmp_path, operation, failure_kind):
+    config = settings(tmp_path, stt_model="aiesa/transcribe" if operation == "poll" else "openai/whisper-large-v3-turbo")
+    config.request_timeout_seconds = 0.02  # Artificial transport deadline; no real provider.
+    calls = []
+
+    async def handler(request):
+        calls.append(request.method)
+        assert request.extensions["timeout"]["connect"] == 15.0
+        if failure_kind == "read_timeout":
+            raise httpx.ReadTimeout("private synthetic request text and test-only-not-real", request=request)
+        if failure_kind == "connect_timeout":
+            raise httpx.ConnectTimeout("private synthetic request text and test-only-not-real", request=request)
+        await asyncio.sleep(1)
+        raise AssertionError("The request deadline must cancel this transport")
+
+    provider = PolzaClient(config, httpx.MockTransport(handler))
+    if operation == "summarize":
+        request = provider.summarize([{"id": "s1", "text": "Синтетическое обсуждение."}])
+    else:
+        request = provider.transcribe(wav_file(tmp_path),
+                                     **({"provider_job_id": "gen_saved"} if operation == "poll" else {}))
+    with pytest.raises(ProviderError) as caught:
+        run(request)
+    error = caught.value
+    assert ("время ожидания соединения" if failure_kind == "connect_timeout" else "не ответила вовремя") in error.message.lower()
+    assert ("15 с" if failure_kind == "connect_timeout" else "0.02 с") in error.message
+    assert "private synthetic" not in error.message and "test-only-not-real" not in error.message
+    is_post = operation != "poll"
+    assert error.code == ("request_uncertain" if is_post else "poll_unavailable")
+    assert error.uncertain is is_post and error.retryable is (not is_post)
+    assert calls == (["POST"] if is_post else ["GET"])
+    if not is_post:
+        assert error.provider_job_id == "gen_saved"
+
+
+def test_get_timeout_without_saved_provider_id_does_not_claim_one(tmp_path):
+    def handler(request):
+        raise httpx.ReadTimeout("private synthetic transport message", request=request)
+
+    provider = PolzaClient(settings(tmp_path), httpx.MockTransport(handler))
+    with pytest.raises(ProviderError) as caught:
+        run(provider._request("GET", "audio/transcriptions/gen_synthetic"))
+    error = caught.value
+    assert error.code == "poll_unavailable" and error.retryable and not error.uncertain
+    assert error.provider_job_id is None
+    assert "ID задачи сохранён" not in error.message
+    assert "private synthetic" not in error.message
 
 
 def test_async_id_is_persisted_before_poll_and_resume_skips_submit(tmp_path):

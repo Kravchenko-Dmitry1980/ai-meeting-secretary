@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import errno
+import shutil
 import struct
 import threading
+import time
 import tracemalloc
 import wave
 from pathlib import Path
@@ -13,6 +16,7 @@ from uuid import uuid4
 import pytest
 
 from secretary.infrastructure.audio import AudioCapture, QUEUE_BLOCKS, _ChannelWriter, _Session, _atomic_json
+from secretary.infrastructure.storage_space import StorageSpaceError
 
 
 class FakeStream:
@@ -111,6 +115,98 @@ def test_start_requires_explicit_valid_device_and_safe_uuid(tmp_path):
         capture.start(str(uuid4()), system_id="wasapi:3")
     assert not list(tmp_path.iterdir())
     assert module.managers[-1].terminated
+
+
+def test_start_rejects_low_disk_before_opening_streams_or_creating_capture_files(tmp_path, monkeypatch):
+    module = FakeAudio()
+    capture = AudioCapture(settings(tmp_path), audio_module=module, max_seconds=10)
+    monkeypatch.setattr(shutil, "disk_usage", lambda _path: SimpleNamespace(total=100, used=100, free=0))
+    meeting_id = str(uuid4())
+    caught = None
+    try:
+        capture.start(meeting_id, microphone_id="wasapi:3")
+    except RuntimeError as exc:
+        caught = exc
+    finally:
+        capture.close()
+
+    assert caught is not None and type(caught).__name__ == "InsufficientStorageError"
+    assert module.managers[-1].terminated
+    assert not module.managers[-1].streams
+    assert not (tmp_path / "audio" / meeting_id).exists()
+
+
+def test_start_maps_operating_system_disk_full_to_storage_error(tmp_path, monkeypatch):
+    module = FakeAudio()
+    capture = AudioCapture(settings(tmp_path), audio_module=module, max_seconds=10)
+    original_open = Path.open
+
+    def disk_full_open(path, *args, **kwargs):
+        if path.name == "capture.json.tmp":
+            raise OSError(errno.ENOSPC, "synthetic disk full")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", disk_full_open)
+    meeting_id = str(uuid4())
+    try:
+        with pytest.raises(StorageSpaceError, match="Диск заполнен"):
+            capture.start(meeting_id, microphone_id="wasapi:3")
+    finally:
+        capture.close()
+
+    assert module.managers[-1].terminated
+    assert not module.managers[-1].streams
+
+
+def test_runtime_os_disk_full_stops_capture_with_clear_error(tmp_path, monkeypatch):
+    module = FakeAudio()
+    capture = AudioCapture(settings(tmp_path), audio_module=module, max_seconds=10)
+    monkeypatch.setattr(_ChannelWriter, "write",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError(errno.ENOSPC, "synthetic disk full")))
+    meeting_id = str(uuid4())
+    started = capture.start(meeting_id, microphone_id="wasapi:3")
+    assert started["recording"]
+    stream = module.managers[-1].streams[0]
+    stream.callback(b"\x00\x00" * 4000, 4000, {}, 0)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and capture.state(meeting_id)["status"] != "failed":
+        time.sleep(0.01)
+    state = capture.state(meeting_id)
+    capture.close()
+
+    assert state["status"] == "failed"
+    assert "Диск заполнен" in state["error"]
+
+
+def test_recording_stops_on_runtime_disk_pressure_and_keeps_completed_chunks(tmp_path, monkeypatch):
+    module = FakeAudio()
+    capture = AudioCapture(settings(tmp_path), audio_module=module, max_seconds=10)
+    disk_is_low = threading.Event()
+    monkeypatch.setattr(shutil, "disk_usage", lambda _path: SimpleNamespace(
+        total=10**12, used=0 if not disk_is_low.is_set() else 10**12,
+        free=10**12 if not disk_is_low.is_set() else 0))
+    monkeypatch.setattr("secretary.infrastructure.audio.MIN_SPACE_CHECK_INTERVAL_SECONDS", 0.01, raising=False)
+    meeting_id = str(uuid4())
+    chunks, chunk_saved = [], threading.Event()
+    result = capture.start(meeting_id, microphone_id="wasapi:3",
+                           on_chunk=lambda chunk: (chunks.append(chunk), chunk_saved.set()))
+    assert result["recording"]
+    stream = module.managers[-1].streams[0]
+    for _ in range(2):
+        assert stream.callback(b"\x00\x00" * 4000, 4000, {}, 0)[1] == module.paContinue
+    assert chunk_saved.wait(2), "the first complete WAV chunk should be durable before disk pressure"
+    disk_is_low.set()
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and capture.state(meeting_id)["status"] != "failed":
+        time.sleep(0.01)
+    state = capture.state(meeting_id)
+    capture.close()
+
+    assert state["status"] == "failed" and not state["recording"]
+    assert "места" in state["error"].lower()
+    assert len(chunks) == 1 and Path(chunks[0]["path"]).is_file()
+    manifest = json.loads((tmp_path / "audio" / meeting_id / "capture.json").read_text())
+    assert manifest["status"] == "failed" and len(manifest["chunks"]) == 1
 
 
 def test_two_channel_capture_drains_to_separate_atomic_wav_and_joins(tmp_path):
@@ -264,22 +360,38 @@ def test_three_hour_limit_stops_automatically_without_cloud(monkeypatch, tmp_pat
 
 
 def test_progressive_writer_does_not_buffer_the_whole_long_recording(tmp_path):
-    manifest = {"chunks": [], "in_progress": {}}
-    writer = _ChannelWriter(tmp_path, "microphone", {"sample_rate": 8000, "channels": 1,
-                            "initial_offset_ms": 0}, 20, manifest,
-                            lambda: _atomic_json(tmp_path / "manifest.json", manifest), lambda chunk: None)
-    one_second = b"\x00\x00" * 8000
-    tracemalloc.start()
-    try:
-        for _ in range(600):
-            writer.write(one_second)
-        writer.close()
-        _, peak = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-    assert len(manifest["chunks"]) == 30
-    assert sum(chunk["frames"] for chunk in manifest["chunks"]) == 600 * 8000
-    assert peak < 3 * 1024 * 1024  # 9.6 MB audio on disk; memory bounded by hash block/metadata.
+    import subprocess
+    import sys
+    # A fresh process excludes global intern-table growth from unrelated test
+    # collection. It inherits the offline guard and keeps the same 3 MiB bound.
+    probe = r'''
+import json, sys, tracemalloc
+from pathlib import Path
+from secretary.infrastructure.audio import _ChannelWriter, _atomic_json
+folder = Path(sys.argv[1])
+manifest = {"chunks": [], "in_progress": {}}
+writer = _ChannelWriter(folder, "microphone", {"sample_rate": 8000, "channels": 1,
+                        "initial_offset_ms": 0}, 20, manifest,
+                        lambda: _atomic_json(folder / "manifest.json", manifest), lambda chunk: None)
+one_second = b"\x00\x00" * 8000
+tracemalloc.start()
+try:
+    for _ in range(600):
+        writer.write(one_second)
+    writer.close()
+    _, peak = tracemalloc.get_traced_memory()
+finally:
+    tracemalloc.stop()
+print(json.dumps(dict(peak=peak, chunks=len(manifest["chunks"]),
+                     frames=sum(chunk["frames"] for chunk in manifest["chunks"]))))
+'''
+    result = subprocess.run([sys.executable, "-B", "-c", probe, str(tmp_path)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    measured = json.loads(result.stdout)
+    assert measured["chunks"] == 30
+    assert measured["frames"] == 600 * 8000
+    assert measured["peak"] < 3 * 1024 * 1024  # 9.6 MB audio stays on disk.
 
 
 def test_second_device_failure_preserves_first_device_pcm_and_closes_handles(tmp_path):

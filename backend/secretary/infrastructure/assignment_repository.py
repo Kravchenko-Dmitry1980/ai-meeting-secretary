@@ -122,6 +122,24 @@ class AssignmentRepository:
             summary = self._summary(conn,meeting_id,summary_version)
             return self._view(conn,summary,revision)[0]
 
+    def publication_source(self, conn, scope):
+        """Read current publication evidence inside the caller's source transaction."""
+        if not conn.in_transaction:
+            raise SpeakerConflict('publication_source_transaction_required')
+        meeting = self.speakers._meeting(conn, scope.meeting_id)
+        if meeting['transcript_version'] != scope.transcript_version:
+            raise SpeakerConflict('summary_scope_changed')
+        latest = conn.execute('''SELECT MAX(summary_version) FROM summaries
+            WHERE meeting_id=? AND transcript_version=?''',
+            (scope.meeting_id, scope.transcript_version)).fetchone()[0]
+        if latest != scope.summary_version:
+            raise SpeakerConflict('summary_scope_changed')
+        summary = self._summary(conn, scope.meeting_id)
+        if (summary['meeting_id'], summary['transcript_version'], summary['summary_version']) != (
+                scope.meeting_id, scope.transcript_version, scope.summary_version):
+            raise SpeakerConflict('summary_scope_changed')
+        return self._view(conn, summary)
+
     def projected(self, meeting_id):
         with self.db.connection() as conn:
             conn.execute('BEGIN')

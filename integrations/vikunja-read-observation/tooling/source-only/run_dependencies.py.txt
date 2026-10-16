@@ -1,0 +1,921 @@
+"""Fixed physical-Python parent; PREPARED_NOT_RUN and metadata-only.
+
+Root must freeze the eight launch pins and authorize one execution separately.
+Unknown original-child cleanup exits before physical-executable custody unwinds.
+This file neither imports nor executes its worker when imported.
+"""
+from __future__ import annotations
+
+import ctypes
+from ctypes import wintypes as w
+from dataclasses import asdict
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+import threading
+import time
+
+ROOT = Path('D:/AI/Projects/Active/Secretary')
+HERE = ROOT / '.runtime/team-rollout/r4-native-offline-egress-323b14ac660244469c20b50a03552134'
+INPUT = ROOT / '.runtime/team-rollout/r4-native-ro-inputs-eof-e4effec08eb54054941eaa48b04850a6'
+PROFILE_CARD = ROOT / '.runtime/team-rollout/r4-native-ro-profile-3d6ffd1910e4445293ea5819855959f0'
+PHYSICAL = ROOT / '.runtime/team-rollout/r4-python-private-runtime-9dcd252344d143cb969d68a159c021eb/portable-python/python.exe'
+PHYSICAL_SHA = '02c3bcf63782cc34665ff39ea73d029128ef0849c5a67fe4bbb03748a63fb4f1'
+REGISTRY_SHA = '48c59ac6b19aebef3f5032afcc133f61707f1d9cd3210170a0040e8d8d5590e0'
+CONTRACT_SHA = '4db394b9ca80403e31d088e1645e7319df0dcf1516ca98ff7c7b448272081ad6'
+PROFILE_MANIFEST_SHA = '68f8d6104bf1fe0d43efe7f957a8b15b950655a095b07ec7eceeed7d2a8449ea'
+SOURCE_CLOSURE_SHA = '884239df3c7486e6bfcd36b4f7c2db9a0fdc7c41ef796f947a4710bb195efa54'
+RUNTIME_CLOSURE_SHA = 'c6ec6f9d6a3cfbf587e18cc3f14c616e2ba338da4d24d8983aa160f4454f0c40'
+GO_SHA = 'd3ccdb604eafa6031133aefe1a3db24f0bb7362b857bc2125ac4e4c178b4b490'
+GCC_SHA = '206f9fc067234f48ae077550658dae06bd75d99110c1b3166887b7090cbd7fa0'
+GO_MOD_SHA = '587c512c4b5b46ff38f7aa5818de49727fa0854b81f160ba14362689e68d7f75'
+GO_SUM_SHA = 'f2c33d60ce25ccc7212c3b8d6392c9afc3d9222888e0567b6f8a24b7ac345944'
+GO_EXE = INPUT / 'inputs/go/bin/go.exe'
+SOURCE = PROFILE_CARD / 'source'
+METADATA_FIELDS = ('Dir,ImportPath,ImportMap,Name,Root,Standard,Module,GoFiles,CgoFiles,IgnoredGoFiles,'
+    'IgnoredOtherFiles,CFiles,CXXFiles,MFiles,HFiles,FFiles,SFiles,SwigFiles,SwigCXXFiles,SysoFiles,'
+    'CgoCFLAGS,CgoCPPFLAGS,CgoCXXFLAGS,CgoFFLAGS,CgoLDFLAGS,CgoPkgConfig,Imports,Deps,Incomplete,'
+    'Error,DepsErrors,EmbedPatterns,EmbedFiles,TestGoFiles,TestImports,TestEmbedPatterns,TestEmbedFiles,'
+    'XTestGoFiles,XTestImports,XTestEmbedPatterns,XTestEmbedFiles,ForTest')
+RESOURCE_CAPS = {'regular_entries': 150000, 'directories': 15000, 'bytes': 6 << 30,
+    'zip_bytes': 1 << 30, 'extracted_module_bytes': 4 << 30, 'cache_temp_bytes': 1 << 30}
+ENV_REFERENCES = {'environment_manifest': 'child-environment.json',
+    'list_environment_manifest': 'list-environment.json',
+    'graph_environment_manifest': 'graph-environment.json',
+    'offline_environment_manifest': 'offline-environment.json'}
+PIN_NAMES = frozenset({'check_dependencies.py', 'run_dependencies.py', 'contract.md', 'interfaces.md',
+    'review-dependencies-worker.md', 'review-dependencies-parent.md',
+    'pure-dependency-final.json', 'pure-parent-final.json'})
+_WORKER_BOOTSTRAP_PATH = json.dumps((HERE / 'check_dependencies.py').as_posix(), ensure_ascii=True)
+BOOTSTRAP = (
+    'import runpy,sys;'
+    f'sys.argv=[{_WORKER_BOOTSTRAP_PATH},"--dependency-metadata-only"];'
+    f'runpy.run_path({_WORKER_BOOTSTRAP_PATH},run_name="__main__")'
+)
+ARGV = [str(PHYSICAL), '-B', '-I', '-S', '-c', BOOTSTRAP]
+STAGE_ORDER = ('preflight', 'declared_download', 'mvs_graph', 'remaining_download',
+    'runtime_discovery', 'test_discovery', 'final_verification', 'closed')
+STAGES = frozenset(STAGE_ORDER)
+WORKER_CODES = frozenset({'scope_invalid', 'pin_changed', 'already_attempted', 'deadline', 'path_invalid',
+    'resource_limit', 'resource_monitor_failed', 'output_limit', 'output_invalid', 'process_failed',
+    'process_identity_invalid', 'job_invalid', 'module_download_invalid', 'module_graph_invalid',
+    'module_source_changed', 'checksum_missing', 'discovery_invalid', 'receipt_invalid',
+    'custody_invalid', 'cleanup_unverified', 'dependency_egress_disabled', 'unclassified_failure'})
+PARENT_CODES = WORKER_CODES | {'parent_failure', 'worker_failed', 'reader_failed',
+    'spawn_unverified', 'native_custody_failed'}
+COMMAND_NAMES = frozenset({'mvs-list', 'module-graph', 'runtime-discovery', 'test-discovery'})
+TOTAL_SECONDS = 1530
+CLEANUP_SECONDS = 10
+STREAM_CAP = 64 << 10
+SOURCE_FACTS = {'count': 310, 'unchanged': True, 'registry_sha256': REGISTRY_SHA}
+PROFILE_FACTS = {'regular_files': 2293, 'directories': 231, 'bytes': 28516597,
+    'manifest_sha256': PROFILE_MANIFEST_SHA, 'exact_match': True}
+RUNTIME_FACTS = {'closure_sha256': RUNTIME_CLOSURE_SHA, 'files_checked': 789, 'exact_match': True}
+ORIGINAL_SOURCE_FACTS = {'manifest_sha256': 'da68b1581adb6ad5e40eb8f08982d159eaf36ae980bacc3fc6897ede60e9fcf7',
+    'regular_files': 2285, 'directories': 229, 'bytes': 28426766, 'exact_match': True}
+INPUT_FACTS = {
+    'go': {'manifest_sha256': '42339d963a095203f89c16ab22738f592c6f08ca48be6476cc3a344c7b20b1cc',
+        'regular_files': 15639, 'directories': 1713, 'bytes': 246912295, 'exact_match': True},
+    'gcc': {'manifest_sha256': '9197c6cd0c798a947b088d40e65a2523b607ed31a7a6457226193c3fc792a6e2',
+        'regular_files': 11873, 'directories': 407, 'bytes': 960400285, 'exact_match': True},
+}
+
+
+class LaunchError(Exception):
+    def __init__(self, code):
+        self.code = code if code in PARENT_CODES else 'parent_failure'
+        super().__init__(self.code)
+
+
+def need(value, code):
+    if not value:
+        raise LaunchError(code)
+
+
+def strict_json(raw):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            need(key not in result, 'output_invalid')
+            result[key] = value
+        return result
+    try:
+        return json.loads(raw, object_pairs_hook=pairs,
+            parse_constant=lambda _: need(False, 'output_invalid'))
+    except LaunchError:
+        raise
+    except Exception:
+        raise LaunchError('output_invalid') from None
+
+
+def no_links(path):
+    need(path.is_absolute() and len(path.drive) == 2 and not str(path).startswith('\\\\'), 'path_invalid')
+    for item in (*reversed(path.parents), path):
+        facts = item.lstat()
+        need(not stat.S_ISLNK(facts.st_mode)
+             and not getattr(facts, 'st_file_attributes', 0) & 0x400, 'path_invalid')
+    return facts
+
+
+def same_open_file(path_info, handle_info):
+    fields = ('st_dev', 'st_ino', 'st_nlink', 'st_size', 'st_mtime_ns')
+    return (getattr(path_info, 'st_dev', 0) != 0 and getattr(path_info, 'st_ino', 0) != 0
+        and getattr(handle_info, 'st_dev', 0) != 0 and getattr(handle_info, 'st_ino', 0) != 0
+        and all(getattr(path_info, key) == getattr(handle_info, key) for key in fields)
+        and stat.S_IFMT(path_info.st_mode) == stat.S_IFMT(handle_info.st_mode)
+        and getattr(path_info, 'st_file_attributes', 0) == getattr(handle_info, 'st_file_attributes', 0))
+
+
+def unchanged_path(before, after):
+    fields = ('st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    return all(getattr(before, key) == getattr(after, key) for key in fields) and \
+        getattr(before, 'st_file_attributes', 0) == getattr(after, 'st_file_attributes', 0)
+
+
+def read_bounded(path, cap):
+    facts = no_links(path)
+    need(stat.S_ISREG(facts.st_mode) and facts.st_nlink == 1 and facts.st_size <= cap, 'resource_limit')
+    with path.open('rb') as source:
+        opened = os.fstat(source.fileno())
+        need(same_open_file(facts, opened), 'pin_changed')
+        raw = source.read(cap + 1)
+        need(same_open_file(opened, os.fstat(source.fileno())), 'pin_changed')
+    need(len(raw) <= cap and unchanged_path(facts, no_links(path)), 'pin_changed')
+    return raw
+
+
+def sha(path):
+    return hashlib.sha256(read_bounded(path, 64 << 20)).hexdigest()
+
+
+def valid_digest(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def check_pins(pins=None):
+    if pins is None:
+        document = strict_json(read_bounded(HERE / 'launch-pins.json', 32 << 10))
+        need(type(document) is dict and set(document) == {'schema', 'contract_sha256', 'files'}
+             and type(document['schema']) is int and document['schema'] == 1
+             and document['contract_sha256'] == CONTRACT_SHA, 'pin_changed')
+        pins = document['files']
+    need(type(pins) is dict and set(pins) == PIN_NAMES, 'pin_changed')
+    for name in sorted(PIN_NAMES):
+        need(valid_digest(pins[name]) and sha(HERE / name) == pins[name], 'pin_changed')
+    need(pins['contract.md'] == CONTRACT_SHA, 'pin_changed')
+    need(sha(ROOT / 'docs/contracts/team-native-read-profile-dependencies.md') == CONTRACT_SHA, 'pin_changed')
+    return dict(pins)
+
+
+def source_check():
+    registry = HERE / 'source-before-310.json'
+    need(sha(registry) == REGISTRY_SHA, 'pin_changed')
+    document = strict_json(read_bounded(registry, 256 << 10))
+    need(type(document) is dict and type(document.get('sources')) is list
+         and len(document['sources']) == 310, 'pin_changed')
+    seen = set()
+    for item in document['sources']:
+        need(type(item) is dict and set(item) == {'path', 'sha256'}, 'pin_changed')
+        relative = item['path']
+        need(type(relative) is str and re.fullmatch(r'[A-Za-z0-9_.\-/]+', relative), 'path_invalid')
+        path = Path(relative)
+        need(not path.is_absolute() and path.parts and all(p not in {'.', '..'} for p in path.parts)
+             and relative.casefold() not in seen, 'path_invalid')
+        seen.add(relative.casefold())
+        need(valid_digest(item['sha256']) and sha(ROOT / path) == item['sha256'], 'pin_changed')
+    return dict(SOURCE_FACTS)
+
+
+def source_profile_pins():
+    # Full actual tree equality is the worker's separately verified observation.
+    need(valid_digest(SOURCE_CLOSURE_SHA), 'pin_changed')
+    need(sha(PROFILE_CARD / 'source-preparation-manifest.json') == PROFILE_MANIFEST_SHA
+         and sha(PROFILE_CARD / 'closed-source-profile-card.json') == SOURCE_CLOSURE_SHA, 'pin_changed')
+    return {'manifest_sha256': PROFILE_MANIFEST_SHA, 'closure_sha256': SOURCE_CLOSURE_SHA,
+            'pins_unchanged': True}
+
+
+class WinAPI:
+    def __init__(self):
+        self.kernel = k = ctypes.WinDLL('kernel32', use_last_error=True)
+        declarations = {
+            'GetCurrentProcess': ([], w.HANDLE),
+            'GetProcessId': ([w.HANDLE], w.DWORD),
+            'GetProcessTimes': ([w.HANDLE] + [ctypes.POINTER(w.FILETIME)] * 4, w.BOOL),
+            'QueryFullProcessImageNameW': ([w.HANDLE, w.DWORD, w.LPWSTR, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'WaitForSingleObject': ([w.HANDLE, w.DWORD], w.DWORD),
+            'TerminateProcess': ([w.HANDLE, w.UINT], w.BOOL),
+            'GetExitCodeProcess': ([w.HANDLE, ctypes.POINTER(w.DWORD)], w.BOOL),
+            'GetWindowsDirectoryW': ([w.LPWSTR, w.UINT], w.UINT),
+        }
+        for name, (args, result) in declarations.items():
+            function = getattr(k, name)
+            function.argtypes, function.restype = args, result
+
+    def windows_directory(self):
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = self.kernel.GetWindowsDirectoryW(buffer, len(buffer))
+        need(0 < length < len(buffer), 'scope_invalid')
+        path = Path(buffer.value)
+        no_links(path)
+        no_links(path / 'System32')
+        return path
+
+    def identity(self, handle, pid):
+        actual_pid = int(self.kernel.GetProcessId(handle))
+        times = [w.FILETIME() for _ in range(4)]
+        need(actual_pid == pid and type(pid) is int and pid > 0
+             and self.kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)), 'process_identity_invalid')
+        buffer, size = ctypes.create_unicode_buffer(32768), w.DWORD(32768)
+        need(self.kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)), 'process_identity_invalid')
+        need(str(Path(buffer.value)).casefold() == str(PHYSICAL).casefold(), 'process_identity_invalid')
+        creation = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+        need(creation > 0, 'process_identity_invalid')
+        return {'pid': actual_pid, 'creation_time': str(creation), 'executable_sha256': PHYSICAL_SHA,
+            'argv_sha256': hashlib.sha256(json.dumps(ARGV, ensure_ascii=True, sort_keys=True,
+                separators=(',', ':')).encode('utf-8')).hexdigest()}
+
+    def verify_parent_image(self):
+        own = self.identity(self.kernel.GetCurrentProcess(), os.getpid())
+        # identity()'s argv digest is only the child argv; don't mislabel it as parent argv proof.
+        return {key: own[key] for key in ('pid', 'creation_time', 'executable_sha256')}
+
+    def wait(self, handle, milliseconds):
+        result = self.kernel.WaitForSingleObject(handle, milliseconds)
+        need(result in {0, 258}, 'cleanup_unverified')
+        return result == 0
+
+    def terminate(self, handle):
+        need(self.kernel.TerminateProcess(handle, 70), 'cleanup_unverified')
+
+    def exit_code(self, handle):
+        code = w.DWORD()
+        need(self.kernel.GetExitCodeProcess(handle, ctypes.byref(code)), 'cleanup_unverified')
+        return int(code.value)
+
+    def close_child(self, child):
+        child._handle.Close()
+
+
+class StreamBudget:
+    def __init__(self):
+        self.lock, self.count, self.overflow = threading.Lock(), 0, False
+
+    def retain(self, block):
+        with self.lock:
+            remaining = max(0, STREAM_CAP - self.count)
+            self.count += len(block)
+            self.overflow = self.overflow or self.count > STREAM_CAP
+            return block[:remaining]
+
+
+class BoundedReader:
+    def __init__(self, pipe, budget):
+        self.pipe, self.budget, self.raw = pipe, budget, bytearray()
+        self.count, self.digest = 0, hashlib.sha256()
+        self.failed = self.eof = False
+
+    def run(self):
+        try:
+            while True:
+                block = self.pipe.read(4096)
+                if not block:
+                    self.eof = True
+                    return
+                self.count += len(block)
+                self.digest.update(block)
+                self.raw.extend(self.budget.retain(block))
+        except BaseException:
+            self.failed = True
+
+    def facts(self):
+        return {'bytes': self.count, 'sha256': self.digest.hexdigest(),
+            'failed': self.failed, 'eof': self.eof}
+
+
+def hard_abort(code):
+    # No I/O: stdout may itself be blocked. No positive terminal/closed receipt
+    # is emitted; root must classify abandonment and investigate independently.
+    # The code argument is retained solely for the fake-only lifecycle probes.
+    os._exit(70)
+
+
+class ParentWatchdog:
+    """Absolute parent bound; expiry makes no family-cleanup assertion."""
+    def __init__(self, deadline, *, clock=time.monotonic,
+            thread_factory=threading.Thread, event_factory=threading.Event,
+            abort=hard_abort):
+        self.deadline, self.clock, self.abort = deadline, clock, abort
+        self.cancel = event_factory()
+        self.thread = thread_factory(target=self._run, daemon=True)
+        self.started = False
+
+    def _run(self):
+        failure = 'deadline'
+        try:
+            while True:
+                remaining = self.deadline - self.clock()
+                if remaining <= 0:
+                    break
+                if self.cancel.wait(remaining):
+                    return
+        except BaseException:
+            failure = 'cleanup_unverified'
+        self.abort(failure)
+
+    def start(self):
+        try:
+            # Retain the object before .start(); interrupted start is uncertain.
+            self.started = True
+            self.thread.start()
+            need(self.thread.ident is not None and self.thread.is_alive(), 'cleanup_unverified')
+            self.check()
+        except BaseException:
+            self.abort('cleanup_unverified')
+            raise LaunchError('cleanup_unverified')
+
+    def check(self):
+        if self.clock() >= self.deadline:
+            self.abort('deadline')
+            raise LaunchError('deadline')
+
+    def stop(self):
+        try:
+            self.check()
+            need(self.started and self.thread.ident is not None, 'cleanup_unverified')
+            self.cancel.set()
+            self.thread.join(min(CLEANUP_SECONDS, max(0, self.deadline - self.clock())))
+            need(not self.thread.is_alive(), 'cleanup_unverified')
+            self.check()
+        except BaseException:
+            self.abort('cleanup_unverified')
+            raise LaunchError('cleanup_unverified')
+
+
+def run_child_lifetime(api, executable_custody, argv, env, *, deadline,
+        popen_factory=subprocess.Popen, clock=time.monotonic,
+        thread_factory=threading.Thread, hard_abort=hard_abort):
+    """Only original Popen HANDLE cleanup; never numeric-PID lookup/adoption."""
+    need(executable_custody.state == 'initial_nowrite'
+         and executable_custody.baseline.sha256 == PHYSICAL_SHA, 'custody_invalid')
+    child, handle, readers, threads, identity = None, None, [], [], None
+    budget = StreamBudget()
+    start, timed_out, signaled, failure = clock(), False, False, None
+    try:
+        try:
+            child = popen_factory(argv, cwd=str(HERE), env=env, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False,
+                close_fds=True, creationflags=0x00000008)
+        except BaseException:
+            raise LaunchError('spawn_unverified')
+        handle = child._handle
+        identity = api.identity(handle, child.pid)
+        for pipe in (child.stdout, child.stderr):
+            reader = BoundedReader(pipe, budget)
+            readers.append(reader)
+            thread = thread_factory(target=reader.run, daemon=True)
+            threads.append(thread)  # Retain before possibly interrupted thread.start().
+            thread.start()
+        while True:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                timed_out = True
+                raise LaunchError('deadline')
+            if budget.overflow or any(reader.failed for reader in readers):
+                raise LaunchError('output_limit' if budget.overflow else 'reader_failed')
+            if api.wait(handle, min(250, max(1, int(remaining * 1000)))):
+                signaled = True
+                break
+    except BaseException as error:
+        failure = error.code if isinstance(error, LaunchError) else 'parent_failure'
+    finally:
+        try:
+            need(child is not None and handle is not None, 'cleanup_unverified')
+            cleanup_end = clock() + CLEANUP_SECONDS
+            if not signaled:
+                signaled = api.wait(handle, 0)
+            if not signaled:
+                api.terminate(handle)
+                signaled = api.wait(handle, max(0, int((cleanup_end - clock()) * 1000)))
+            need(signaled, 'cleanup_unverified')
+            code = api.exit_code(handle)  # 259 is valid only after signaled lifetime.
+            need(child.wait(timeout=max(.001, cleanup_end - clock())) == code, 'cleanup_unverified')
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(max(0, cleanup_end - clock()))
+                need(not thread.is_alive(), 'cleanup_unverified')
+            for pipe in (child.stdout, child.stderr):
+                pipe.close()
+            api.close_child(child)
+        except BaseException:
+            hard_abort('spawn_unverified' if child is None else 'cleanup_unverified')
+            raise LaunchError('cleanup_unverified')
+    joined = len(readers) == 2 and all(reader.eof and not reader.failed for reader in readers)
+    need(identity is None or type(identity) is dict, 'process_identity_invalid')
+    return {'identity': identity, 'elapsed_seconds': round(clock() - start, 3),
+        'timed_out': timed_out, 'exit_code': code, 'signaled': signaled,
+        'original_handle_closed': True, 'readers_joined': joined, 'error_code': failure,
+        'combined_stream_bytes': budget.count, 'stream_overflow': budget.overflow,
+        'streams': [reader.facts() for reader in readers],
+        'stdout': bytes(readers[0].raw) if readers else b'',
+        'stderr_bytes': readers[1].count if len(readers) > 1 else None}
+
+
+def terminal_record(raw):
+    need(type(raw) is bytes and len(raw) <= STREAM_CAP and raw.endswith(b'\n'), 'output_invalid')
+    lines = raw.splitlines()
+    need(2 <= len(lines) <= len(STAGE_ORDER) + 1, 'output_invalid')
+    observed = lines[:-1]
+    need(observed == [f'stage:{name}'.encode('ascii') for name in STAGE_ORDER[:len(observed)]], 'output_invalid')
+    record = strict_json(lines[-1])
+    need(type(record) is dict and set(record) == {'status', 'stage', 'code'}, 'output_invalid')
+    need(type(record['status']) is str and type(record['stage']) is str
+         and record['status'] in {'METADATA_PREPARATION_ONLY_PASS', 'FAILED_NOT_QUALIFIED'}
+         and record['stage'] in STAGES
+         and (record['code'] is None or type(record['code']) is str and record['code'] in WORKER_CODES), 'output_invalid')
+    need(record['stage'] == STAGE_ORDER[len(observed) - 1], 'output_invalid')
+    if record['status'] == 'METADATA_PREPARATION_ONLY_PASS':
+        need(tuple(observed) == tuple(f'stage:{name}'.encode('ascii') for name in STAGE_ORDER)
+             and record['stage'] == 'closed' and record['code'] is None, 'output_invalid')
+    else:
+        need(record['code'] is not None, 'output_invalid')
+    return record
+
+
+def exact_facts(value, expected):
+    if type(value) is not dict or set(value) != set(expected):
+        return False
+    return all(type(value[key]) is type(wanted) and value[key] == wanted
+        for key, wanted in expected.items())
+
+
+def validate_command_sequence(commands):
+    """Require the actual ordered metadata commands, not just stage labels."""
+    names = [command.get('name') if type(command) is dict else None for command in commands]
+    position = 0
+    while position < len(names) and names[position] == f'declared-download-{position + 1:03d}':
+        position += 1
+    need(position > 0 and names[position:position + 2] == ['mvs-list', 'module-graph'], 'receipt_invalid')
+    position += 2
+    remaining = 0
+    while position < len(names) and names[position] == f'remaining-download-{remaining + 1:03d}':
+        remaining += 1
+        position += 1
+    need(names[position:] == ['runtime-discovery', 'test-discovery'], 'receipt_invalid')
+
+
+def validate_environment_reference(value, filename):
+    need(type(value) is dict and set(value) == {'path', 'bytes', 'sha256'}
+         and type(value['path']) is str and value['path'] == filename and type(value['bytes']) is int
+         and 0 < value['bytes'] <= 64 << 10 and valid_digest(value['sha256']), 'receipt_invalid')
+    return value
+
+
+def environment_references(receipt):
+    references = {}
+    for key, filename in ENV_REFERENCES.items():
+        references[key] = validate_environment_reference(receipt.get(key), filename)
+    return references
+
+
+def validate_command_metadata(command, references):
+    name, argv = command['name'], command['argv']
+    need(type(argv) is list and 3 <= len(argv) <= 36
+         and all(type(argument) is str and 0 < len(argument) <= 2048 for argument in argv)
+         and argv[0] == str(GO_EXE), 'receipt_invalid')
+    download = name.startswith(('declared-download-', 'remaining-download-'))
+    if download:
+        need(5 <= len(argv) <= 36 and argv[1:4] == ['mod', 'download', '-json']
+             and len(subprocess.list2cmdline(argv).encode('utf-16-le')) // 2 + 1 <= 4096
+             and all(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/\-]*@v(?:0|[1-9][0-9]*)\.'
+                 r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
+                 r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+incompatible)?', value)
+                 for value in argv[4:]), 'receipt_invalid')
+        expected_cwd, environment = HERE / 'download-root', 'environment_manifest'
+    else:
+        fixed = {
+            'mvs-list': ['list', '-mod=readonly', '-buildvcs=false', '-m', '-json', 'all'],
+            'module-graph': ['mod', 'graph'],
+            'runtime-discovery': ['list', '-mod=readonly', '-buildvcs=false', '-deps',
+                '-json=' + METADATA_FIELDS, './cmd/read-observation'],
+            'test-discovery': ['list', '-mod=readonly', '-buildvcs=false', '-deps',
+                '-json=' + METADATA_FIELDS, '-test', './cmd/read-observation'],
+        }
+        need(argv[1:] == fixed[name], 'receipt_invalid')
+        expected_cwd = SOURCE
+        environment = ('list_environment_manifest' if name == 'mvs-list' else
+            'graph_environment_manifest' if name == 'module-graph' else 'offline_environment_manifest')
+    need(type(command['cwd']) is str and command['cwd'] == str(expected_cwd)
+         and command['environment_sha256'] == references[environment]['sha256'], 'receipt_invalid')
+    peaks, final = command['resource_peaks'], command['resources_after']
+    need(type(peaks) is dict and type(final) is dict
+         and set(peaks) == set(RESOURCE_CAPS) and set(final) == set(RESOURCE_CAPS), 'receipt_invalid')
+    need(all(type(peaks[key]) is int and type(final[key]) is int
+             and 0 <= final[key] <= peaks[key] <= cap
+             for key, cap in RESOURCE_CAPS.items()), 'resource_limit')
+
+
+def validate_graph_environment(online, graph):
+    """Require the exact offline graph derivation; bodies grant no authority."""
+    need(type(online) is dict and type(graph) is dict
+         and all(type(key) is str and type(value) is str
+             for body in (online, graph) for key, value in body.items()), 'receipt_invalid')
+    need(online.get('GOPROXY') == 'https://proxy.golang.org'
+         and online.get('GOSUMDB') == 'sum.golang.org'
+         and online.get('GOFLAGS') == '', 'receipt_invalid')
+    need(graph == dict(online, GOPROXY='off', GOSUMDB='off', GOFLAGS=''), 'receipt_invalid')
+
+
+def verify_environment_artifacts(receipt):
+    # Called only after the original worker HANDLE/EOF/Close proof, not by the
+    # pure receipt validator. Bodies stay private and are never exported here.
+    bodies = {}
+    for key, reference in environment_references(receipt).items():
+        raw = read_bounded(HERE / reference['path'], 64 << 10)
+        need(len(raw) == reference['bytes'] and hashlib.sha256(raw).hexdigest() == reference['sha256'], 'pin_changed')
+        body = strict_json(raw)
+        need(type(body) is dict, 'receipt_invalid')
+        bodies[key] = body
+    online = bodies['environment_manifest']
+    graph = bodies['graph_environment_manifest']
+    validate_graph_environment(online, graph)
+    need(bodies['list_environment_manifest'] == dict(online,
+         GOFLAGS='-mod=readonly -buildvcs=false'), 'receipt_invalid')
+    need(bodies['offline_environment_manifest'] == dict(graph,
+         GOFLAGS='-mod=readonly -buildvcs=false'), 'receipt_invalid')
+
+
+def validate_known_worker_lifetime(lifetime):
+    """Check only the original worker lifetime facts retained by this parent.
+
+    These diagnostic fields are not a Job-family or activation permission proof.
+    The actual main obtains them exclusively from run_child_lifetime.
+    """
+    need(type(lifetime) is dict, 'receipt_invalid')
+    identity = lifetime.get('identity')
+    expected_argv_sha = hashlib.sha256(json.dumps(ARGV, ensure_ascii=True, sort_keys=True,
+        separators=(',', ':')).encode('utf-8')).hexdigest()
+    need(type(identity) is dict and set(identity) == {'pid', 'creation_time',
+         'executable_sha256', 'argv_sha256'}
+         and type(identity['pid']) is int and identity['pid'] > 0
+         and type(identity['creation_time']) is str
+         and re.fullmatch('[1-9][0-9]{0,19}', identity['creation_time'])
+         and int(identity['creation_time']) <= (1 << 64) - 1
+         and identity['executable_sha256'] == PHYSICAL_SHA
+         and identity['argv_sha256'] == expected_argv_sha, 'process_identity_invalid')
+    need(lifetime.get('signaled') is True and lifetime.get('original_handle_closed') is True
+         and lifetime.get('readers_joined') is True, 'cleanup_unverified')
+    need(lifetime.get('timed_out') is False, 'deadline')
+    need('error_code' in lifetime, 'receipt_invalid')
+    error = lifetime.get('error_code')
+    if error is not None:
+        need(type(error) is str and error in PARENT_CODES, 'receipt_invalid')
+        raise LaunchError(error)
+    need(type(lifetime.get('exit_code')) is int
+         and 0 <= lifetime['exit_code'] <= (1 << 32) - 1, 'receipt_invalid')
+    need(lifetime.get('stream_overflow') is False, 'output_limit')
+    streams = lifetime.get('streams')
+    need(type(streams) is list and len(streams) == 2, 'output_invalid')
+    for stream in streams:
+        need(type(stream) is dict and set(stream) == {'bytes', 'sha256', 'failed', 'eof'}
+             and type(stream['bytes']) is int and stream['bytes'] >= 0
+             and valid_digest(stream['sha256'])
+             and stream['failed'] is False and stream['eof'] is True, 'output_invalid')
+    combined = lifetime.get('combined_stream_bytes')
+    need(type(combined) is int and combined == sum(stream['bytes'] for stream in streams)
+         and 0 <= combined <= STREAM_CAP, 'output_limit')
+    need(type(lifetime.get('stderr_bytes')) is int and lifetime['stderr_bytes'] == 0
+         and streams[1]['bytes'] == 0
+         and streams[1]['sha256'] == hashlib.sha256(b'').hexdigest(), 'output_invalid')
+    elapsed = lifetime.get('elapsed_seconds')
+    need(type(elapsed) in {int, float} and math.isfinite(elapsed)
+         and 0 <= elapsed <= TOTAL_SECONDS, 'receipt_invalid')
+    return dict(identity)
+
+
+def validate_mvs_context_pair(path, version):
+    """Exact worker public-pair grammar; optional diagnostics only."""
+    need(type(path) is str and type(version) is str and 0 < len(path) <= 1024
+         and 0 < len(version) <= 256, 'receipt_invalid')
+    parts = path.split('/')
+    host = parts[0]
+    need(len(parts) >= 2 and '.' in host and host == host.lower() and len(host) <= 253
+         and not re.fullmatch(r'[0-9.]+', host) and
+         not host.endswith(('.localhost', '.local', '.internal', '.invalid', '.test', '.example'))
+         and all(re.fullmatch(r'[a-z0-9](?:[a-z0-9-]*[a-z0-9])?', label) for label in host.split('.')),
+         'receipt_invalid')
+    need(all(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', part) and part not in {'.', '..'}
+             and not part.endswith('.') for part in parts[1:]), 'receipt_invalid')
+    need(re.fullmatch(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
+        r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+incompatible)?', version), 'receipt_invalid')
+    return path, version
+
+
+def validate_mvs_error_context(receipt, commands):
+    """Validate optional bounded failure context without granting authority."""
+    context = receipt['mvs_error_context']
+    fields = {'schema', 'source', 'ordinal', 'logical_path', 'logical_version',
+        'effective_path', 'effective_version', 'reason'}
+    need(type(context) is dict and set(context) == fields
+         and type(context['schema']) is int and context['schema'] == 1
+         and type(context['source']) is str and context['source'] == 'mvs_records'
+         and type(context['ordinal']) is int and 1 <= context['ordinal'] <= 606
+         and type(context['reason']) is str and context['reason'] in {
+             'archive_sum_absent', 'gomod_sum_absent',
+             'archive_sum_mismatch', 'gomod_sum_mismatch'}, 'receipt_invalid')
+    logical = validate_mvs_context_pair(context['logical_path'], context['logical_version'])
+    effective = validate_mvs_context_pair(context['effective_path'], context['effective_version'])
+    expected = (('github.com/go-vikunja/caldav-go',
+        'v3.0.1-0.20260914150516-75a300de4623+incompatible')
+        if logical[0] == 'github.com/samedi/caldav-go' else logical)
+    need(effective == expected, 'receipt_invalid')
+    raw = json.dumps(context, sort_keys=True, ensure_ascii=True, allow_nan=False,
+        indent=2).encode('ascii') + b'\n'
+    need(len(raw) <= 4096 and receipt['stage'] == 'mvs_graph'
+         and receipt['code'] == 'checksum_missing' and commands, 'receipt_invalid')
+    command = commands[-1]
+    need(type(command) is dict and type(command.get('name')) is str
+         and command['name'] == 'mvs-list' and type(command.get('exit_code')) is int
+         and command['exit_code'] == 0 and command.get('known_child_waited') is True
+         and command.get('readers_completed') is True
+         and 'stop_reason' in command and command['stop_reason'] is None, 'receipt_invalid')
+    argv = command.get('argv')
+    need(type(argv) is list and all(type(argument) is str for argument in argv)
+         and argv == [str(GO_EXE), 'list', '-mod=readonly', '-buildvcs=false', '-m', '-json', 'all']
+         and type(command.get('cwd')) is str and command['cwd'] == str(SOURCE), 'receipt_invalid')
+
+
+def validate_failed_graph_reference(receipt, commands):
+    """Check only present graph diagnostics, without file-body reads or PASS."""
+    reference = None
+    if 'graph_environment_manifest' in receipt:
+        reference = validate_environment_reference(receipt['graph_environment_manifest'], 'graph-environment.json')
+    for command in commands:
+        if type(command) is dict and command.get('name') == 'module-graph':
+            need(reference is not None and type(command.get('exit_code')) is int
+                 and command['exit_code'] == 0 and command.get('known_child_waited') is True
+                 and command.get('readers_completed') is True
+                 and 'stop_reason' in command and command['stop_reason'] is None, 'receipt_invalid')
+            argv = command.get('argv')
+            need(type(argv) is list and all(type(argument) is str for argument in argv)
+                 and argv == [str(GO_EXE), 'mod', 'graph']
+                 and type(command.get('cwd')) is str and command['cwd'] == str(SOURCE)
+                 and type(command.get('environment_sha256')) is str
+                 and command['environment_sha256'] == reference['sha256'], 'receipt_invalid')
+
+
+def validate_failed_worker_receipt(receipt, terminal, lifetime, *, launch_pins_sha256):
+    """Propagate only a bounded, consistent worker failure; never return PASS."""
+    identity = validate_known_worker_lifetime(lifetime)
+    need(lifetime['exit_code'] == 70, 'worker_failed')
+    need(type(terminal) is dict and set(terminal) == {'status', 'stage', 'code'}
+         and type(terminal['status']) is str and terminal['status'] == 'FAILED_NOT_QUALIFIED'
+         and type(terminal['stage']) is str and terminal['stage'] in STAGES
+         and type(terminal['code']) is str and terminal['code'] in WORKER_CODES, 'output_invalid')
+    need(type(receipt) is dict and all(type(receipt.get(key)) is str
+         and receipt[key] == terminal[key] for key in ('status', 'stage', 'code')), 'receipt_invalid')
+    need(type(receipt.get('protocol')) is int and receipt['protocol'] == 1
+         and valid_digest(launch_pins_sha256)
+         and valid_digest(receipt.get('launch_pins_sha256'))
+         and receipt['launch_pins_sha256'] == launch_pins_sha256, 'receipt_invalid')
+    elapsed = receipt.get('elapsed_seconds')
+    need(type(elapsed) in {int, float} and math.isfinite(elapsed)
+         and 0 <= elapsed <= 1500, 'receipt_invalid')
+    need(receipt.get('closure_admission') == 'UNKNOWN'
+         and all(receipt.get(key) is False for key in ('source_init_execution', 'root_card_closed',
+             'activation_supported', 'native_api_qualified', 'mapped_image_provenance', 'full_r4_qualified'))
+         and all(type(receipt.get(key)) is int and receipt[key] == 0
+             for key in ('builds', 'tests', 'sql_calls', 'paid_calls', 'owner_calls', 'host_mutations')), 'receipt_invalid')
+    commands = receipt.get('commands')
+    need(type(commands) is list and len(commands) <= 64, 'receipt_invalid')
+    if 'job_owner' in receipt:
+        owner = receipt['job_owner']
+        need(type(owner) is dict and set(owner) == set(identity)
+             and all(type(owner[key]) is type(value) and owner[key] == value
+                 for key, value in identity.items()), 'process_identity_invalid')
+    else:
+        need(terminal['stage'] == 'preflight' and commands == [], 'process_identity_invalid')
+    if 'mvs_error_context' in receipt:
+        validate_mvs_error_context(receipt, commands)
+    validate_failed_graph_reference(receipt, commands)
+    return {key: terminal[key] for key in ('status', 'stage', 'code')}
+
+
+def validate_worker_receipt(receipt, identity, *, timed_out, exit_code, signaled, readers_joined):
+    """Only fixed summary fields leave this validator; raw body is not exported."""
+    need(type(receipt) is dict and type(identity) is dict, 'receipt_invalid')
+    owner = receipt.get('job_owner')
+    need(type(owner) is dict and set(owner) == {'pid', 'creation_time', 'executable_sha256', 'argv_sha256'}
+         and owner == identity and type(owner['pid']) is int and owner['pid'] > 0
+         and type(owner['creation_time']) is str and re.fullmatch('[1-9][0-9]{0,19}', owner['creation_time'])
+         and owner['executable_sha256'] == PHYSICAL_SHA, 'process_identity_invalid')
+    need(timed_out is False and type(exit_code) is int and exit_code == 0
+         and signaled is True and readers_joined is True, 'worker_failed')
+    need(receipt.get('status') == 'METADATA_PREPARATION_ONLY_PASS'
+         and receipt.get('stage') == 'closed' and receipt.get('code') is None, 'worker_failed')
+    overall_elapsed = receipt.get('elapsed_seconds')
+    need(type(overall_elapsed) in {int, float} and math.isfinite(overall_elapsed)
+         and 0 <= overall_elapsed <= 1500, 'receipt_invalid')
+    need(type(receipt.get('protocol')) is int and receipt['protocol'] == 1
+         and receipt.get('closure_admission') == 'UNKNOWN'
+         and receipt.get('source_init_execution') is False
+         and receipt.get('root_card_closed') is False, 'receipt_invalid')
+    need(all(receipt.get(key) is False for key in ('activation_supported', 'native_api_qualified',
+             'mapped_image_provenance', 'full_r4_qualified'))
+         and all(type(receipt.get(key)) is int and receipt[key] == 0
+             for key in ('builds', 'tests', 'sql_calls', 'paid_calls', 'owner_calls', 'host_mutations')), 'receipt_invalid')
+    for stem, expected in (('source', SOURCE_FACTS), ('source_profile', PROFILE_FACTS),
+            ('runtime', RUNTIME_FACTS), ('original_source', ORIGINAL_SOURCE_FACTS)):
+        need(all(exact_facts(receipt.get(f'{stem}_{phase}'), expected)
+            for phase in ('before', 'after')), 'pin_changed')
+    for phase in ('before', 'after'):
+        inputs = receipt.get(f'inputs_{phase}')
+        need(type(inputs) is dict and set(inputs) == {'go', 'gcc'}
+             and all(exact_facts(inputs[name], expected) for name, expected in INPUT_FACTS.items()), 'pin_changed')
+    commands = receipt.get('commands')
+    need(type(commands) is list and 1 <= len(commands) <= 64, 'receipt_invalid')
+    validate_command_sequence(commands)
+    references = environment_references(receipt)
+    keys = {'name', 'original_identity', 'exit_code', 'elapsed_seconds', 'known_child_waited',
+        'readers_completed', 'job_before', 'job_after', 'stop_reason', 'stdout_bytes',
+        'stderr_bytes', 'stdout_sha256', 'stderr_sha256', 'resources_after',
+        'argv', 'cwd', 'environment_sha256', 'resource_peaks'}
+    command_wall_total = 0
+    for index, command in enumerate(commands):
+        need(type(command) is dict and set(command) == keys
+             and type(command['name']) is str and (command['name'] in COMMAND_NAMES
+                 or re.fullmatch(r'(declared|remaining)-download-[0-9]{3}', command['name'])), 'receipt_invalid')
+        validate_command_metadata(command, references)
+        original = command['original_identity']
+        need(type(original) is dict and set(original) == {'pid', 'creation_filetime',
+             'original_handle_verified', 'owned_job_member'}
+             and type(original['pid']) is int and original['pid'] > 0
+             and type(original['creation_filetime']) is int
+             and 0 < original['creation_filetime'] <= (1 << 64) - 1
+             and original['original_handle_verified'] is True
+             and original['owned_job_member'] is True, 'process_identity_invalid')
+        need(type(command['exit_code']) is int and command['exit_code'] == 0
+             and command['known_child_waited'] is True and command['readers_completed'] is True
+             and command['stop_reason'] is None, 'cleanup_unverified')
+        elapsed = command['elapsed_seconds']
+        # This record includes stop/readers/scan; operation deadlines are enforced
+        # by the frozen worker, not inferred from the full record duration.
+        need(type(elapsed) in {int, float} and math.isfinite(elapsed)
+             and 0 <= elapsed <= overall_elapsed, 'receipt_invalid')
+        command_wall_total += elapsed
+        need(exact_facts(command['job_before'], {'active_processes': 1,
+                 'total_processes': index + 1, 'terminated_processes': 0})
+             and exact_facts(command['job_after'], {'active_processes': 1,
+                 'total_processes': index + 2, 'terminated_processes': 0}), 'job_invalid')
+        output_cap = 16 << 20 if command['name'] in {'runtime-discovery', 'test-discovery'} else 4 << 20
+        need(type(command['stdout_bytes']) is int and 0 <= command['stdout_bytes'] <= output_cap
+             and type(command['stderr_bytes']) is int and 0 <= command['stderr_bytes'] <= 1 << 20
+             and valid_digest(command['stdout_sha256']) and valid_digest(command['stderr_sha256'])
+             and type(command['resources_after']) is dict, 'receipt_invalid')
+    need(command_wall_total <= overall_elapsed, 'receipt_invalid')
+    need(exact_facts(receipt.get('job_final'), {'active_processes': 1,
+        'total_processes': len(commands) + 1, 'terminated_processes': 0}), 'job_invalid')
+    expected_sha = {'python': PHYSICAL_SHA, 'go': GO_SHA, 'gcc': GCC_SHA,
+        'go_mod': GO_MOD_SHA, 'go_sum': GO_SUM_SHA, 'profile_manifest': PROFILE_MANIFEST_SHA,
+        'source_closure': SOURCE_CLOSURE_SHA, 'telemetry_mode': hashlib.sha256(b'off\n').hexdigest()}
+    collection = receipt.get('custody_closed_receipts')
+    need(type(collection) is dict and set(collection) == set(expected_sha), 'custody_invalid')
+    for name, digest in expected_sha.items():
+        value = collection[name]
+        need(type(value) is dict and set(value) == {'identity', 'attributes', 'links', 'length',
+             'sha256', 'diagnostic_only', 'activation_supported', 'outbound_enabled', 'closed'}
+             and type(value['identity']) is list and len(value['identity']) == 2
+             and all(type(part) is int and part >= 0 for part in value['identity'])
+             and type(value['attributes']) is int and not value['attributes'] & 0x400
+             and type(value['links']) is int and value['links'] == 1
+             and type(value['length']) is int and value['length'] > 0
+             and value['sha256'] == digest and value['diagnostic_only'] is True
+             and value['activation_supported'] is False and value['outbound_enabled'] is False
+             and value['closed'] is True, 'custody_invalid')
+    return {'status': receipt['status'], 'stage': receipt['stage'], 'code': receipt['code']}
+
+
+def save_fresh(name, raw):
+    path = HERE / name
+    no_links(HERE)
+    need(not os.path.lexists(path), 'already_attempted')
+    with path.open('xb') as destination:
+        destination.write(raw)
+        destination.flush()
+        os.fsync(destination.fileno())
+
+
+def main():
+    started = time.monotonic()
+    try:
+        watchdog = ParentWatchdog(started + TOTAL_SECONDS)
+        watchdog.start()
+    except BaseException:
+        hard_abort('cleanup_unverified')
+    result = {'status': 'FAILED_NOT_QUALIFIED', 'stage': 'preflight', 'code': 'parent_failure',
+        'activation_supported': False, 'native_api_qualified': False,
+        'full_r4_qualified': False, 'root_card_closed': False}
+    custody, pins, native_error_type = None, None, ()
+    try:
+        need(os.name == 'nt' and sys.dont_write_bytecode and sys.argv[1:] == []
+             and sys.flags.isolated == 1 and sys.flags.no_site == 1
+             and sys.flags.ignore_environment == 1
+             and sys.version_info[:3] == (3, 12, 13)
+             and str(Path(__file__).absolute()).casefold() == str(HERE / 'run_dependencies.py').casefold(), 'scope_invalid')
+        need(str(Path(sys.executable)).casefold() == str(PHYSICAL).casefold()
+             and str(Path(sys._base_executable)).casefold() == str(PHYSICAL).casefold(), 'scope_invalid')
+        for name in ('attempt.json', 'dependency-receipt.json', 'abandon.json',
+                'root-actual-run.json', 'parent-stage.log', 'parent-profile'):
+            need(not os.path.lexists(HERE / name), 'already_attempted')
+        pins = check_pins()
+        result['launch_pins_sha256'] = sha(HERE / 'launch-pins.json')
+        result['source_before'] = source_check()
+        result['source_profile_pins_before'] = source_profile_pins()
+        sys.path.insert(0, str(ROOT / 'backend'))
+        from secretary.infrastructure.restore_operator import protected_scope, create_private_directory
+        from secretary.infrastructure.restore_native_custody import _native_file_custody, NativeCustodyError
+        native_error_type = NativeCustodyError
+        api = WinAPI()
+        result['parent_identity'] = api.verify_parent_image()
+        with protected_scope(HERE), protected_scope(INPUT), protected_scope(PROFILE_CARD):
+            check_pins(pins)
+            result['stage'] = 'physical_python_custody'
+            with _native_file_custody(PHYSICAL) as custody:
+                need(custody.baseline.sha256 == PHYSICAL_SHA, 'pin_changed')
+                result['stage'] = 'private_environment'
+                windows = api.windows_directory()
+                profile = HERE / 'parent-profile'
+                for directory in (profile, profile / 'appdata', profile / 'localappdata', profile / 'temp'):
+                    create_private_directory(directory)
+                env = {'SystemRoot': str(windows), 'WINDIR': str(windows),
+                    'PATH': str(windows / 'System32'), 'HOME': str(profile), 'USERPROFILE': str(profile),
+                    'APPDATA': str(profile / 'appdata'), 'LOCALAPPDATA': str(profile / 'localappdata'),
+                    'TEMP': str(profile / 'temp'), 'TMP': str(profile / 'temp')}
+                need(started + TOTAL_SECONDS - time.monotonic() >= 1500 + CLEANUP_SECONDS, 'deadline')
+                result['stage'] = 'worker_lifetime'
+                lifetime = run_child_lifetime(api, custody, ARGV, env,
+                    deadline=started + TOTAL_SECONDS - CLEANUP_SECONDS)
+                raw_output = lifetime.pop('stdout')
+                result['lifetime'] = lifetime
+                result['stage'] = 'post_worker'
+                validate_known_worker_lifetime(lifetime)
+                result['worker_output_terminal'] = terminal_record(raw_output)
+                receipt = strict_json(read_bounded(HERE / 'dependency-receipt.json', 4 << 20))
+                if result['worker_output_terminal']['status'] == 'FAILED_NOT_QUALIFIED':
+                    result['worker_terminal'] = validate_failed_worker_receipt(receipt,
+                        result['worker_output_terminal'], lifetime,
+                        launch_pins_sha256=result['launch_pins_sha256'])
+                    raise LaunchError(result['worker_terminal']['code'])
+                result['worker_terminal'] = validate_worker_receipt(receipt, lifetime['identity'],
+                    timed_out=lifetime['timed_out'], exit_code=lifetime['exit_code'],
+                    signaled=lifetime['signaled'], readers_joined=lifetime['readers_joined'])
+                need(lifetime['error_code'] is None and lifetime['stderr_bytes'] == 0
+                     and lifetime['stream_overflow'] is False, 'output_invalid')
+                need(result.get('worker_output_terminal') == result['worker_terminal'], 'receipt_invalid')
+                verify_environment_artifacts(receipt)
+                result['source_after'] = source_check()
+                result['source_profile_pins_after'] = source_profile_pins()
+                check_pins(pins)
+                need(sha(HERE / 'launch-pins.json') == result['launch_pins_sha256'], 'pin_changed')
+                need(time.monotonic() < started + TOTAL_SECONDS, 'deadline')
+            result['physical_python_closed_receipt'] = asdict(custody.receipt)
+        need(time.monotonic() < started + TOTAL_SECONDS, 'deadline')
+        result.update(status='PARENT_LIFETIME_CHECKS_PASS', stage='closed', code=None)
+    except BaseException as error:
+        result['code'] = error.code if isinstance(error, LaunchError) else (
+            'native_custody_failed' if isinstance(error, native_error_type)
+            and error.code == 'native_custody_failed' else 'parent_failure')
+        # Unknown worker lifetime hard-exits inside the retained scopes instead.
+        if pins is not None:
+            try:
+                result['source_after'] = source_check()
+                result['source_profile_pins_after'] = source_profile_pins()
+                check_pins(pins)
+            except BaseException:
+                result['post_checks_complete'] = False
+    try:
+        need(time.monotonic() < started + TOTAL_SECONDS, 'deadline')
+        stage = {'status': result['status'], 'stage': result['stage'], 'code': result['code']}
+        save_fresh('parent-stage.log', (json.dumps(stage, sort_keys=True) + '\n').encode('ascii'))
+        save_fresh('root-actual-run.json', (json.dumps(result, sort_keys=True,
+            indent=2, allow_nan=False) + '\n').encode('ascii'))
+    except BaseException:
+        result.update(status='FAILED_NOT_QUALIFIED', code='parent_failure')
+    try:
+        watchdog.check()
+        print(json.dumps({'status': result['status'], 'stage': result['stage'], 'code': result['code']}), flush=True)
+        # Keep the watchdog active through final stdout I/O; no late successful exit.
+        watchdog.stop()
+    except BaseException:
+        hard_abort('cleanup_unverified')
+    return 0 if result['status'] == 'PARENT_LIFETIME_CHECKS_PASS' else 70
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

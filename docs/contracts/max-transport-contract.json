@@ -1,0 +1,87 @@
+{
+  "format": "secretary.external-contract.v1",
+  "provider": "MAX",
+  "retrieved_at_utc": "2026-10-03T21:29:17Z",
+  "qualification": {
+    "status": "DOCUMENTED_CONTRACT_ONLY",
+    "live_authenticated_verified": false,
+    "native_miniapp_verified": false,
+    "native_voice_verified": false
+  },
+  "sources": [
+    "https://dev.max.ru/docs-api/methods/POST/messages",
+    "https://dev.max.ru/docs-api/methods/GET/subscriptions",
+    "https://dev.max.ru/docs-api/methods/POST/subscriptions",
+    "https://dev.max.ru/docs-api/use-cases/sending-messages/keyboard",
+    "https://dev.max.ru/docs/webapps/introduction",
+    "https://dev.max.ru/docs-api",
+    "https://raw.githubusercontent.com/max-messenger/api-schema/1a4a502fab096aa3a15d83d7ea95667ffb44d2ac/schema.yaml",
+    "https://raw.githubusercontent.com/max-messenger/max-bot-api-client-ts/d6d330b5915236055856ca382380be7cbf9517c5/src/core/network/api/modules/subscriptions/types.ts",
+    "https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3"
+  ],
+  "api_schema": {
+    "repository": "https://github.com/max-messenger/api-schema",
+    "revision_sha": "1a4a502fab096aa3a15d83d7ea95667ffb44d2ac",
+    "commit_date_utc": "2026-09-18T08:05:08Z"
+  },
+  "transport": {
+    "base_url": "https://platform-api2.max.ru",
+    "authorization_header": "Authorization",
+    "bearer_prefix": false,
+    "query_token": false,
+    "tls_verification_required": true,
+    "automatic_post_retries": 0,
+    "redirects": false,
+    "client_policy": "Exact standard HTTPX Client; only default Accept/Accept-Encoding/Connection/User-Agent headers, no subclass send/stream overrides or foreign credential/framing headers.",
+    "local_timeout_component_max_seconds": 10,
+    "local_response_max_bytes": 2097152,
+    "local_content_encoding": "Request identity; refuse compressed success bodies before decoder expansion.",
+    "webhook_response_deadline_seconds": 30,
+    "deadline_note": "The webhook deadline is distinct from local HTTP client timeout policy.",
+    "http_429": "Documented rate-limit status. Retryability is local policy, not a vendor atomic nonacceptance or native idempotency guarantee.",
+    "retry_after": "No MAX header guarantee found. If present, parse standard integer seconds or HTTP-date as a bounded wait hint; fallback 1 second.",
+    "uncertain": ["timeout", "transport_failure", "5xx", "redirect", "malformed_200", "invalid_200_evidence"]
+  },
+  "messages": {
+    "method": "POST",
+    "path": "/messages",
+    "private_recipient_query": "user_id: exact positive signed-int64 decimal",
+    "body": {"text": "string <=4000 characters", "notify": "boolean", "attachments": "optional inline keyboard array"},
+    "local_rendering": "Plain text, no markdown/html mode; link preview disabled. Sensitive credentials suppress push notifications.",
+    "response_message_id": "message.body.mid",
+    "success_evidence": "HTTP200 JSON; matching exact recipient, literal text and optional sender; valid timestamp and nonblank message.body.mid.",
+    "sent_semantics": "Accepted by API, not delivered or read by a person.",
+    "provider_messages_per_recipient_per_second": 2,
+    "native_idempotency_supported_by_reviewed_contract": false
+  },
+  "buttons": {
+    "attachment_type": "inline_keyboard",
+    "rows_path": "attachments[].payload.buttons",
+    "max_rows": 30,
+    "max_buttons_per_row": 7,
+    "max_row_with_link_or_open_app": 3,
+    "text_max_characters": 128,
+    "callback": {"required": ["type", "text", "payload"], "payload_max_characters": 1024},
+    "link": {"required": ["type", "text", "url"], "url_max_characters": 2048, "behavior": "new_browser_tab"},
+    "open_app": {
+      "required": ["type", "text", "web_app"],
+      "web_app_semantics": "public_bot_name",
+      "contact_id": "optional nullable signed-int64 bot ID",
+      "payload": "optional nullable string <=512; local ASCII A-Z a-z 0-9 _ -",
+      "url_field_supported": false,
+      "behavior": "native_MAX_miniapp",
+      "prerequisite": "Owner binds HTTPS app URL to moderated bot and supplies its public name.",
+      "sdk_discrepancy": "Pinned TS SDK permits absent/null web_app; pinned official OpenAPI requires it. Local contract follows OpenAPI."
+    }
+  },
+  "subscriptions": {
+    "read": {"method": "GET", "path": "/subscriptions", "response": "subscriptions[] with url,time Unixms,update_types"},
+    "write": {"method": "POST", "path": "/subscriptions", "body": ["url", "update_types", "secret"], "success": "HTTP200 and success exactly true"},
+    "secret_pattern": "^[a-zA-Z0-9_-]{5,256}$",
+    "secret_readback_supported": false,
+    "local_public_read": "Only sanitized URL without query/fragment, time, update_types; discard provider extras.",
+    "verification": "Read existing, POST desired URL/types/secret once, fresh GET matching own URL/types and preserve known foreign subscriptions; never DELETE foreign URLs.",
+    "verified_limit": "URL/types readback plus accepted POST secret provenance; real authenticated webhook/secret roundtrip remains unqualified.",
+    "webhook_url": "Public HTTPS endpoint, implicit443; no explicit port in provider URL."
+  }
+}
