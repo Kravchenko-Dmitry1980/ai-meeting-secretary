@@ -10,6 +10,16 @@ const job = (id, chunkId, status, options = {}) => ({
   created_at: '2026-10-02T09:00:00Z', updated_at: '2026-10-02T09:00:00Z', ...options,
 });
 
+test('a paused recording with configured Polza offers continuation instead of asking for setup again', () => {
+  const runtime = hookRuntime();
+  const { ProcessingStages } = load('components/ProcessingStages.tsx', { '../utils/processing': { processingErrorPresentation }, '../utils/speakers': { counter: () => null } });
+  const state = buildProcessingState(meeting, [job('stt', 'a', 'waiting_config')], [chunk('a')]);
+  const tree = runtime.render(() => ProcessingStages({ state, busy: false, connected: true, onCancel() {}, onSettings() {},
+    configurationReady: true, setupMessage: 'Polza подключена.', action: { label: 'Начать обработку', disabled: false, onClick() {} } }));
+  assert.equal(text(get(tree, (node) => node.type === 'h2')), 'Запись готова к обработке');
+  assert.doesNotMatch(text(tree), /ждёт настройки|Нужна настройка|Открыть настройки обработки/);
+});
+
 test('the running first chunk remains visible when later chunks are queued', () => {
   const result = buildProcessingState(meeting, [
     job('first', 'a', 'running'),

@@ -26,13 +26,13 @@ function StatusIcon({ status, large = false }: { status: StageStatus; large?: bo
   return <Circle size={size} aria-hidden="true" />;
 }
 
-interface Props { state: ProcessingState; busy: boolean; connected: boolean; onCancel: (ids: string[]) => void; onSettings: () => void; onParticipants?: () => void; onIdentify?: () => void; onBypass?: () => void; action?: { label: string; disabled: boolean; onClick: () => void }; setupMessage?: string }
-export function ProcessingStages({ state, busy, connected, onCancel, onSettings, onParticipants, onIdentify, onBypass, action, setupMessage }: Props) {
+interface Props { state: ProcessingState; busy: boolean; connected: boolean; onCancel: (ids: string[]) => void; onSettings: () => void; onParticipants?: () => void; onIdentify?: () => void; onBypass?: () => void; action?: { label: string; disabled: boolean; onClick: () => void }; setupMessage?: string; configurationReady?: boolean }
+export function ProcessingStages({ state, busy, connected, onCancel, onSettings, onParticipants, onIdentify, onBypass, action, setupMessage, configurationReady = false }: Props) {
   const { primaryStage, stages, totalChunks, completedChunks } = state;
   const hasStarted = state.currentJobs.length > 0;
   const error = primaryStage.id === 'identify_speakers' && primaryStage.error ? { message: primaryStage.detail, details: primaryStage.error } : processingErrorPresentation(primaryStage.error);
   if (!hasStarted && totalChunks === 0) return null;
-  const title = !hasStarted ? 'Запись готова к обработке' : headline[primaryStage.status];
+  const title = !hasStarted || (primaryStage.status === 'waiting_config' && configurationReady) ? 'Запись готова к обработке' : headline[primaryStage.status];
   const local = stages.find((stage) => stage.id === 'identify_speakers');
   const progress = state.identification?.progress;
   const processed = counter(progress, 'observations_processed');
@@ -71,7 +71,7 @@ export function ProcessingStages({ state, busy, connected, onCancel, onSettings,
     <div className="stage-grid">
       {stages.map((stage) => <div key={stage.id} className={`stage-item ${stage.status === 'succeeded' ? 'done' : stage.status}`}>
         <StatusIcon status={stage.status} />
-        <div className="min-w-0 flex-1"><p className="text-xs font-medium">{stage.label}</p><p className="stage-status">{statusText[stage.status]}</p><p className="stage-detail">{stage.detail}</p></div>
+        <div className="min-w-0 flex-1"><p className="text-xs font-medium">{stage.label}</p><p className="stage-status">{stage.status === 'waiting_config' && configurationReady ? 'Ожидает запуска' : statusText[stage.status]}</p><p className="stage-detail">{stage.detail}</p></div>
         {stage.cancelIds.length > 0 && <Button variant="ghost" className="px-2 py-1 text-[10px]" disabled={busy} onClick={() => onCancel(stage.cancelIds)} aria-label={`Отменить этап: ${stage.label}`}>Отмена</Button>}
       </div>)}
     </div>
