@@ -190,6 +190,25 @@ class ConfigurationResponse(BaseModel):
     summary_batch_chars: int
 
 
+class ResumeSummaryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    source_job_id: UUID
+    transcript_version: int = Field(ge=1, strict=True)
+    operation_id: UUID
+    acknowledge_possible_duplicate_charge: StrictBool
+
+    @model_validator(mode='after')
+    def require_explicit_acknowledgement(self):
+        if self.acknowledge_possible_duplicate_charge is not True:
+            raise ValueError('Explicit acknowledgement of possible duplicate charge is required')
+        return self
+
+
+class SummaryResumeAccepted(BaseModel):
+    job_id: str
+    source_job_id: str
+
+
 class CreateMeeting(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(default="Новая встреча", min_length=1, max_length=250)
@@ -1072,6 +1091,16 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         if current["status"] in {"failed", "cancelled"} and body.stage!='identify_speakers':
             raise HTTPException(409, "Этап завершился ошибкой или отменён; для явного повтора передайте retry=true")
         return {"job_id": job["id"]}
+
+    @app.post('/api/v1/meetings/{meeting_id}/summary-resume', status_code=202, response_model=SummaryResumeAccepted,
+              responses={409:{'description':'Source/context conflict, or outbound processing is disabled'}})
+    async def resume_summary(meeting_id: str, body: ResumeSummaryRequest):
+        require_outbound_cloud_access()
+        try:
+            child = worker.resume_uncertain_summary(meeting_id,body)
+        except ValueError as exc:
+            raise HTTPException(409,str(exc)) from None
+        return {'job_id':child['id'],'source_job_id':str(body.source_job_id)}
 
     @app.get('/api/v1/meetings/{meeting_id}/identification-runs/{run_id}',response_model=IdentificationState)
     async def identification_state(meeting_id: str, run_id: str):

@@ -203,6 +203,8 @@ class Database:
         self._migrate_assignments()
         from secretary.infrastructure.task_publication_repository import migrate_task_publications
         migrate_task_publications(self)
+        from secretary.infrastructure.summary_resume_repository import migrate_summary_resumes
+        migrate_summary_resumes(self)
 
     def _migrate_assignments(self):
         from secretary.infrastructure.assignment_repository import ASSIGNMENT_MIGRATION
@@ -392,7 +394,9 @@ class Database:
             if stage == 'identify_speakers':
                 existing = conn.execute("SELECT * FROM jobs WHERE meeting_id=? AND stage=? AND version=? AND intent_key=?", (meeting_id, stage, version, intent_key)).fetchone()
             else:
-                existing = conn.execute("SELECT * FROM jobs WHERE meeting_id=? AND stage=? AND IFNULL(chunk_id,'')=? AND version=? AND status IN ('queued','running','waiting_config','paused_budget','uncertain')", (meeting_id, stage, chunk_id or "", version)).fetchone()
+                from secretary.infrastructure.summary_resume_repository import current_job_predicate
+                current = current_job_predicate(conn)
+                existing = conn.execute(f"SELECT * FROM jobs WHERE meeting_id=? AND stage=? AND IFNULL(chunk_id,'')=? AND version=? AND status IN ('queued','running','waiting_config','paused_budget','uncertain') AND {current}", (meeting_id, stage, chunk_id or "", version)).fetchone()
             if existing:
                 return dict(existing)
             job_id, stamp = uid(), now()
@@ -404,13 +408,25 @@ class Database:
             return result
 
     def job(self, job_id, internal=False):
-        item = self.one(f"SELECT {'*' if internal else JOB_FIELDS} FROM jobs WHERE id=?", (job_id,))
+        with self.connection() as conn:
+            fields = '*' if internal else self._job_fields(conn)
+            row = conn.execute(f"SELECT {fields} FROM jobs WHERE id=?", (job_id,)).fetchone()
+            item = dict(row) if row else None
         if item is None:
             raise KeyError(job_id)
         return item
 
     def jobs(self, meeting_id):
-        return self.rows(f"SELECT {JOB_FIELDS} FROM jobs WHERE meeting_id=? ORDER BY created_at", (meeting_id,))
+        with self.connection() as conn:
+            return [dict(row) for row in conn.execute(
+                f"SELECT {self._job_fields(conn)} FROM jobs WHERE meeting_id=? ORDER BY created_at", (meeting_id,))]
+
+    @staticmethod
+    def _job_fields(conn):
+        from secretary.infrastructure.summary_resume_repository import current_job_predicate, CURRENT_JOB
+        lineage = ("(SELECT source_job_id FROM summary_resume_operations r WHERE r.child_job_id=jobs.id)"
+                   if current_job_predicate(conn) == CURRENT_JOB else 'NULL')
+        return JOB_FIELDS + ',' + lineage + ' AS resumed_from_job_id'
 
     def claim(self):
         with self.transaction() as conn:

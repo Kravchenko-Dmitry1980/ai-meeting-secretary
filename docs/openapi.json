@@ -2562,6 +2562,58 @@
         }
       }
     },
+    "/api/v1/meetings/{meeting_id}/summary-resume": {
+      "post": {
+        "summary": "Resume Summary",
+        "operationId": "resume_summary_api_v1_meetings__meeting_id__summary_resume_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeSummaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResumeAccepted"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Source/context conflict, or outbound processing is disabled"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/meetings/{meeting_id}/identification-runs/{run_id}": {
       "get": {
         "summary": "Identification State",
@@ -6140,6 +6192,17 @@
             ],
             "title": "Local Outcome"
           },
+          "resumed_from_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumed From Job Id"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -7137,6 +7200,38 @@
         ],
         "title": "ResolvedAssignment"
       },
+      "ResumeSummaryRequest": {
+        "properties": {
+          "source_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Job Id"
+          },
+          "transcript_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Transcript Version"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "acknowledge_possible_duplicate_charge": {
+            "type": "boolean",
+            "title": "Acknowledge Possible Duplicate Charge"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_job_id",
+          "transcript_version",
+          "operation_id",
+          "acknowledge_possible_duplicate_charge"
+        ],
+        "title": "ResumeSummaryRequest"
+      },
       "ReviewAttribution": {
         "properties": {
           "transcript_version": {
@@ -7707,6 +7802,24 @@
           "open_questions"
         ],
         "title": "Summary"
+      },
+      "SummaryResumeAccepted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "source_job_id": {
+            "type": "string",
+            "title": "Source Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "source_job_id"
+        ],
+        "title": "SummaryResumeAccepted"
       },
       "SupersedesCandidate": {
         "properties": {

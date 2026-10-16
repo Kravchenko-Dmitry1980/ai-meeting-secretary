@@ -81,7 +81,7 @@ def gateway(c, delivery_id, state='queued', revision=0, **changes):
 
 def test_migration_nine_is_idempotent_and_foreign_keys_are_valid(case):
     c = case
-    assert c.db.one('SELECT MAX(version) AS version FROM schema_migrations')['version'] == 9
+    assert c.db.one('SELECT MAX(version) AS version FROM schema_migrations')['version'] == 10
     c.a.Database(c.db.path)
     with c.db.connection() as conn:
         assert conn.execute('PRAGMA foreign_key_check').fetchall() == []
@@ -413,9 +413,13 @@ def test_migration_failure_rolls_back_all_new_tables_and_can_retry(tmp_path, mon
     a = api()
     module = import_module('secretary.infrastructure.task_publication_repository')
     migrate = module.migrate_task_publications
+    resume_module = import_module('secretary.infrastructure.summary_resume_repository')
+    migrate_resumes = resume_module.migrate_summary_resumes
     monkeypatch.setattr(module, 'migrate_task_publications', lambda db: None)
+    monkeypatch.setattr(resume_module, 'migrate_summary_resumes', lambda db: None)
     db = a.Database(tmp_path / 'schema8.sqlite3')
     monkeypatch.setattr(module, 'migrate_task_publications', migrate)
+    monkeypatch.setattr(resume_module, 'migrate_summary_resumes', migrate_resumes)
     statements = module.PUBLICATION_MIGRATION
     monkeypatch.setattr(module, 'PUBLICATION_MIGRATION', (*statements[:2], 'INVALID SQL FOR ROLLBACK'))
     with pytest.raises(sqlite3.OperationalError):
@@ -424,7 +428,8 @@ def test_migration_failure_rolls_back_all_new_tables_and_can_retry(tmp_path, mon
     assert db.one("SELECT name FROM sqlite_master WHERE name='task_publication_previews'") is None
     monkeypatch.setattr(module, 'PUBLICATION_MIGRATION', statements)
     migrate(db)
-    assert db.one('SELECT MAX(version) AS version FROM schema_migrations')['version'] == 9
+    a.Database(db.path)
+    assert db.one('SELECT MAX(version) AS version FROM schema_migrations')['version'] == 10
 
 
 def test_gateway_rejected_conflict_is_a_legitimate_terminal_t3_receipt(case):

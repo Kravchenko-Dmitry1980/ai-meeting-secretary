@@ -85,7 +85,14 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
                 conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, MAX_CELL_BYTES)
                 conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
                 tables = _tables(conn)
-                if tables != set(catalogue.FAMILY_DISPOSITIONS[role]): _unsupported()
+                expected_tables = set(catalogue.FAMILY_DISPOSITIONS[role])
+                if role == 'secretary':
+                    versions = {item[0] for item in conn.execute('SELECT version FROM schema_migrations')}
+                    if versions == set(range(1, 10)):
+                        expected_tables.remove('summary_resume_operations')
+                    elif versions != set(range(1, 11)):
+                        _unsupported()
+                if tables != expected_tables: _unsupported()
                 for table in sorted(tables):
                     key = (role, table)
                     info = conn.execute('PRAGMA table_info(' + _quoted(table) + ')').fetchall()
@@ -160,6 +167,11 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
                     for parent in parents: add_link(origin, parent, 'source_reference')
                 bounded()
         for spec in catalogue.EXPLICIT_LINKS:
+            # Schema 9 has no continuation family. It must remain absent, rather
+            # than being invented or made optional in a schema 10 store.
+            if ((spec.target_role, spec.target_family) == ('secretary', 'summary_resume_operations')
+                    and ('secretary', 'summary_resume_operations') not in records):
+                continue
             for origin, row in records[spec.source_role, spec.source_family]:
                 values = tuple(row[column] for column in spec.source_columns)
                 if any(value is None for value in values): continue

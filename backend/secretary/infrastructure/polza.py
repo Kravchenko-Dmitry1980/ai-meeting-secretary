@@ -941,7 +941,22 @@ class PolzaClient:
                 async with client.stream(method, endpoint, headers=headers,
                                          content=_json_bytes(payload) if payload is not None else None) as response:
                     body = await self._response_body(response, limit, method=method, provider_job_id=provider_job_id)
-        except (httpx.TransportError, httpx.DecodingError, TimeoutError) as exc:
+        except (httpx.TimeoutException, TimeoutError) as exc:
+            connecting = isinstance(exc, httpx.ConnectTimeout)
+            timeout = float(self.settings.request_timeout_seconds)
+            message = ("Истекло время ожидания соединения с Polza (15 с). " if connecting else
+                       f"Polza не ответила вовремя. Лимит ожидания: {timeout:g} с, соединения: 15 с. ")
+            if method == "POST":
+                message += "Ответ и стоимость последнего запроса неизвестны. Повтор автоматически не отправлен."
+            else:
+                message += ("ID задачи сохранён; её статус можно проверить повторно." if provider_job_id else
+                            "Проверку статуса можно повторить.")
+            raise ProviderError(
+                "request_uncertain" if method == "POST" else "poll_unavailable", message,
+                retryable=method == "GET", uncertain=method == "POST",
+                provider_job_id=provider_job_id,
+            ) from None
+        except (httpx.TransportError, httpx.DecodingError) as exc:
             failure = ProviderError(
                 "request_uncertain" if method == "POST" else "poll_unavailable",
                 "Соединение с Polza прервалось; результат POST и расход неизвестны" if method == "POST"

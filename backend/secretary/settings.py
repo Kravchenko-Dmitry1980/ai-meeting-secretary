@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     stt_model: str = Field(default="openai/whisper-large-v3-turbo", validation_alias=AliasChoices("POLZA_STT_MODEL", "stt_model"))
     summary_model: str = Field(default="qwen/qwen3-30b-a3b-instruct-2507", validation_alias=AliasChoices("POLZA_SUMMARY_MODEL", "summary_model"))
     chunk_seconds: int = Field(default=120, ge=15, le=240)
-    request_timeout_seconds: int = Field(default=180, ge=10, le=1800)
+    request_timeout_seconds: int = Field(default=600, ge=10, le=1800)
     meeting_budget_rub: float = Field(default=100, ge=0, le=100000)
     local_cost_limits_enabled: bool = True
     allow_unknown_price: bool = False

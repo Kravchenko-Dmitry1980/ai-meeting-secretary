@@ -1,4 +1,4 @@
-"""Closed restore-quarantine catalogue for Secretary 9, Team 9 and Billing 4.
+"""Closed restore-quarantine catalogue for Secretary 9/10, Team 9 and Billing 4.
 
 Only declarations live here: no settings, database opens, migrations or writer
 capability. Native Vikunja is represented by the whole-source R1 watermark.
@@ -156,6 +156,11 @@ EXPECTED_COLUMNS = {
     ),
     ("secretary", "summary_publications"): (
         "job_id", "meeting_id", "summary_version",
+    ),
+    ("secretary", "summary_resume_operations"): (
+        "operation_id", "meeting_id", "transcript_version", "source_job_id",
+        "child_job_id", "command_hash", "context_hash",
+        "acknowledge_possible_duplicate_charge", "created_at",
     ),
     ("secretary", "task_assignment_state"): (
         "meeting_id", "summary_version", "revision",
@@ -478,6 +483,7 @@ FAMILY_DISPOSITIONS = {
         "summary_input_contexts": "evidence_only",
         "summary_publications": "evidence_only",
         "legacy_summary_inputs": "evidence_only",
+        "summary_resume_operations": "no_replay",
         "assignment_snapshots": "evidence_only",
         "task_assignment_state": "evidence_only",
         "task_publication_previews": "authority_invalid",
@@ -593,6 +599,7 @@ PRIMARY_KEYS = {
     ("secretary", "summary_input_contexts"): ("job_id",),
     ("secretary", "summary_publications"): ("job_id",),
     ("secretary", "legacy_summary_inputs"): ("job_id",),
+    ("secretary", "summary_resume_operations"): ("operation_id",),
     ("secretary", "assignment_snapshots"): ("meeting_id", "summary_version", "revision"),
     ("secretary", "task_assignment_state"): ("meeting_id", "summary_version"),
     ("secretary", "task_publication_previews"): ("preview_id",),
@@ -813,6 +820,12 @@ SEMANTIC_KEYS = {
 # A publication or proposal may reserve a future Team operation before the
 # target command exists. Such missing targets are not corrupt physical FKs.
 EXPLICIT_LINKS = (
+    ReferenceSpec(
+        source_role="secretary", source_family="jobs",
+        source_columns=("id",),
+        target_role="secretary", target_family="summary_resume_operations",
+        target_columns=("child_job_id",), relation="authorized_by",
+    ),
     ReferenceSpec(
         source_role="secretary", source_family="jobs",
         source_columns=("chunk_id",),

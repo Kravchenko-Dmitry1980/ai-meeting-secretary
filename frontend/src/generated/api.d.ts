@@ -726,6 +726,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/summary-resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Summary */
+        post: operations["resume_summary_api_v1_meetings__meeting_id__summary_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/identification-runs/{run_id}": {
         parameters: {
             query?: never;
@@ -1887,6 +1904,8 @@ export interface components {
             run_id?: string | null;
             /** Local Outcome */
             local_outcome?: string | null;
+            /** Resumed From Job Id */
+            resumed_from_job_id?: string | null;
             /**
              * Status
              * @enum {string}
@@ -2182,6 +2201,23 @@ export interface components {
             revision: number;
             previous_provenance?: components["schemas"]["CarryoverProvenance"] | null;
         };
+        /** ResumeSummaryRequest */
+        ResumeSummaryRequest: {
+            /**
+             * Source Job Id
+             * Format: uuid
+             */
+            source_job_id: string;
+            /** Transcript Version */
+            transcript_version: number;
+            /**
+             * Operation Id
+             * Format: uuid
+             */
+            operation_id: string;
+            /** Acknowledge Possible Duplicate Charge */
+            acknowledge_possible_duplicate_charge: boolean;
+        };
         /** ReviewAttribution */
         ReviewAttribution: {
             /** Transcript Version */
@@ -2361,6 +2397,13 @@ export interface components {
              * @default succeeded
              */
             status: string;
+        };
+        /** SummaryResumeAccepted */
+        SummaryResumeAccepted: {
+            /** Job Id */
+            job_id: string;
+            /** Source Job Id */
+            source_job_id: string;
         };
         /** SupersedesCandidate */
         SupersedesCandidate: {
@@ -4563,6 +4606,48 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobAccepted"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_summary_api_v1_meetings__meeting_id__summary_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResumeAccepted"];
+                };
+            };
+            /** @description Source/context conflict, or outbound processing is disabled */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

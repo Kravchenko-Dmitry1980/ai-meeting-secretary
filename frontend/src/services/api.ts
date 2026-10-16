@@ -81,6 +81,7 @@ export const api = {
   },
   process: (id: string, stage: 'prepare' | 'transcribe' | 'summarize' = 'transcribe', retry = false, newTranscriptVersion = false) => write<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/process`, { stage, retry, ...(newTranscriptVersion ? { new_transcript_version: true } : {}) }),
   regenerateSummary: (id: string) => write<{ job_id: string }>(`/meetings/${encodeURIComponent(id)}/process`, { stage: 'summarize', regenerate_summary: true }),
+  resumeSummary: (id: string, command: { source_job_id: string; transcript_version: number; operation_id: string; acknowledge_possible_duplicate_charge: true }) => write<{ job_id: string; source_job_id: string }>(`/meetings/${encodeURIComponent(id)}/summary-resume`, command),
   identificationRun: (id: string, runId: string) => request<IdentificationState>(`/meetings/${encodeURIComponent(id)}/identification-runs/${encodeURIComponent(runId)}`),
   cancel: (id: string) => write<ProcessingJob>(`/jobs/${encodeURIComponent(id)}/cancel`),
   startRecording: (id: string, microphoneId: string, systemId: string, autoProcess: boolean) => write<RecordingState>(`/meetings/${encodeURIComponent(id)}/recording/start`, {

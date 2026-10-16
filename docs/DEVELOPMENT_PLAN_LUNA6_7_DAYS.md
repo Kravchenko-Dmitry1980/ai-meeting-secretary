@@ -68,7 +68,9 @@
 ### P1 — приёмка сохранённой встречи без оплаты
 
 Вход: `SAVED_MEETING_REVIEW_2026-10-14.md`; запись **2 октября, 11:58**,
-ID `eb9961b3-0edc-4644-84b9-0245956b806c`. Runtime оставлен Offline.
+ID `eb9961b3-0edc-4644-84b9-0245956b806c`. Первоначальный просмотр выполнялся Offline;
+после исправления 16.10 основной runtime работает с Polza. Для чтения готового
+результата не переключать его обратно и не создавать новую платную версию.
 Владелец прослушивает источники 5–10 важных задач; выбирает минимум три для рабочего
 цикла. Согласовать правильность действия, срок, исполнителя; неизвестное сохранить
 неизвестным. Агент проверяет UI, помогает фиксировать воспроизводимые ошибки.
@@ -171,8 +173,9 @@ Done: реальная копия проверена, восстановленн
 Локальная подготовка P5-L и native evidence 16.10:
 [LOCAL_RUNTIME_P5_PREPARATION.md](LOCAL_RUNTIME_P5_PREPARATION.md).
 Supervisor реализован и проверен на синтетических Windows процессах. Готовый XML
-проверен через Windows COM в памяти. Автозапуск не установлен; основной процесс
-продолжает работать в ручном Offline режиме и не переведён под supervisor.
+проверен через Windows COM в памяти. Автозапуск не установлен. На этапе подготовки
+основной процесс работал Offline; с 16.10 он запущен вручную с Polza и под supervisor
+не переводился.
 Сон от сети уже отключён. Старый журнал 10 октября не является активным P6.
 
 Вход: `scripts/start.ps1`, `stop.ps1`, `doctor.ps1`, `check_lifecycle.py`,
@@ -328,8 +331,9 @@ Pop-Location
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
 | P3 | OWNER_INPUT_REQUIRED | Способ записи ещё не принят; импорт/микрофон требуют пользовательского сценария |
+| Новая обработка / UX | STT_LIVE_PASS / SUMMARY_UNCERTAIN / RESUME_OWNER_DECISION | Новая запись 80 минут: 41/41 STT, автоматический переход к итогам, потерян ответ одного шага. Timeout исправлен; явное owner-resume реализовано, проверено offline и показано в браузере, но платно не запускалось. Полный сценарий не принят. См. `PROCESSING_USABILITY_2026-10-16.md` |
 | P5-L | OFFLINE_PREP_VERIFIED / CLOUD_RUNTIME_GAP | Прежний supervisor/XML проверен только Offline. После ручной проверки рабочая Polza включена; старый XML не применять. Нужен cloud scope существующего supervisor перед согласованием Windows; P5 ещё не принят |
-| P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
+| P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; тогда оригинал возвращён Offline, позднее включена рабочая Polza. Исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
 | P6-PREP | OFFLINE_ONLY / SYNTHETIC_NATIVE_VERIFIED | Два Offline samples за 5,75 с, technical PASS / observation INCOMPLETE. Для рабочей Polza нужен cloud scope наблюдения; рабочий P6 не начат |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятые P1–P5, кандидат, явный запуск и полный период наблюдения |
 | T1 | READ_ONLY_PREFLIGHT_DONE / CONFIGURATION_REQUIRED | Таблица наличия и ответственности: `TEAM_T1_READINESS_2026-10-16.md`. Бот/HTTPS не готовы; компоненты подготовлены, штатной Team runtime config нет |

@@ -69,6 +69,48 @@ def test_context_roundtrip_exact_source_and_no_credentials():
         f.sources[0].text = "changed"
 
 
+def test_request_deadline_change_reuses_frozen_paid_summary_checkpoint(tmp_path):
+    import asyncio
+    import json
+    import httpx
+    from secretary.infrastructure.polza import PolzaClient
+    from secretary.settings import Settings
+
+    context = frozen()
+    config = Settings(_env_file=None, project_dir=tmp_path, data_dir=tmp_path / "data",
+                      polza_api_key="synthetic-checkpoint-only", request_timeout_seconds=180,
+                      **context.settings.model_dump())
+    calls, checkpoints = [], {}
+
+    def handler(request):
+        calls.append(request.method)
+        assert "request_timeout_seconds" not in json.loads(request.content)
+        output = {"overview": "Обсуждение", "readable_transcript": context.sources[0].text,
+                  "decisions": [], "action_items": [], "open_questions": []}
+        return httpx.Response(200, json={"id": "gen_synthetic_checkpoint", "choices": [{
+            "message": {"content": json.dumps(output, ensure_ascii=False)}, "finish_reason": "stop"}],
+            "usage": {"cost_rub": 0.01}})
+
+    provider = PolzaClient(config, httpx.MockTransport(handler))
+    segments = [{"id": source.id, "text": source.text} for source in context.sources]
+
+    async def summarize():
+        return await provider.summarize(segments, context=context,
+            checkpoint_get=checkpoints.get, checkpoint_put=lambda key, value: checkpoints.setdefault(key, value))
+
+    first = asyncio.run(summarize())
+    initial_keys = set(checkpoints)
+    initial_hash = context.context_hash
+    config.request_timeout_seconds = 600
+    resumed = asyncio.run(summarize())
+    assert calls == ["POST"]
+    assert len(initial_keys) == 1 and set(checkpoints) == initial_keys
+    assert context.context_hash == initial_hash
+    assert "request_timeout_seconds" not in context.settings.model_dump()
+    assert resumed["overview"] == first["overview"]
+    assert resumed["usage_records"][0]["reused"] is True
+
+
 def test_context_tamper_and_foreign_source_fail_closed():
     f = frozen()
     body = f.model_dump()

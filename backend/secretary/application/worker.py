@@ -475,6 +475,7 @@ class Worker:
             return dict(conn.execute('SELECT * FROM jobs WHERE id=?',(job['id'],)).fetchone())
 
     def enqueue_summary(self, meeting_id, *, retry=False, automatic=False, regenerate_summary=False):
+        from secretary.infrastructure.summary_resume_repository import CURRENT_JOB
         if regenerate_summary and (retry or automatic):
             raise ValueError('regenerate_summary_conflicts_with_retry')
         meeting = self.db.meeting(meeting_id, internal=True)
@@ -496,7 +497,7 @@ class Worker:
             return self.db.one("SELECT * FROM jobs WHERE meeting_id=? AND stage='summarize' AND status='succeeded' ORDER BY created_at DESC LIMIT 1", (meeting_id,))
         if automatic:
             return self.first_summary_handoff(meeting_id,meeting['transcript_version'])
-        prior = self.db.one("SELECT * FROM jobs WHERE meeting_id=? AND stage='summarize' AND version=? ORDER BY created_at DESC,id DESC LIMIT 1", (meeting_id,meeting['transcript_version']))
+        prior = self.db.one(f"SELECT * FROM jobs WHERE meeting_id=? AND stage='summarize' AND version=? AND {CURRENT_JOB} ORDER BY created_at DESC,id DESC LIMIT 1", (meeting_id,meeting['transcript_version']))
         if prior:
             if regenerate_summary:
                 if prior['status'] in ('queued','running','uncertain'):
@@ -523,12 +524,17 @@ class Worker:
         self.db.authorize_pipeline(meeting_id,meeting['transcript_version'],explicit=True,reason='summary')
         return self.first_summary_handoff(meeting_id,meeting['transcript_version'])
 
+    def resume_uncertain_summary(self, meeting_id, command):
+        from secretary.infrastructure.summary_resume_repository import SummaryResumeRepository
+        return SummaryResumeRepository(self.db).resume(meeting_id,command,self.route_snapshot('summarize'))
+
     def regenerate_summary_job(self, meeting_id, version):
         from secretary.infrastructure.database import uid
+        from secretary.infrastructure.summary_resume_repository import CURRENT_JOB
         with self.db.transaction() as conn:
             if conn.execute('SELECT transcript_version FROM meetings WHERE id=?',(meeting_id,)).fetchone()[0] != version:
                 raise ValueError('transcript_version_changed')
-            active = conn.execute("SELECT status FROM jobs WHERE meeting_id=? AND version=? AND stage='summarize' AND status IN ('queued','running','uncertain')",(meeting_id,version)).fetchone()
+            active = conn.execute(f"SELECT status FROM jobs WHERE meeting_id=? AND version=? AND stage='summarize' AND status IN ('queued','running','uncertain') AND {CURRENT_JOB}",(meeting_id,version)).fetchone()
             if active:
                 raise ValueError('summary_regeneration_requires_stopped_job')
             conn.execute("UPDATE jobs SET status='cancelled',cancel_requested=1,error='Superseded by explicit summary regeneration' WHERE meeting_id=? AND version=? AND stage='summarize' AND status IN ('waiting_config','paused_budget')",(meeting_id,version))

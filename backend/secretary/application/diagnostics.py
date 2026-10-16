@@ -79,8 +79,11 @@ def _task_state(task, *, configured: bool) -> str:
 
 def _job_status(db, now: datetime, stale_after_seconds: int) -> dict:
     try:
-        rows = db.rows("SELECT status,COUNT(*) AS count FROM jobs GROUP BY status")
-        running = db.rows("SELECT updated_at FROM jobs WHERE status='running'")
+        from secretary.infrastructure.summary_resume_repository import current_job_predicate
+        with db.connection() as conn:
+            current = current_job_predicate(conn)
+            rows = [dict(row) for row in conn.execute(f"SELECT status,COUNT(*) AS count FROM jobs WHERE {current} GROUP BY status")]
+            running = [dict(row) for row in conn.execute(f"SELECT updated_at FROM jobs WHERE status='running' AND {current}")]
     except sqlite3.Error:
         return {"state": "unavailable", "counts": {},
                 "stale_running_candidate_count": None,

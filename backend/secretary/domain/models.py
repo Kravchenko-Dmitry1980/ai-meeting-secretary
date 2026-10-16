@@ -107,6 +107,7 @@ class ProcessingJob(Entity):
     intent_key: str | None = None
     run_id: str | None = None
     local_outcome: str | None = None
+    resumed_from_job_id: str | None = None
     status: Literal["queued", "running", "waiting_config", "paused_budget", "succeeded", "failed", "cancelled", "uncertain"]
     attempts: int
     error: str | None = None

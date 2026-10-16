@@ -56,7 +56,7 @@ export function appRunner(api = {}, options = {}) {
   const processing = load('utils/processing.ts', {});
   const format = { ...load('utils/format.ts', {}), timeOffset: () => '0:01' };
   const workflow = { snapshot: null, roster: null, profiles: [], busy: false, pending: false, error: '', refresh: async () => {}, ...options.workflow };
-  const { default: App } = load('App.tsx', { react: runtime.react, './hooks/useSecretary': { useSecretary: () => model }, './hooks/useSpeakerWorkflow': { useSpeakerWorkflow: () => workflow }, './services/speakers': { speakersApi: options.speakersApi ?? {} }, './services/api': { api: { exportUrl: () => '#', audioUrl: () => '#', ...api }, errorMessage: (error) => error.message }, './utils/processing': processing, './utils/format': format }, { crypto: { randomUUID: () => 'synthetic-operation' } });
+  const { default: App } = load('App.tsx', { react: runtime.react, './hooks/useSecretary': { useSecretary: () => model }, './hooks/useSpeakerWorkflow': { useSpeakerWorkflow: () => workflow }, './services/speakers': { speakersApi: options.speakersApi ?? {} }, './services/api': { api: { exportUrl: () => '#', audioUrl: () => '#', ...api }, errorMessage: (error) => error.message }, './utils/processing': processing, './utils/format': format }, { crypto: { randomUUID: () => 'synthetic-operation' }, ...options.context });
   return { render: (effects = false) => runtime.render(App, effects), model, workflow, errors };
 }
 export function secretaryRunner(overrides = {}) {
