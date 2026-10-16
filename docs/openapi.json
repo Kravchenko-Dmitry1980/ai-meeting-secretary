@@ -4415,6 +4415,12 @@
             "type": "integer",
             "title": "Max Upload Bytes"
           },
+          "runtime_outbound_enabled": {
+            "type": "boolean",
+            "title": "Runtime Outbound Enabled",
+            "description": "Whether this process permits outbound cloud requests; read-only until restart.",
+            "readOnly": true
+          },
           "stt_model": {
             "type": "string",
             "title": "Stt Model"
@@ -4504,6 +4510,7 @@
         "required": [
           "key_configured",
           "max_upload_bytes",
+          "runtime_outbound_enabled",
           "stt_model",
           "summary_model",
           "chunk_seconds",

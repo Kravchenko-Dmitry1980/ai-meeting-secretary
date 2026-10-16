@@ -1320,6 +1320,11 @@ export interface components {
             key_configured: boolean;
             /** Max Upload Bytes */
             max_upload_bytes: number;
+            /**
+             * Runtime Outbound Enabled
+             * @description Whether this process permits outbound cloud requests; read-only until restart.
+             */
+            readonly runtime_outbound_enabled: boolean;
             /** Stt Model */
             stt_model: string;
             /** Summary Model */

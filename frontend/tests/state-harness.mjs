@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import * as configUtils from '../src/utils/config.ts';
 
 // Execute the real TS/TSX with deterministic hooks and synthetic APIs. This
 // tests async ownership independently of browser/network timing or user data.
@@ -30,6 +31,7 @@ export function load(relative, imports, context = {}) {
   const exports = {};
   vm.runInNewContext(output, { exports, require: (id) => {
     if (id in imports) return imports[id];
+    if (id === '../utils/config' || id === '../utils/config.ts') return configUtils;
     if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
     if (id === 'lucide-react' || id.startsWith('./components') || id.startsWith('./ui/')) return new Proxy({}, { get: (_, key) => String(key) });
     throw Error(`Unexpected dependency: ${id}`);

@@ -153,8 +153,12 @@ test('stage-aware tariff copy preserves acknowledged local bypass without displa
   assert.equal(local.status, 'succeeded'); assert.equal(local.error, null); assert.match(local.detail, /явно пропущено/);
 });
 
-test('unfinished transcription settings guidance preserves the fixed route and explicit human continuation', () => {
-  for (const status of ['waiting_config', 'paused_budget']) {
+test('unfinished transcription has concise continuation and budget recovery keeps the fixed route', () => {
+  const waiting = buildProcessingState(meeting, [job('one', 'a', 'waiting_config')], [chunk('a')]);
+  assert.match(waiting.primaryStage.detail, /Аудио сохранено.*Продолжите обработку/);
+  assert.doesNotMatch(waiting.primaryStage.detail, /настройк|новой платной версии/);
+  assert.equal(waiting.active, false);
+  for (const status of ['paused_budget']) {
     const result = buildProcessingState(meeting, [job('one', 'a', status)], [chunk('a')]);
     assert.match(result.primaryStage.detail, /«Продолжить обработку»/);
     assert.match(result.primaryStage.detail, /модел[ьи].*(закреплена|закреплённой)|закреплённой модели/i);

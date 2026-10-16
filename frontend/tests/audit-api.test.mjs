@@ -131,3 +131,18 @@ test('API audit: identifiers are encoded and turning audio sources off omits the
   assert.deepEqual(JSON.parse(calls[1].init.body), { auto_process: false });
   assert.equal(calls[2].url, '/api/v1/meetings/a%2Fb%3F/segments?segment_id=x%26y%3D1&limit=1');
 });
+
+test('config save accepts a public snapshot without sending read-only metadata or secrets', async () => {
+  const calls = [];
+  await withFetch(async (url, init) => {
+    calls.push({ url, init });
+    if (url === '/api/v1/session') return json({ csrf_token: 'synthetic-token' });
+    const body = JSON.parse(init.body);
+    return Object.keys(body).some((key) => ['key_configured', 'max_upload_bytes', 'runtime_outbound_enabled', 'polza_api_key'].includes(key))
+      ? json({ detail: 'Only non-secret configuration may be edited' }, 422) : json(body);
+  }, async ({ api }) => {
+    await api.saveConfig({ cloud_enabled: true, key_configured: true, max_upload_bytes: 1024,
+      runtime_outbound_enabled: true, polza_api_key: 'synthetic-never-a-real-key' });
+  });
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body), { cloud_enabled: true });
+});

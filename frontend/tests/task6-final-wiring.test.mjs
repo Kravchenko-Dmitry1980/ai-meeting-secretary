@@ -64,12 +64,12 @@ test('App passes meeting roster and refreshes compatibility summary after identi
 });
 
 test('paid summary regeneration is explicit and separate from frozen-job continuation', async () => {
-  const calls = []; const runner = appRunner({ process: async (...args) => calls.push(['continue', ...args]), regenerateSummary: async (...args) => calls.push(['regenerate', ...args]) });
+  const calls = []; const runner = appRunner({ config: async () => ({ key_configured: true, cloud_enabled: true, runtime_outbound_enabled: true }), jobs: async () => [], meeting: async () => meeting('A'), process: async (...args) => calls.push(['continue', ...args]), regenerateSummary: async (...args) => calls.push(['regenerate', ...args]) });
   runner.model.summary = summary(); runner.model.segments.total = 1; runner.model.act = async (operation) => { await operation(); return true; };
   let tree = runner.render(); assert.match(text(tree), /платный анализ/); assert.match(text(tree), /сохранённый контекст/);
   get(tree, (node) => node.type === 'Button' && text(node).includes('Пересоздать итоги')).props.onClick(); await flush();
   assert.deepEqual(calls, [['regenerate', 'A']]);
-  tree = runner.render(); get(tree, (node) => node.type === 'Button' && text(node) === 'Продолжить обработку').props.onClick(); await flush();
+  tree = runner.render(); get(tree, (node) => node.type === 'ProcessingStages').props.action.onClick(); await flush();
   assert.equal(calls[1][0], 'continue'); assert.equal(calls[1][2], 'transcribe');
 });
 

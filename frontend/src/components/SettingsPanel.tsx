@@ -1,12 +1,13 @@
 import { CheckCircle2, ExternalLink, KeyRound, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { AppConfig, ModelCatalog, ModelInfo } from '../types/api';
+import { configChanges, type ConfigChanges } from '../utils/config';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { CloudBudgetPanel } from './CloudBudgetPanel';
 
-interface Props { config: AppConfig; catalog: ModelCatalog | null; busy: boolean; onClose: () => void; onSave: (config: Omit<AppConfig, 'key_configured'>) => Promise<boolean> }
+interface Props { config: AppConfig; catalog: ModelCatalog | null; busy: boolean; onClose: () => void; onSave: (changes: ConfigChanges) => Promise<boolean> }
 const russianSupport = (value?: string | boolean) => value === true || value === 'language_ru_documented_not_live_verified' ? 'заявлен, не проверен' : value === false ? 'нет' : 'не проверен';
 const timingSupport = (value?: string | boolean) => ({ provider_segment: 'сегменты; точность не проверена', provider_segments_if_present: 'сегменты при наличии', chunk_only: 'границы фрагмента', word: 'по словам', segment: 'по сегментам' })[String(value)] ?? (value === false ? 'нет' : value === true ? 'заявлены, не проверены' : 'не подтверждены');
 const asPrice = (value: number | string | null | undefined): number | null => value == null || value === '' || !Number.isFinite(Number(value)) || Number(value) < 0 ? null : Number(value);
@@ -15,16 +16,18 @@ const isAudio = (model: ModelInfo) => /audio|speech|stt|transcri/i.test(model.ty
 export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props) {
   const [draft, setDraft] = useState(config);
   const [saved, setSaved] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const draftRevision = useRef(0);
   const saveInFlight = useRef(false);
   const modal = useRef<HTMLElement>(null);
+  const advanced = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modal.current?.querySelector<HTMLButtonElement>('button')?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
       if (event.key !== 'Tab') return;
-      const items = Array.from(modal.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled)') ?? []);
+      const items = Array.from(modal.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),summary') ?? []).filter((item) => !item.closest('details:not([open])') || item.tagName === 'SUMMARY');
       const first = items[0]; const last = items.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -45,16 +48,16 @@ export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props)
     if (busy || saveInFlight.current) return;
     saveInFlight.current = true;
     const submittedRevision = draftRevision.current;
-    const payload = { ...draft };
-    const { key_configured: _keyConfigured, ...editable } = payload;
-    void _keyConfigured;
+    const changes = configChanges(config, draft);
     try {
-      if (await onSave(editable) && submittedRevision === draftRevision.current) setSaved(true);
+      if (await onSave(changes) && submittedRevision === draftRevision.current) setSaved(true);
     } finally { saveInFlight.current = false; }
   };
   const chosenStt = sttModels.find((model) => model.id === draft.stt_model);
   const chosenSummary = textModels.find((model) => model.id === draft.summary_model);
   const localCostLimitsEnabled = draft.local_cost_limits_enabled !== false;
+  const runtimeOutboundEnabled = config.runtime_outbound_enabled !== false;
+  const cloudAvailable = runtimeOutboundEnabled && config.key_configured;
   const useCatalogEstimate = () => {
     changeDraft({
       stt_price_rub_per_minute: asPrice(chosenStt?.price_rub_per_minute),
@@ -69,16 +72,24 @@ export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props)
           <div><p className="eyebrow mb-1">ПОДКЛЮЧЕНИЕ И ОБРАБОТКА</p><h2 id="settings-title" className="text-xl font-semibold">Настройки Secretary</h2></div>
           <Button variant="ghost" className="px-2.5" onClick={onClose} aria-label="Закрыть настройки"><X size={19} /></Button>
         </header>
-        <form onSubmit={(event) => { void submit(event); }} className="space-y-6 p-6">
+        <form onSubmit={(event) => { void submit(event); }} onInvalidCapture={(event) => {
+          if (advanced.current?.contains(event.target as Node)) { advanced.current.open = true; setAdvancedOpen(true); }
+        }} className="space-y-6 p-6">
           <Card className={config.key_configured ? 'border-mint/20 bg-mint/5' : 'border-amber-300/20 bg-amber-300/5'}>
             <div className="flex items-center gap-3">
               {config.key_configured ? <CheckCircle2 size={20} className="text-mint" /> : <KeyRound size={20} className="text-amber-200" />}
-              <div><p className="font-medium">{config.key_configured ? 'API-ключ настроен на сервере' : 'Для облачной обработки нужен API-ключ'}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-400">Запись и локальное сохранение доступны независимо от подключения.</p></div>
+              <div><p className="font-medium">{config.key_configured ? 'Polza подключена' : 'Polza ещё не подключена'}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-400">{config.key_configured ? 'Сохранённый ключ уже используется. Повторно вводить его не нужно.' : 'Подключите ключ Polza один раз, чтобы расшифровывать записи и получать задачи.'}</p></div>
             </div>
-            <p className="mt-4 text-sm leading-6 text-slate-300">Добавьте <code>POLZA_API_KEY</code> в локальный файл <code>Secretary\.env</code> и перезапустите Secretary. Значение ключа доступно только серверу.</p>
-            <a href="https://polza.ai/dashboard/models" target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm text-violet-200 hover:text-white">Каталог Polza <ExternalLink size={13} /></a>
+            {!config.key_configured && <><p className="mt-4 text-sm leading-6 text-slate-300">Сохраните ключ в <code>Secretary\.env</code> как <code>POLZA_API_KEY</code> и перезапустите Secretary. Ключ остаётся на вашем компьютере.</p><a href="https://polza.ai/dashboard/api-keys" target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm text-violet-200 hover:text-white">Открыть ключи Polza <ExternalLink size={13} /></a></>}
           </Card>
+          <div>
+            <label className="checkbox-label"><input type="checkbox" checked={cloudAvailable && draft.cloud_enabled} disabled={!cloudAvailable} onChange={(event) => update('cloud_enabled', event.target.checked)} /><span>Обрабатывать записи через Polza</span></label>
+            <p className="mt-2 text-sm leading-6 text-slate-400">{!runtimeOutboundEnabled ? 'Сейчас Secretary запущен без облака. Перезапустите приложение в обычном режиме, чтобы обрабатывать новые записи.' : !config.key_configured ? 'После подключения ключа здесь можно включить обработку.' : draft.cloud_enabled ? 'Расшифровка, итоги и задачи доступны по кнопке на встрече.' : 'Включите обработку и сохраните настройки, затем вернитесь к встрече.'}</p>
+          </div>
+          <details ref={advanced} className="border-t border-white/10 pt-5" onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+            <summary className="cursor-pointer font-medium text-slate-300">Дополнительные настройки</summary>
+            <div className="mt-5 space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="field-label">Модель расшифровки
               <select value={draft.stt_model} onChange={(event) => changeDraft({ stt_model: event.target.value, stt_price_rub_per_minute: null })} required>
@@ -103,7 +114,6 @@ export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props)
               <label className="field-label">Фрагмент, секунд<input type="number" min="15" max="240" required value={draft.chunk_seconds} onChange={(event) => update('chunk_seconds', Number(event.target.value))} /></label>
               <label className="field-label">Таймаут, секунд<input type="number" min="10" max="1800" required value={draft.request_timeout_seconds} onChange={(event) => update('request_timeout_seconds', Number(event.target.value))} /></label>
             </div>
-            <label className="checkbox-label mt-5"><input type="checkbox" checked={draft.cloud_enabled} onChange={(event) => update('cloud_enabled', event.target.checked)} /><span>Разрешить облачную обработку через Polza</span></label>
             <label className="checkbox-label mt-5"><input type="checkbox" checked={localCostLimitsEnabled} onChange={(event) => update('local_cost_limits_enabled', event.target.checked)} /><span>Дополнительные лимиты Secretary</span></label>
             {!localCostLimitsEnabled && <p className="mt-2 text-sm leading-6 text-slate-300">Расходы контролируются лимитами аккаунта и API-ключа в Polza. Secretary не ограничивает тарифы и сумму на встречу; фактические расходы продолжают отображаться. Лимит Polza настраивается в её личном кабинете.</p>}
             {localCostLimitsEnabled && <div className="mt-4">
@@ -121,7 +131,9 @@ export function SettingsPanel({ config, catalog, busy, onClose, onSave }: Props)
             <p className="mt-2 text-xs leading-5 text-slate-500">Без резерва запросы с неизвестной ценой приостанавливаются. Выберите консервативную оценку: она учитывается до ответа провайдера и не является гарантированной ценой.</p>
             </div>}
           </div>
-          <CloudBudgetPanel enabled={config.cloud_enabled && config.key_configured} />
+          {advancedOpen && <CloudBudgetPanel enabled={config.cloud_enabled && cloudAvailable} />}
+            </div>
+          </details>
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
             <span role="status" className="text-sm text-mint">{saved ? 'Настройки сохранены' : ''}</span>
             <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Закрыть</Button><Button type="submit" disabled={busy}>{busy ? 'Сохранение…' : 'Сохранить настройки'}</Button></div>

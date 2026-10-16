@@ -170,6 +170,10 @@ class UsageResponse(BaseModel):
 class ConfigurationResponse(BaseModel):
     key_configured: bool
     max_upload_bytes: int
+    runtime_outbound_enabled: bool = Field(
+        description="Whether this process permits outbound cloud requests; read-only until restart.",
+        json_schema_extra={"readOnly": True},
+    )
     stt_model: str
     summary_model: str
     chunk_seconds: int
@@ -1262,12 +1266,12 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.get("/api/v1/config", response_model=ConfigurationResponse)
     async def config():
-        return settings.public()
+        return {**settings.public(), "runtime_outbound_enabled": outbound_enabled}
 
     @app.patch("/api/v1/config", response_model=ConfigurationResponse)
     async def edit_config(changes: dict):
         if changes.keys() - EDITABLE_CONFIG:
-            raise HTTPException(422, "Only non-secret configuration may be edited")
+            raise HTTPException(422, "Изменять можно только параметры обработки. Обновите страницу и повторите сохранение.")
         if not outbound_enabled and "cloud_enabled" in changes and changes["cloud_enabled"] is not False:
             raise HTTPException(409, "runtime_outbound_disabled")
         changes = dict(changes)
@@ -1287,7 +1291,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         db.set_configuration({k: getattr(validated, k) for k in changes})
         for key in changes:
             setattr(settings, key, getattr(validated, key))
-        return settings.public()
+        return {**settings.public(), "runtime_outbound_enabled": outbound_enabled}
 
     @app.get("/api/v1/models")
     async def models():

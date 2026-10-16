@@ -162,6 +162,12 @@ Done: реальная копия проверена, восстановленн
 
 ### P5 — эксплуатационный запуск
 
+Ручная проверка 16.10 выявила блокировку основного сценария режимом Offline;
+исправление и актуальный cloud запуск описаны в `PROCESSING_USABILITY_2026-10-16.md`.
+Подготовленные ниже Offline supervisor/XML не применять для рабочего Polza.
+Перед приёмкой P5 адаптировать запуск к согласованному cloud scope и проверить его;
+аналогично Offline-only P6 preparation не закрывает суточную проверку cloud обработки.
+
 Локальная подготовка P5-L и native evidence 16.10:
 [LOCAL_RUNTIME_P5_PREPARATION.md](LOCAL_RUNTIME_P5_PREPARATION.md).
 Supervisor реализован и проверен на синтетических Windows процессах. Готовый XML
@@ -322,9 +328,9 @@ Pop-Location
 | P1 | AUTOMATED_PASS / OWNER_PENDING | Начать с трёх важных задач сохранённой встречи |
 | P2 / P2-D | OWNER_PENDING / CONDITIONAL_NOT_IMPLEMENTED | 23 назначения needs_review; при исправлении срока нужна P2-D |
 | P3 | OWNER_INPUT_REQUIRED | Способ записи ещё не принят; импорт/микрофон требуют пользовательского сценария |
-| P5-L | IMPLEMENTED / SYNTHETIC_NATIVE_VERIFIED / PREVIEW_READY | Supervisor и preview проверены; для регистрации задания и перевода основного приложения нужно решение владельца. См. `LOCAL_RUNTIME_P5_PREPARATION.md`; P5 ещё не принят |
+| P5-L | OFFLINE_PREP_VERIFIED / CLOUD_RUNTIME_GAP | Прежний supervisor/XML проверен только Offline. После ручной проверки рабочая Polza включена; старый XML не применять. Нужен cloud scope существующего supervisor перед согласованием Windows; P5 ещё не принят |
 | P4 | TECHNICAL_PASS / OWNER_CONTENT_ACCEPTANCE_PENDING | Реальные backup/verify/isolated restore и браузер прошли; оригинал возвращён Offline; исключён только разрешённый test-audio-tmp. См. `LOCAL_BACKUP_REVIEW_2026-10-16.md` |
-| P6-PREP | IMPLEMENTED / SYNTHETIC_NATIVE_VERIFIED | Реальный тестовый процесс: два samples за 5,75 с, technical PASS / observation INCOMPLETE. `LOCAL_OBSERVATION_P6_PREPARATION.md`; рабочий P6 не начат |
+| P6-PREP | OFFLINE_ONLY / SYNTHETIC_NATIVE_VERIFIED | Два Offline samples за 5,75 с, technical PASS / observation INCOMPLETE. Для рабочей Polza нужен cloud scope наблюдения; рабочий P6 не начат |
 | P6–P7 | BLOCKED_BY_ACCEPTANCE | Нужны принятые P1–P5, кандидат, явный запуск и полный период наблюдения |
 | T1 | READ_ONLY_PREFLIGHT_DONE / CONFIGURATION_REQUIRED | Таблица наличия и ответственности: `TEAM_T1_READINESS_2026-10-16.md`. Бот/HTTPS не готовы; компоненты подготовлены, штатной Team runtime config нет |
 | T2–T5 | IMPLEMENTED_PARTLY / LIVE_NOT_ACCEPTED | Выполнять только после соответствующих зависимостей |
