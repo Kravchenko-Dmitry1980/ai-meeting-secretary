@@ -652,6 +652,16 @@ def test_timestamps_unknown_and_outside_chunk_rejected(db, settings):
     assert segments[0]["start_ms"] is None
 
 
+def test_overlapping_provider_timestamps_are_clamped_to_chunk(db, settings):
+    meeting, chunk = prepared(db, settings, offset=1000)
+    worker = Worker(db, settings, FakeProvider)
+    job = worker.enqueue_transcription(meeting["id"])
+    segments, _ = worker.normalize_segments(job, chunk, {"segments": [
+        {"text": "X", "start_ms": 980, "end_ms": 2279, "timing_precision": "segment"}]})
+    assert segments[0]["start_ms"] == 1000
+    assert segments[0]["end_ms"] == 2000
+
+
 def test_speaker_labels_scoped_to_chunk_and_channel_order(db, settings):
     meeting, system = prepared(db, settings, channel="system", offset=1000)
     _, microphone = prepared(db, settings, meeting=meeting, channel="microphone", offset=0)

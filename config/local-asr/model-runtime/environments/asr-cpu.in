@@ -1,0 +1,11 @@
+# Minimal direct dependencies of the pinned RNNT + CTC loaders.
+# Transitive versions are constrained to the immutable donor snapshot.
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+transformers==4.57.1
+hydra-core==1.3.2
+omegaconf==2.3.0
+sentencepiece==0.2.1
+numpy==2.2.6
+psutil==7.2.2
+av==18.1.0

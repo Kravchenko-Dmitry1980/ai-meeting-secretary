@@ -1,0 +1,39 @@
+{
+  "schema_version": "secretary.local-asr.test-environment-profile.v1",
+  "as_of": "2026-10-26",
+  "purpose": "model_free_package_tests_only",
+  "status": "dependencies_verified",
+  "platform": "win32",
+  "architecture_bits": 64,
+  "python": "3.12.13",
+  "resolver": "uv 0.12.3",
+  "index": "https://pypi.org/simple",
+  "wheels_only": true,
+  "hashes_required": true,
+  "requirements": "config/local-asr/test-runtime/requirements.in",
+  "lock": "config/local-asr/test-runtime/requirements.lock",
+  "lock_sha256": "9aef2fe4a06e49a75a43c6badf3e19a578cf759d53d12d2ee0fe74d036d6b70f",
+  "installed_package_count": 19,
+  "environment_relative_path": ".runtime/local-asr-test-runtime-20261026",
+  "setup_receipt_relative_path": ".runtime/local-asr-test-runtime-20261026-setup.json",
+  "checks": {
+    "fresh_install": "PASS",
+    "dependency_compatibility": "PASS",
+    "direct_dependency_imports": "PASS",
+    "exact_lock_package_set": "PASS",
+    "model_packages_absent": "PASS"
+  },
+  "tests_run_by_setup": false,
+  "model_weights_loaded": false,
+  "model_runtime_qualified": false,
+  "application_environment_changed": false,
+  "direct_pins": {
+    "pytest": "8.4.2",
+    "jsonschema": "4.25.1",
+    "psutil": "7.2.2",
+    "numpy": "2.2.6",
+    "PyYAML": "6.0.3",
+    "reportlab": "4.4.9",
+    "pypdf": "6.10.0"
+  }
+}

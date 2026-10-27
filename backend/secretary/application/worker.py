@@ -11,6 +11,7 @@ from secretary.infrastructure.database import now, stable_id
 from secretary.application.preparation import prepare_audio, cloud_audio
 from secretary.application.evidence import validate_summary
 from secretary.infrastructure.transcript_routes import TranscriptRoutes, RouteConflict
+from secretary.infrastructure.voice_calibration import load_calibration
 from secretary.application.attribution import AttributionPipeline
 from secretary.domain.speakers import SpeakerConflict
 from secretary.infrastructure.assignment_repository import AssignmentRepository
@@ -20,17 +21,24 @@ from secretary.orchestration.team_worker import TeamWorker
 
 class Worker:
     """One durable worker: atomic claims, per-chunk commits, no ambiguous resubmission."""
-    def __init__(self, database, settings, provider_factory, *, recovery=True, enrollments=None, coordinator=None):
+    def __init__(self, database, settings, provider_factory, *, recovery=True, enrollments=None, coordinator=None,
+                 local_asr_executor=None):
         self.db, self.settings, self.provider_factory = database, settings, provider_factory
         self.stopping = asyncio.Event()
         self.task = None
         self.sync_recordings = None
         self.routes = TranscriptRoutes(database, settings)
         self.assignments = AssignmentRepository(database)
-        self.attribution = AttributionPipeline(database, settings, enrollments, coordinator) if coordinator else None
+        self.attribution = AttributionPipeline(
+            database, settings, enrollments, coordinator,
+            calibration=load_calibration(settings.data_dir, enrollments)) if coordinator else None
         self.local_task = None
+        self.local_asr_executor = local_asr_executor
+        self._local_asr_recovery_at = 0.0
         if recovery:
             self.db.recover()
+            if self.local_asr_executor is not None:
+                self.local_asr_executor.recover()
 
     async def start(self):
         self.task = asyncio.create_task(self.run(), name="secretary-worker")
@@ -122,12 +130,26 @@ class Worker:
             return False
 
     async def _run_once(self):
+        if self.local_asr_executor is not None:
+            import time
+            if time.monotonic() >= self._local_asr_recovery_at:
+                self._local_asr_recovery_at = time.monotonic() + 5.0
+                await asyncio.to_thread(self.local_asr_executor.recover)
         job = self.db.claim()
         if job is None:
             self.reconcile_local_handoff()
             job = self.db.claim()
             if job is None:
                 return False
+        # Local execution owns its lifecycle and cleanup. It must never enter
+        # the provider branch or the cloud request's generic recovery handler.
+        if job['stage'] == 'local_asr':
+            if self.local_asr_executor is None:
+                from secretary.application.local_asr_lifecycle import LocalAsrLifecycle
+                LocalAsrLifecycle(self.db).defer_dispatch(job['id'])
+            else:
+                await self.local_asr_executor.execute(job, self.stopping)
+            return True
         reservation = None
         active_summary_receipt = None
         cloud_request_started = False
@@ -179,7 +201,7 @@ class Worker:
                 self.db.update_meeting(job["meeting_id"], status="waiting_config")
                 return True
             provider = self.provider_factory(configuration)
-            meeting_limits_enabled = self.settings.local_cost_limits_enabled
+            meeting_limits_enabled = self.settings.local_cost_limits_enabled and self.settings.polza_limits_enabled
             if hasattr(provider, "set_charge_context"):
                 provider.set_charge_context(meeting_id=job["meeting_id"],
                     category="meeting_stt" if job["stage"] == "transcribe" else "meeting_summary")
@@ -321,7 +343,8 @@ class Worker:
                 self.db.execute("UPDATE jobs SET provider_job_id=? WHERE id=?", (provider_id, job["id"]))
             code = str(getattr(exc, "code", "processing_error"))
             accepted_id = provider_id or job.get("provider_job_id") or self.db.job(job["id"], internal=True).get("provider_job_id")
-            configuration_rejected = code == "unsupported_response_format" and not uncertain and not accepted_id
+            configuration_rejected = (code in {"unsupported_response_format", "model_unavailable"}
+                                      and not uncertain and not accepted_id)
             if code == "provider_job_failed":
                 payload["provider_terminal"] = True
                 self.db.execute("UPDATE jobs SET payload=? WHERE id=?", (json.dumps(payload), job["id"]))
@@ -334,7 +357,7 @@ class Worker:
                     if receipts:
                         self.db.settle(reservation, receipts[-1])
                     else:
-                        self.db.settle(reservation, rejected=(not uncertain and not accepted_id and (not cloud_request_started or code.startswith("monthly_budget_") or code in {"maintenance_blocked", "restore_reconciliation_required", "runtime_outbound_disabled", "401", "402", "413", "429", "unauthorized", "payment_required", "payload_too_large", "rate_limit", "authentication", "insufficient_funds", "access_denied", "invalid_request", "not_found", "rate_limited", "price_limit", "unsupported_response_format"})))
+                        self.db.settle(reservation, rejected=(not uncertain and not accepted_id and (not cloud_request_started or code.startswith("monthly_budget_") or code in {"maintenance_blocked", "restore_reconciliation_required", "runtime_outbound_disabled", "401", "402", "413", "429", "unauthorized", "payment_required", "payload_too_large", "rate_limit", "authentication", "insufficient_funds", "access_denied", "invalid_request", "not_found", "rate_limited", "price_limit", "unsupported_response_format", "model_unavailable"})))
             budget_error = (not code.startswith("monthly_budget_") and isinstance(exc, ValueError)
                             and ("budget" in str(exc).lower() or "Unknown model price" in str(exc) or "unknown cost" in str(exc)))
             resumable = bool(provider_id or job.get("provider_job_id")) and bool(getattr(exc, "retryable", False))
@@ -388,6 +411,12 @@ class Worker:
 
     def enqueue_transcription(self, meeting_id, *, retry=False, resume=False, new_transcript_version=False):
         meeting = self.db.meeting(meeting_id, internal=True)
+        current_route = self.db.one('SELECT route FROM meeting_transcript_routes WHERE meeting_id=? AND transcript_version=?',
+                                    (meeting_id, meeting['transcript_version']))
+        if current_route and json.loads(current_route['route']).get('provider') == 'local':
+            # This endpoint has no local-to-cloud route-selection contract.
+            # Refuse before bind/new-version/summary-authorization can mutate.
+            raise ValueError('local_asr_cloud_retranscription_requires_new_route')
         chunks = self.db.chunks(meeting_id)
         if not chunks:
             raise ValueError("Нет подготовленных аудиочанков")
@@ -450,6 +479,8 @@ class Worker:
         """
         with self.db.transaction() as conn:
             job = dict(conn.execute('SELECT * FROM jobs WHERE id=?',(prior['id'],)).fetchone())
+            if job['stage'] != 'transcribe':
+                raise ValueError('transcription_stage_required')
             payload = json.loads(job['payload'] or '{}')
             if (job['status']=='waiting_config' and not job.get('provider_job_id')
                     and frozen_route['settings']['stt_model'] != self.routes.configured(processing_mode)['settings']['stt_model']):
@@ -486,7 +517,9 @@ class Worker:
         completed_chunks = {job["chunk_id"] for job in completed}
         pending = sum(chunk["id"] not in completed_chunks for chunk in chunks)
         if not chunks or pending:
-            raise ValueError("Итоги доступны после полной транскрипции; часть аудио ещё не обработана")
+            from secretary.infrastructure.local_asr_publication import completed_local_transcript
+            if not completed_local_transcript(self.db, meeting_id, meeting['transcript_version']):
+                raise ValueError("Итоги доступны после полной транскрипции; часть аудио ещё не обработана")
         if not automatic:
             self.resume_committed_transcriptions(completed)
         elif any(self.transcription_needs_resume(job) for job in completed):
@@ -638,7 +671,7 @@ class Worker:
             return  # Only explicit continuation acknowledges cancelled paid results.
         try:
             if meeting['processing_mode']=='voice_identification':
-                self._require_complete(meeting_id, version)
+                self._require_complete(meeting_id, version, require_voice_audio=True)
                 if self.attribution is None:
                     return
                 handoff = self.db.one('SELECT summary_authorized FROM meeting_pipeline_handoffs WHERE meeting_id=? AND transcript_version=?', (meeting_id,version))
@@ -653,12 +686,38 @@ class Worker:
         except ValueError:
             pass
 
-    def _require_complete(self, meeting_id, version):
+    def _require_complete(self, meeting_id, version, *, require_voice_audio=False):
         meeting = self.db.meeting(meeting_id,internal=True)
         chunks = self.db.chunks(meeting_id)
         completed = self.completed_transcriptions(meeting_id, version)
-        if meeting['recording'] or meeting['transcript_version']!=version or not chunks or {c['id'] for c in chunks}-{j['chunk_id'] for j in completed}:
+        if meeting['recording'] or meeting['transcript_version']!=version:
             raise ValueError('identification_requires_complete_transcript')
+        if not chunks or {c['id'] for c in chunks}-{j['chunk_id'] for j in completed}:
+            from secretary.infrastructure.local_asr_publication import completed_local_transcript
+            if not completed_local_transcript(self.db, meeting_id, version):
+                raise ValueError('identification_requires_complete_transcript')
+            if require_voice_audio:
+                # First-local uploads may be compressed or outside audio/.
+                # Keep the existing voice reader boundary and fail before an
+                # intent/job is captured; no decoder or model is invoked here.
+                from secretary.domain.voice import VoiceError
+                from secretary.infrastructure.meeting_voice_audio import MeetingAudioReader, ChunkAudioSnapshot
+                import os
+                reader = MeetingAudioReader(self.settings.data_dir / 'audio')
+                try:
+                    for chunk in chunks:
+                        snapshot = ChunkAudioSnapshot(chunk['id'], meeting_id, Path(chunk['path']),
+                            chunk['sha256'], chunk['offset_ms'], chunk['duration_ms'], chunk['channel'])
+                        path, initial = reader._safe_path(snapshot)
+                        with path.open('rb') as stream:
+                            opened = os.fstat(stream.fileno())
+                            reader._stable(stream, snapshot, initial, opened)
+                            _, frames, _, rate = reader._layout(stream, initial.st_size, None)
+                            reader._stable(stream, snapshot, initial, opened)
+                        if abs(frames * 1000 - snapshot.duration_ms * rate) > rate:
+                            raise ValueError('duration mismatch')
+                except (VoiceError, OSError, ValueError, TypeError):
+                    raise ValueError('local_asr_voice_canonical_audio_required') from None
 
     def reconcile_local_handoff(self):
         # Only explicit new-mode routes, never legacy/history migration. Close the
@@ -684,7 +743,7 @@ class Worker:
             replay, _ = self.attribution.speakers._replay(conn, 'identify_speakers', canonical([meeting_id,command.transcript_version]), command, IdentificationAccepted)
             if replay:
                 return replay
-        self._require_complete(meeting_id,command.transcript_version)
+        self._require_complete(meeting_id,command.transcript_version,require_voice_audio=True)
         result = self.attribution.capture(meeting_id,command.transcript_version,command.expected_revision,command=command,pipeline=False)
         return result
 
@@ -729,12 +788,20 @@ class Worker:
                     speakers.append({"id": speaker_id, "meeting_id": job["meeting_id"], "chunk_id": chunk["id"], "provider_label": label, "display_name": None})
                     labels[label] = speaker_id
             precision = raw.get("timing_precision", "unknown")
-            start = chunk["offset_ms"] if precision == "chunk" else raw.get("start_ms")
-            end = chunk["offset_ms"] + chunk["duration_ms"] if precision == "chunk" else raw.get("end_ms")
-            segment = TranscriptSegment(id=stable_id(chunk["id"], job["version"], ordinal), meeting_id=job["meeting_id"], chunk_id=chunk["id"], transcript_version=job["version"], ordinal=ordinal, start_ms=start, end_ms=end, timing_precision=precision, text=text, confidence=raw.get("confidence"), speaker_id=speaker_id, channel=chunk["channel"])
-            for point in (segment.start_ms, segment.end_ms):
-                if point is not None and not chunk["offset_ms"] <= point <= chunk["offset_ms"] + chunk["duration_ms"]:
+            begin = chunk["offset_ms"]
+            finish = chunk["offset_ms"] + chunk["duration_ms"]
+            start = begin if precision == "chunk" else raw.get("start_ms")
+            end = finish if precision == "chunk" else raw.get("end_ms")
+            if start is not None and end is not None:
+                if end < begin or start > finish:
                     raise ValueError("Provider segment time is outside its source chunk")
+                start = max(start, begin)
+                end = min(end, finish)
+            else:
+                for point in (start, end):
+                    if point is not None and not begin <= point <= finish:
+                        raise ValueError("Provider segment time is outside its source chunk")
+            segment = TranscriptSegment(id=stable_id(chunk["id"], job["version"], ordinal), meeting_id=job["meeting_id"], chunk_id=chunk["id"], transcript_version=job["version"], ordinal=ordinal, start_ms=start, end_ms=end, timing_precision=precision, text=text, confidence=raw.get("confidence"), speaker_id=speaker_id, channel=chunk["channel"])
             if segment.start_ms is not None and segment.end_ms is not None:
                 duplicate = any(prior["text"] == text and prior["start_ms"] is not None and prior["end_ms"] is not None and max(prior["start_ms"], segment.start_ms) < min(prior["end_ms"], segment.end_ms) for prior in segments)
                 if duplicate:

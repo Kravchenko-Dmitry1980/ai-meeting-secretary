@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from secretary.domain.cloud_budget import BudgetError, CloudCharge, to_micro
+from secretary.infrastructure.summary_context_payloads import assemble_partials
 
 
 MAX_STT_BODY_BYTES = 14_000_000
@@ -137,6 +138,11 @@ def _safe_error_details(data: Any) -> tuple[dict[str, str | None], str | None]:
     reason = "price_limit" if price_rejected else "unsupported_response_format" if format_rejected else None
     return {"provider_trace_id": trace_id, "provider_error_code": code,
             "provider_error_param": param, "provider_error_reason": machine_reason}, reason
+
+
+def _router_rejected(data: Any, status: int) -> bool:
+    """Polza's router found no provider for the model, so nothing was dispatched or billed."""
+    return status == 503 and _safe_error_details(data)[0]["provider_error_reason"] == "noProvidersForModel"
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -313,6 +319,9 @@ class PolzaClient:
 
     def set_charge_context(self, **values):
         self.charge_context.update(values)
+
+    def _spend_limits_enabled(self) -> bool:
+        return bool(getattr(self.settings, "polza_limits_enabled", True))
 
     def _voice_client(self, command_id: str, category: str) -> 'PolzaClient':
         try:
@@ -750,35 +759,39 @@ class PolzaClient:
                 raise ProviderError('invalid_response_limit', 'Недопустимый предел ответа Polza')
         headers = self._headers()  # Reject missing key/disabled cloud before account or media access.
         credential_tag = hashlib.sha256(headers["Authorization"][7:].encode()).hexdigest()
-        if self.budget is not None and self.charge_context.get("key_tag") != credential_tag:
+        spend_limits = self._spend_limits_enabled()
+        if self.budget is not None and spend_limits and self.charge_context.get("key_tag") != credential_tag:
             raise ProviderError("monthly_budget_key_changed", "Ключ Polza не совпадает с учётной записью бюджета")
         operation_id = (self._paid_admission.get() or str(uuid4())) if method.upper() == 'POST' else None
         submitted = False
         paid = method.upper() == "POST"
+        tracked = False
         if paid:
-            if self.budget is None:
-                if type(self.transport) is not httpx.MockTransport:
-                    raise ProviderError("monthly_budget_required", "Общий месячный бюджет Polza не подключён")
-            else:
-                key_tag = self.charge_context.get("key_tag")
-                if not key_tag:
-                    raise ProviderError("monthly_budget_required", "Не задана учётная запись общего бюджета")
-                try:
-                    account = await self.budget.ensure_account(key_tag=key_tag)
-                    if account.remaining_micro == 0:
-                        raise BudgetError("monthly_budget_exhausted")
-                    estimate = await self._estimate_charge(endpoint, payload or {}, duration_seconds)
-                    category = self.charge_context.get("category") or ("meeting_stt" if endpoint == "audio/transcriptions" else "meeting_summary")
-                    self.budget.reserve(CloudCharge(operation_id, category,
-                        hashlib.sha256(_json_bytes(payload)).hexdigest(), estimate, estimate,
-                        self.charge_context.get("meeting_id"), self.charge_context.get("command_id")), key_tag=key_tag)
-                except BudgetError as exc:
-                    if operation_id:
-                        try:
-                            self.budget.release_unsubmitted(operation_id)
-                        except BudgetError:
-                            pass
-                    raise ProviderError(exc.code, "Новый запрос Polza приостановлен: " + exc.code) from exc
+            if spend_limits:
+                if self.budget is None:
+                    if type(self.transport) is not httpx.MockTransport:
+                        raise ProviderError("monthly_budget_required", "Общий месячный бюджет Polza не подключён")
+                else:
+                    key_tag = self.charge_context.get("key_tag")
+                    if not key_tag:
+                        raise ProviderError("monthly_budget_required", "Не задана учётная запись общего бюджета")
+                    try:
+                        account = await self.budget.ensure_account(key_tag=key_tag)
+                        if account.remaining_micro == 0:
+                            raise BudgetError("monthly_budget_exhausted")
+                        estimate = await self._estimate_charge(endpoint, payload or {}, duration_seconds)
+                        category = self.charge_context.get("category") or ("meeting_stt" if endpoint == "audio/transcriptions" else "meeting_summary")
+                        self.budget.reserve(CloudCharge(operation_id, category,
+                            hashlib.sha256(_json_bytes(payload)).hexdigest(), estimate, estimate,
+                            self.charge_context.get("meeting_id"), self.charge_context.get("command_id")), key_tag=key_tag)
+                        tracked = True
+                    except BudgetError as exc:
+                        if operation_id:
+                            try:
+                                self.budget.release_unsubmitted(operation_id)
+                            except BudgetError:
+                                pass
+                        raise ProviderError(exc.code, "Новый запрос Polza приостановлен: " + exc.code) from exc
             info = {'operation_id': operation_id,
                     'category': self.charge_context.get('category') or ('meeting_stt' if endpoint == 'audio/transcriptions' else 'meeting_summary'),
                     'command_id': self.charge_context.get('command_id'), 'stage': stage, 'attempt': attempt,
@@ -786,7 +799,7 @@ class PolzaClient:
             try:
                 await _callback(before_submission, copy.deepcopy(info))
             except BaseException as exc:
-                if self.budget is not None:
+                if tracked:
                     self.budget.release_unsubmitted(operation_id)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
@@ -795,10 +808,11 @@ class PolzaClient:
                 # Re-read every configured restore authority after the durable
                 # request checkpoint and immediately before submitting the charge.
                 self._paid_authority()
-                if self.budget is not None:
+                if tracked:
                     self.budget.mark_submitted(operation_id)
             except (BudgetError, ProviderError) as exc:
-                await self._record_not_submitted(operation_id, info, not_submitted_checkpoint, exc.code)
+                if tracked:
+                    await self._record_not_submitted(operation_id, info, not_submitted_checkpoint, exc.code)
                 if isinstance(exc, ProviderError):
                     raise
                 raise ProviderError(exc.code, 'Новый запрос Polza приостановлен: ' + exc.code) from exc
@@ -808,9 +822,10 @@ class PolzaClient:
             if operation_id and self.budget.reservation(operation_id).key_tag != credential_tag:
                 raise ProviderError("monthly_budget_key_changed", "Принятый запрос связан с другим ключом Polza",
                                     provider_job_id=provider_job_id)
+            tracked = operation_id is not None
 
         def on_response(data, status):
-            if operation_id is None or self.budget is None:
+            if not tracked or operation_id is None or self.budget is None:
                 return
             matching = isinstance(data, dict) and (not provider_job_id or data.get("id", provider_job_id) == provider_job_id)
             if not matching:
@@ -846,7 +861,7 @@ class PolzaClient:
             has_cost = "cost_rub" in usage or "cost" in usage
             if has_cost and (not asynchronous or status >= 400 or data.get("status") in {"completed", "failed"}):
                 self.budget.settle(operation_id, receipt)
-            elif paid and status in {400, 401, 402, 403, 404, 413, 422, 429}:
+            elif paid and (status in {400, 401, 402, 403, 404, 413, 422, 429} or _router_rejected(data, status)):
                 self.budget.release_rejected(operation_id)
             elif asynchronous and data.get("status") == "processing":
                 if receipt["confirmed_rub"] is not None:
@@ -894,12 +909,12 @@ class PolzaClient:
                                            **({'response_checkpoint': checkpoint_response} if response_checkpoint is not None else {}),
                                            **({'required_status': 200, 'strict_json': True} if stage in {'stt', 'intent'} else {}))
         except BudgetError as exc:
-            if operation_id and self.budget is not None:
+            if tracked:
                 self.budget.mark_uncertain(operation_id)
             raise ProviderError(exc.code, "Не удалось подтвердить учёт запроса Polza", uncertain=submitted,
                                 provider_job_id=provider_job_id) from exc
         except BaseException:
-            if operation_id and submitted and self.budget is not None:
+            if tracked and submitted:
                 self.budget.mark_uncertain(operation_id)
             raise
         finally:
@@ -1014,10 +1029,17 @@ class PolzaClient:
                 uncertain = True
             if method == "POST" and (billed or ambiguous_money):
                 retryable = False  # A billed rejection is a completed attempt, never an automatic replay.
+            no_providers = method == "POST" and not (billed or ambiguous_money) and _router_rejected(data, status)
+            if no_providers:
+                uncertain = False
             diagnostic, rejection_reason = _safe_error_details(data)
             code = codes.get(status, "provider_error")
             message = f"Polza отклонила запрос (HTTP {status})"
-            if status == 400 and rejection_reason == "price_limit":
+            if no_providers:
+                code = "model_unavailable"
+                message += (": для модели сейчас нет доступных провайдеров. Запрос не выполнен и не оплачен; "
+                            "обработка приостановлена, продолжите её позже.")
+            elif status == 400 and rejection_reason == "price_limit":
                 code = "price_limit"
                 message += (": заданный предел тарифа ниже цены доступных маршрутов с наценкой Polza. "
                             "Откройте «Настройки», сверьте тариф выбранной модели и допустимый предел "
@@ -1074,7 +1096,7 @@ class PolzaClient:
                          "language": "ru",
                          "provider": {"allow_fallbacks": False, "sort": "price"}}
         price = _number(getattr(self.settings, "stt_price_rub_per_minute", None))
-        if getattr(self.settings, "local_cost_limits_enabled", True) and price is not None:
+        if self._spend_limits_enabled() and getattr(self.settings, "local_cost_limits_enabled", True) and price is not None:
             payload["provider"]["max_price"] = {"stt_per_minute": price}
         if model not in ASYNC_MODELS:
             payload.update({"response_format": "verbose_json" if model in VERBOSE_MODELS else "json", "stream": False})
@@ -1301,16 +1323,30 @@ class PolzaClient:
         payload = {"model": model,
                    "messages": [{"role": "system", "content": SUMMARY_INSTRUCTION + ('\n'+SUMMARY_CONTEXT_INSTRUCTION if context is not None else '')},
                                 {"role": "user", "content": content}],
-                   "temperature": 0, "max_tokens": output_tokens, "stream": False,
+                   "max_tokens": output_tokens, "stream": False,
                    "response_format": {"type": "json_schema", "json_schema": {
                        "name": "secretary_protocol", "strict": True, "schema": summary_schema_v2(SUMMARY_SCHEMA) if context is not None else SUMMARY_SCHEMA}},
                    "provider": {"require_parameters": True, "allow_fallbacks": False, "sort": "price"}}
+        # GPT-6 Luna Pro rejects temperature; other summary models keep a fixed decode.
+        if model != "openai/gpt-6-luna-pro":
+            payload["temperature"] = 0
         input_price = _number(getattr(self.settings, "summary_input_rub_per_million", None))
         output_price = _number(getattr(self.settings, "summary_output_rub_per_million", None))
-        price_routing = context.settings.local_cost_limits_enabled if context is not None else getattr(self.settings, "local_cost_limits_enabled", True)
+        legacy_prices = context.settings.local_cost_limits_enabled if context is not None else getattr(self.settings, "local_cost_limits_enabled", True)
+        price_routing = self._spend_limits_enabled() and legacy_prices
         if price_routing and input_price is not None and output_price is not None:
             payload["provider"]["max_price"] = {"prompt": input_price, "completion": output_price}
         return payload
+
+    async def complete_json(self, payload: dict, *, before_submission: Callable | None = None,
+                            response_checkpoint: Callable | None = None,
+                            not_submitted_checkpoint: Callable | None = None) -> dict:
+        """One chat completion. The caller checkpoints the receipt before interpreting it."""
+        return await self._request("POST", "chat/completions", payload=payload, stage="assignment",
+                                   response_limit=MAX_SUMMARY_RESPONSE_BYTES,
+                                   before_submission=before_submission,
+                                   response_checkpoint=response_checkpoint,
+                                   not_submitted_checkpoint=not_submitted_checkpoint)
 
     def summary_checkpoint_key(self, data: list[dict], *, merge: bool, context=None) -> str:
         payload = self.summary_payload(data, merge=merge, context=context)
@@ -1617,7 +1653,9 @@ class PolzaClient:
                 if (groups is None or len(groups) >= len(partials)) and context is not None:
                     groups = try_pack_merges(MAX_SUMMARY_REQUEST_BYTES)
                 if groups is None or len(groups) >= len(partials):
-                    raise ProviderError("summary_reduce_limit", "Частичные итоги слишком велики для безопасного объединения")
+                    # Do not pay for another merge that cannot fit. Keep every grounded item.
+                    partials = [assemble_partials(partials)]
+                    break
                 merged = []
                 for group in groups:
                     group_ids = {source_id for partial in group

@@ -46,6 +46,57 @@ def test_observed_unsupported_format_rejection_is_safe_and_submit_specific(tmp_p
         assert "Обновите приложение" in caught.value.message
 
 
+@pytest.mark.parametrize("metadata,expected_code,uncertain", [
+    ({"reason": "noProvidersForModel"}, "model_unavailable", False),
+    (None, "provider_error", True)])
+def test_router_without_providers_is_an_unbilled_submit_rejection(tmp_path, metadata, expected_code, uncertain):
+    error = {"code": "SERVICE_UNAVAILABLE", "message": "SYNTHETIC-SECRET-SENTINEL"}
+    if metadata:
+        error["metadata"] = metadata
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(503, json={"error": error})
+
+    provider = PolzaClient(config(tmp_path), httpx.MockTransport(handler))
+    with pytest.raises(ProviderError) as caught:
+        asyncio.run(provider._request("POST", "audio/transcriptions", payload={}))
+    assert caught.value.code == expected_code
+    assert caught.value.uncertain is uncertain and not caught.value.retryable
+    assert "SYNTHETIC-SECRET-SENTINEL" not in str(caught.value)
+    assert calls == ["POST"]
+    if not uncertain:
+        assert "не оплачен" in caught.value.message
+
+
+def test_model_without_providers_pauses_queue_until_explicit_resume(tmp_path):
+    settings = config(tmp_path)
+    db = Database(settings.data_dir / "test.sqlite3")
+    meeting, _ = prepared(db, settings)
+    for sequence in range(1, 4):
+        prepared(db, settings, meeting=meeting, sequence=sequence, offset=sequence * 1000)
+    calls = []
+
+    class UnavailableProvider:
+        def __init__(self, configuration):
+            pass
+
+        async def transcribe(self, path, **kwargs):
+            calls.append(path)
+            raise ProviderError("model_unavailable", "Для модели сейчас нет доступных провайдеров")
+
+    worker = Worker(db, settings, UnavailableProvider)
+    worker.enqueue_transcription(meeting["id"])
+    asyncio.run(worker.run_once())
+    assert [job["status"] for job in db.jobs(meeting["id"])] == ["waiting_config"] * 4
+    assert db.rows("SELECT status FROM usage") == [{"status": "released"}]
+    assert asyncio.run(worker.run_once()) is False and len(calls) == 1
+    worker.enqueue_transcription(meeting["id"], resume=True)
+    assert [job["status"] for job in db.jobs(meeting["id"])] == ["queued"] * 4
+    assert db.meeting(meeting["id"])["status"] == "queued"
+
+
 def test_rejected_stt_configuration_pauses_equivalent_queue_until_explicit_resume(tmp_path):
     settings = config(tmp_path)
     db = Database(settings.data_dir / "test.sqlite3")

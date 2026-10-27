@@ -1,4 +1,4 @@
-"""Schema 10 lineage stays deny-only across inactive synthetic restores."""
+"""Schema 9/10/11 lineage stays deny-only across inactive synthetic restores."""
 from contextlib import closing
 import sqlite3
 from types import SimpleNamespace
@@ -18,6 +18,21 @@ from test_team_restore_preview import copy, files
 def secretary_version(sample, version):
     """Build exact older/newer test shapes without opening owner stores."""
     with closing(sqlite3.connect(sample.restored.databases['secretary'])) as conn, conn:
+        if version < 11 and conn.execute('SELECT 1 FROM schema_migrations WHERE version=11').fetchone():
+            # Reconstruct the actual pre-audience shape, not just its version
+            # label. The current application creates schema 11.
+            from secretary.infrastructure.database import SPEAKER_MIGRATION
+            from secretary.infrastructure.assignment_repository import ASSIGNMENT_MIGRATION
+            rows = conn.execute('SELECT meeting_id,summary_version,action_id,revision,participant_id,basis,'
+                                'source_segment_ids,evidence_quote,attribution_revision,roster_revision,'
+                                'status,named_owner_text FROM task_assignments').fetchall()
+            conn.execute('DROP TABLE task_assignments')
+            conn.execute(next(sql for sql in SPEAKER_MIGRATION if sql.lstrip().startswith('CREATE TABLE task_assignments(')))
+            conn.executemany('INSERT INTO task_assignments VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', rows)
+            for sql in ASSIGNMENT_MIGRATION:
+                if sql.startswith('CREATE TRIGGER task_assignments_immutable_'):
+                    conn.execute(sql)
+            conn.execute('DELETE FROM schema_migrations WHERE version=11')
         present = conn.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='summary_resume_operations'").fetchone()
         if version == 9:
             # The current application may create schema 10. Model an old backup,
@@ -41,7 +56,7 @@ def collect(sample):
                               expected_preview_sha256=preview['preview_sha256'])
 
 
-@pytest.mark.parametrize('version', [9, 10])
+@pytest.mark.parametrize('version', [9, 10, 11])
 def test_known_secretary_schema_remains_inactive_and_fully_classified(copy, version):
     secretary_version(copy, version)
     before = files(copy.restored.destination)
@@ -49,7 +64,7 @@ def test_known_secretary_schema_remains_inactive_and_fully_classified(copy, vers
     plan = collect(copy)
     assert preview['activation_supported'] is False and preview['outbound_enabled'] is False
     assert plan.report()['activation_supported'] is False
-    assert ('summary_resume_operations' in plan.coverage['secretary']) is (version == 10)
+    assert ('summary_resume_operations' in plan.coverage['secretary']) is (version >= 10)
     assert files(copy.restored.destination) == before
 
 
@@ -63,7 +78,7 @@ def test_schema_10_missing_lineage_family_refuses_completeness(copy):
     assert files(copy.restored.destination) == before
 
 
-@pytest.mark.parametrize('role,version', [('secretary', 11), ('team', 10)])
+@pytest.mark.parametrize('role,version', [('secretary', 12), ('team', 10)])
 def test_unknown_authority_schema_cannot_inherit_secretary_10_support(copy, role, version):
     table = 'schema_migrations' if role == 'secretary' else 'team_schema'
     with closing(sqlite3.connect(copy.restored.databases[role])) as conn, conn:
@@ -87,6 +102,7 @@ def test_partial_secretary_migration_sequence_refuses_completeness(copy):
 
 def test_schema_9_cannot_smuggle_continuation_family(copy):
     # Keeping the schema 10 table while claiming schema 9 is not compatibility.
+    secretary_version(copy, 10)
     with closing(sqlite3.connect(copy.restored.databases['secretary'])) as conn, conn:
         conn.execute('DELETE FROM schema_migrations WHERE version=10')
     with pytest.raises(RestoreQuarantineError, match='restore_quarantine_catalogue_unsupported'):

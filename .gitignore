@@ -18,3 +18,13 @@ __pycache__/
 *.pyc
 *.log
 .agent/
+# Desktop transfer artifacts are delivered outside Git.
+/desktop-transfer/
+/*-repository-source.zip
+/*-local-assets.zip
+/*-private-data.zip
+/*-private-notes-addendum.zip
+/*.voicepack
+/*.secret-key
+/voice-transfer/
+/transfer-keys/

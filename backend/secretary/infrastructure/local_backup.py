@@ -580,6 +580,8 @@ def _relocate_database(database: Path, source_root: Path, target_root: Path, ass
                 for chunk_id, path in conn.execute("SELECT id,path FROM chunks").fetchall():
                     conn.execute("UPDATE chunks SET path=? WHERE id=?",
                                  (_relocated(path, source_root, target_root, asset_map), chunk_id))
+            from secretary.infrastructure.local_asr_restore import quarantine_restored_local_asr
+            quarantine_restored_local_asr(conn)
             conn.commit()
     except LocalBackupError:
         raise

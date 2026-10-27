@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { SpeakerWorkflow } from '../hooks/useSpeakerWorkflow';
 import type { SpeakerAttribution } from '../types/api';
-import { attributionStatus, groupChanges, reasonText, reviewGroups } from '../utils/speakers';
-import type { ReviewGroup } from '../utils/speakers';
+import { attributionStatus, groupChanges, proposalBatches, reasonText, reviewGroups } from '../utils/speakers';
+import type { ProposalBatch, ReviewGroup } from '../utils/speakers';
 import { timeOffset } from '../utils/format';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
@@ -36,6 +36,17 @@ function GroupReview({ group, workflow, onSource }: { group: ReviewGroup; workfl
   </Card>;
 }
 
+function ProposalReview({ batch, workflow, onSource }: { batch: ProposalBatch; workflow: SpeakerWorkflow; onSource: (id: string) => void }) {
+  const snapshot = workflow.snapshot!;
+  const person = snapshot.participants.find((item) => item.id === batch.participantId);
+  return <Card className="space-y-3">
+    <h3 className="font-medium">{person?.display_name ?? 'Участник отсутствует'} <span className="text-xs text-slate-400">· предложено {batch.items.length} реплик</span></h3>
+    <p className="text-xs text-slate-400">Ниже реплики с наименьшим сходством. Если они верны, подтвердите все; ошибочную исправьте в расшифровке — она уйдёт из этого списка.</p>
+    {batch.weakest.map((item) => <SourceExample key={item.segment_id} item={item} meetingId={snapshot.meeting_id} version={snapshot.transcript_version} onSource={onSource} />)}
+    <Button disabled={!person?.enabled || workflow.busy || workflow.pending} onClick={() => { void workflow.review(groupChanges(batch, batch.participantId)); }}>Подтвердить {batch.items.length} реплик · {person?.display_name ?? ''}</Button>
+  </Card>;
+}
+
 export function SingleSpeakerReview({ item, workflow, onSource }: { item: SpeakerAttribution; workflow: SpeakerWorkflow; onSource?: (id: string) => void }) {
   const [participantId, setParticipantId] = useState(item.participant_id ?? '');
   const snapshot = workflow.snapshot!;
@@ -54,11 +65,14 @@ export function SpeakerReview({ workflow, onSource }: { workflow: SpeakerWorkflo
   if (!snapshot) return <Card>Загрузка проверки участников…</Card>;
   const groups = reviewGroups(snapshot.items);
   const disputed = snapshot.items.filter((item) => item.status === 'unknown' || item.status === 'conflict' || item.reason_codes.some((code) => /overlap|conflict/.test(code)));
-  const visibleGroups = groups.filter((group) => group.items.length > 1 || group.items.some((item) => item.participant_id));
+  const visibleGroups = groups.filter((group) => group.items.length > 1);
+  const grouped = new Set(visibleGroups.flatMap((group) => group.items.map((item) => item.segment_id)));
+  const batches = proposalBatches(snapshot.items.filter((item) => !grouped.has(item.segment_id)));
   const groupOffset = Math.min(groupPage * 6, Math.max(0, Math.floor((visibleGroups.length - 1) / 6) * 6));
   const reviewOffset = Math.min(reviewPage * 20, Math.max(0, Math.floor((disputed.length - 1) / 20) * 20));
   return <div className="space-y-4">
-    <Card><h2 className="text-lg font-medium">Проверка участников · v{snapshot.transcript_version}</h2><p className="mt-2 text-sm leading-6 text-slate-400">Подтвердите группу по примерам или исправьте отдельную реплику в расшифровке. Исправление личности не изменяет текст, таймкоды, канал и исходное аудио и не запускает платную обработку.</p><p className="mt-2 text-xs text-slate-500">Attribution revision {snapshot.revision} · roster revision {snapshot.roster_revision}</p>{snapshot.automatic_overlay_stale && <p role="status" className="mt-3 text-sm text-amber-200">Автоматические имена устарели и требуют проверки. {snapshot.reason_codes?.map(reasonText).join(' · ')}</p>}</Card>
+    <Card><h2 className="text-lg font-medium">Проверка участников · v{snapshot.transcript_version}</h2><p className="mt-2 text-sm leading-6 text-slate-400">Подтвердите предложения по участнику или группу по примерам; отдельную реплику исправьте в расшифровке. Исправление личности не изменяет текст, таймкоды, канал и исходное аудио и не запускает платную обработку.</p><p className="mt-2 text-xs text-slate-500">Attribution revision {snapshot.revision} · roster revision {snapshot.roster_revision}</p>{snapshot.automatic_overlay_stale && <p role="status" className="mt-3 text-sm text-amber-200">Автоматические имена устарели и требуют проверки. {snapshot.reason_codes?.map(reasonText).join(' · ')}</p>}</Card>
+    {batches.length > 0 && <div className="speaker-review-grid">{batches.map((batch) => <ProposalReview key={batch.participantId} batch={batch} workflow={workflow} onSource={onSource} />)}</div>}
     <div className="speaker-review-grid">{visibleGroups.slice(groupOffset, groupOffset + 6).map((group) => <GroupReview key={group.id} group={group} workflow={workflow} onSource={onSource} />)}</div>
     {visibleGroups.length > 6 && <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400"><Button variant="ghost" disabled={groupOffset === 0} onClick={() => setGroupPage(Math.max(0, Math.floor(groupOffset / 6) - 1))}>Предыдущие группы</Button><span>Группы {groupOffset + 1}–{Math.min(groupOffset + 6, visibleGroups.length)} из {visibleGroups.length}</span><Button variant="ghost" disabled={groupOffset + 6 >= visibleGroups.length} onClick={() => setGroupPage(Math.floor(groupOffset / 6) + 1)}>Следующие группы</Button></div>}
     <Card className="space-y-4"><h3 className="font-medium">Неизвестные и спорные реплики · {disputed.length}</h3>{disputed.length === 0 ? <p className="text-sm text-slate-400">Неизвестных и спорных реплик в текущем снимке нет.</p> : disputed.slice(reviewOffset, reviewOffset + 20).map((item) => <SingleSpeakerReview key={item.segment_id} item={item} workflow={workflow} onSource={onSource} />)}{disputed.length > 20 && <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400"><Button variant="ghost" disabled={reviewOffset === 0} onClick={() => setReviewPage(Math.max(0, Math.floor(reviewOffset / 20) - 1))}>Предыдущие спорные реплики</Button><span>{reviewOffset + 1}–{Math.min(reviewOffset + 20, disputed.length)} из {disputed.length}</span><Button variant="ghost" disabled={reviewOffset + 20 >= disputed.length} onClick={() => setReviewPage(Math.floor(reviewOffset / 20) + 1)}>Следующие спорные реплики</Button></div>}</Card>

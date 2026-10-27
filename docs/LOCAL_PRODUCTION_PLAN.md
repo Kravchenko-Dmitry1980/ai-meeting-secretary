@@ -121,7 +121,7 @@ Read-only SQLite-агрегация показала 68 failed `transcribe` jobs
 
 ## Progress checkpoint — 2026-10-10, 04:01 МСК
 
-В основном UI и backend подтверждено, что 69-минутная запись завершила расшифровку 35/35 чанков и summary; повторять обработку не нужно. История хранит 34 старых failed transcription attempts. Usage ledger по этой встрече содержит 35 неизвестных STT-расходов без provider request ID; в доступных локальных записях нет исходных HTTP-ответов, поэтому точная стоимость и причина отсутствия receipts не установлены. Это не следует смешивать с текущей суммой кабинета Polza.
+Завершённые расшифровку и summary не следует отправлять на повторную обработку. Исторические failed transcription attempts нужно отличать от текущего результата. STT-расход без provider request ID и исходного HTTP-ответа остаётся неизвестным: локальный usage ledger не подтверждает полную стоимость и не заменяет выписку кабинета Polza. Метаданные рабочей встречи исключены из публичной версии.
 
 Текущий main runtime отвечает `health=ok`, `ready=local_ok`, но `production_qualified=false` и работает в offline-режиме (`cloud_enabled=false`). Дополнительные лимиты Secretary выключены по указанию владельца; ключ присутствует, не выводился. Frontend revalidation: 293 tests, release manifest build 1 test, typecheck/lint PASS; backend/audit: 5 231 PASS. Реальных сетевых/аудио тестов в этой проверке не было.
 

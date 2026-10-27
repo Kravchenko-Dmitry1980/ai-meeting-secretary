@@ -513,6 +513,8 @@ def _relocate_secretary(path,old_roots,new_roots):
             conn.execute("UPDATE identification_intents SET outcome='stale',reasons='[\"restore_review_required\"]' WHERE outcome!='completed'")
         if 'enrollment_recordings' in tables:
             conn.execute("UPDATE enrollment_recordings SET status='failed',disposition='review',reason='restore_review_required' WHERE status!='completed'")
+        from secretary.infrastructure.local_asr_restore import quarantine_restored_local_asr
+        quarantine_restored_local_asr(conn)
         conn.commit();_check(conn)
     for path in captures:
         if path.exists():

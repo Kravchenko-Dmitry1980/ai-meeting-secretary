@@ -1,0 +1,428 @@
+{
+  "schema_version": "secretary.local-asr.runtime-preparation.v1",
+  "as_of": "2026-10-27",
+  "status": "model_environments_verified_hardware_pilot_waiting_resources",
+  "installable_lock": true,
+  "inference_authorized": true,
+  "selected_quality_mode": "nemotron-ctc",
+  "source_package": {
+    "reported_path": "C:\\AI\\Projects\\neurohr\\_releases\\gigaam-cuda-package-20261021",
+    "reported_head": "b0f19ae3beecfa722b9395a91406a4f862f1eafc",
+    "reported_base": "453d7b08f6345ba884861f0e7fd8e9bb9da1fec3",
+    "reported_source_files": 65,
+    "locally_available": true,
+    "verified_source_digest": "33e0a9a59d6278e9b2363e822b2ce7f875c3252b8d333270ffa139a3c45d7109",
+    "required_artifacts": [
+      "contracts/dev-asr-package.v1.json",
+      "contracts/dev-gigaam-model-manifest.json",
+      "contracts/dev-gigaam-ctc-model-manifest.json",
+      "contracts/dev-nemotron3-model-manifest.json",
+      "contracts/dev-asr-cuda-requirements.txt",
+      "contracts/dev-asr-test-requirements.txt",
+      "docs/contracts/MEETING_IMPORT_LOCAL_ASR_V2.md",
+      "scripts/start-dev-gpu-pilot.ps1",
+      "scripts/tests/run_dev_asr_package_tests.ps1"
+    ],
+    "locally_extracted_relative_path": ".runtime/source-handoff-20261026-150225/payload",
+    "delivery_manifest_relative_path": ".runtime/source-handoff-20261026-150225/delivery-manifest.json",
+    "delivery_manifest_sha256": "b87031fd9bbb97c7cd9ae7865fc0618618da2c9ae511d37e55a50b8c2712d4a1",
+    "delivery_manifest_representation": "intake_normalized_json_not_original_zip_manifest_bytes",
+    "verified_source_digest_definition": "SHA-256 of original contracts/dev-asr-package.v1.json bytes",
+    "inner_files_manifest_sha256": "188f66a846df05b476843f2c0e1efd667e8e6498e2bbe2d5fc789716840576ee",
+    "received_outer_archive_sha256": "9fba960aaedb3e78354a43b8b3e48228c4a03b3a624375dcb620f6200b1f4b61",
+    "received_inner_archive_sha256": "a65ad13bcaaf428e0751f09f16ff489950f07e51d24127c55b49bcef3e1bedb3",
+    "verified_delivery_files": 3378,
+    "source_only_gate": "pass_65_files_2026-10-26",
+    "received_source_unchanged": true,
+    "desktop_head_evidence": "evidence/git/checkouts-after.json",
+    "desktop_head_locally_git_verified": false
+  },
+  "benchmark": {
+    "reported_path": "C:\\AI\\Benchmarks\\GigaAM\\1",
+    "locally_available": false,
+    "scorer_commit": "9866c4db0fb0d09b288685167448088629d6eab0",
+    "normalizer_sha256": "53a31eba77c39d0d55a6e66edccd16285591065b88e0d4f95bce4c4409947b32",
+    "evidence_status": "received_hash_verified_export_historical_metrics_not_rerun",
+    "source_and_evidence_locally_available": true,
+    "scorer_source_relative_to_package": "external/scorer",
+    "baseline_relative_to_package": "evidence/regression/BASELINE_AND_ACCEPTANCE.json",
+    "frozen_sources_relative_to_package": "external/frozen-regression/veche-quality-onefactor-v6/sources",
+    "historical_current_source_drift": true
+  },
+  "models": {
+    "rnnt": {
+      "repository": "ai-sage/GigaAM-v3",
+      "reported_invalid_release_ref": "7655ad717f8122257385bb4b2f373db3697e8686",
+      "candidate_corrected_ref": "7655ad717f8122257385bb4b2f373db3697e8680",
+      "metadata_http_status": 200,
+      "invalid_ref_http_status": 404,
+      "weights_file": "pytorch_model.bin",
+      "weights_size_bytes": 448928167,
+      "weights_sha256": "afc6dcbae8320ea56f2cddebc0f13fbf62c9d59b6ddcad899782623c8610826a",
+      "tokenizer_sha256": "828c12c991019eef952a960661f25a92d6ad279591e2ea466b4aeddf1d20a18a",
+      "local_weights_verified": true,
+      "loader_processor_custom_code_hashes": {
+        "scripts/dev_gigaam_provider.py": "e4507097223f279fbabb1fa8f057a3ef0758848da45e98220150fd8a79c25023",
+        "model-metadata/rnnt/modeling_gigaam.py": "269be43b635b1e510115baa2a843c5cbaa052e8adf0be30dc133a2ba5b5f2d86",
+        "model-metadata/rnnt/config.json": "02361ba9cafd6c3ec66fcdd73494c3b562a60eb2a2d1b13f3cb04ae440d93e52",
+        "model-metadata/rnnt/tokenizer.model": "828c12c991019eef952a960661f25a92d6ad279591e2ea466b4aeddf1d20a18a"
+      },
+      "release_pin_changed": false,
+      "source_hashes_scope": "received_release_current_export_not_frozen_historical_generation",
+      "weights_in_received_bundle": false,
+      "desktop_weight_hash_evidence": {
+        "status": "received_attestation_matches_expected_not_laptop_rehash",
+        "path_relative_to_package": "evidence/models/RNNT_REVISION_RECONCILIATION.json",
+        "sha256": "1f32ec550797a63cf5ff28b628eaa78ccd521c69fe58b97abe457226979ce8c4"
+      },
+      "local_directory": ".runtime/local-asr-models-20261027/rnnt",
+      "local_verification": {
+        "relative_path": ".runtime/model-pilot-evidence-20261027/weights-20261027T115108.842241Z.json",
+        "sha256": "3d09feaba18690e20fc66f8c4d2a2a0b9315da653cffa810ec94ab99b7937e48"
+      },
+      "derived_revision": "7655ad717f8122257385bb4b2f373db3697e8680",
+      "derived_contracts_root": ".runtime/local-asr-models-20261027",
+      "original_release_manifest_preserved": true,
+      "derived_release_pin_corrected_after_weight_rehash": true
+    },
+    "ctc": {
+      "repository": "ai-sage/GigaAM-v3",
+      "reported_ref": "cec030b4c4f35d928e4a9044a3bdb29ebd499fac",
+      "metadata_http_status": 200,
+      "weights_file": "pytorch_model.bin",
+      "weights_size_bytes": 442405251,
+      "weights_sha256": "9801f83ef3979779982c4f83ec1c234d7571e8c1a5aa2bfc0b09ceb97a16cd75",
+      "tokenizer_sha256": "0b9a1960898fbfdf5424ab852ea17445eb3da960fba23e977ff100eb0054fbc8",
+      "local_weights_verified": true,
+      "loader_processor_custom_code_hashes": {
+        "scripts/dev_gigaam_ctc_alignment.py": "300cbac108839e0b44b999230e18ea1c155702026f38cc8c6c2ec8fea89f7668",
+        "model-metadata/ctc/modeling_gigaam.py": "269be43b635b1e510115baa2a843c5cbaa052e8adf0be30dc133a2ba5b5f2d86",
+        "model-metadata/ctc/config.json": "3dbcd2ebe1a572cb9a9945eeb3faf8b59180d408e61a61ecda44db30421e7251",
+        "model-metadata/ctc/tokenizer.model": "0b9a1960898fbfdf5424ab852ea17445eb3da960fba23e977ff100eb0054fbc8"
+      },
+      "source_hashes_scope": "received_release_current_export_not_frozen_historical_generation",
+      "weights_in_received_bundle": false,
+      "local_directory": ".runtime/local-asr-models-20261027/ctc",
+      "local_verification": {
+        "relative_path": ".runtime/model-pilot-evidence-20261027/weights-20261027T115108.842241Z.json",
+        "sha256": "3d09feaba18690e20fc66f8c4d2a2a0b9315da653cffa810ec94ab99b7937e48"
+      }
+    },
+    "nemotron": {
+      "repository": "nvidia/Nemotron-3-Diarization",
+      "reported_ref": "f667ed73aee57d40cc39428eb768b4fd87a0a29e",
+      "metadata_http_status": 200,
+      "weights_file": "model.safetensors",
+      "weights_size_bytes": 396954592,
+      "weights_sha256": "c074d86335b3b794f8fa5edc25594558f128bdb3914d27806a3a5a2e44963cb6",
+      "local_weights_verified": true,
+      "loader_processor_custom_code_hashes": {
+        "scripts/dev_nemotron_provider.py": "62839ceaa6ce145b41c69a0a7fbd177cdf4d50cf074673585dfc5fcee044dbb2",
+        "external/transformers/src/transformers/models/nemotron3_diarization/modeling_nemotron3_diarization.py": "82292b99e603fadbdec3b8ed2ac68e209df2baa10ffa78b01c688b28bbd578ef",
+        "external/transformers/src/transformers/models/nemotron3_diarization/processing_nemotron3_diarization.py": "b79419febe66d20196f22b7c3c3e34d8b7e16433116e21ac241cd645727aec0b",
+        "external/transformers/src/transformers/models/nemotron_asr_streaming/feature_extraction_nemotron_asr_streaming.py": "889785d9da8c078fd32aaf73685d659a1310e62ad53a1cf43eaf20f24f22cba1",
+        "model-metadata/nemotron/config.json": "dd795ec07ffa09acf18d231aa3fa8642aa5c521760953754e02559a7413b6873",
+        "model-metadata/nemotron/processor_config.json": "91726746788a024a2f0f2f699a6c3667f0d74e6a0e9288fc44fe3018e23af68e"
+      },
+      "source_hashes_scope": "received_release_current_export_not_frozen_historical_generation",
+      "weights_in_received_bundle": false,
+      "local_directory": ".runtime/local-asr-models-20261027/nemotron",
+      "local_verification": {
+        "relative_path": ".runtime/model-pilot-evidence-20261027/weights-20261027T115108.842241Z.json",
+        "sha256": "3d09feaba18690e20fc66f8c4d2a2a0b9315da653cffa810ec94ab99b7937e48"
+      }
+    }
+  },
+  "environments": {
+    "application": {
+      "python_observed": "3.12.13",
+      "lock": "uv.lock",
+      "lock_sha256": "064ef802fd1edbf9e3768fbd1721a1aff78150d58e69acf479762e20383827b1",
+      "model_dependencies_permitted": false,
+      "pip_check": "pass_existing_environment",
+      "fresh_rebuild": "not_run"
+    },
+    "asr_cpu": {
+      "python_reported": "3.11.14",
+      "transformers_reported": "4.57.1",
+      "torch_reported": "2.8.0+cpu",
+      "torchaudio_reported": "2.8.0+cpu",
+      "precision": "fp32",
+      "cpu_threads": 4,
+      "lock": "config/local-asr/model-runtime/environments/asr-cpu.lock",
+      "fresh_rebuild": "pass_fresh_isolated_windows_environment_hash_required_binary_install",
+      "received_version_snapshot_relative_to_package": "environments/rnnt-ctc-cpu/requirements.frozen.txt",
+      "received_version_snapshot_sha256": "b35475ddc16d0705894381d381757123177310a97800538e70fdedf83b1f267e",
+      "snapshot_is_installable_lock": false,
+      "lock_sha256": "cfe928d046f2914a37c85353c5a62ed108ad87f31f24c7cdd4f9f7d8f4ca6c46",
+      "environment_relative_path": ".runtime/model-runtime-20261027/asr-cpu",
+      "installed_package_count": 32,
+      "dependency_check": "pass",
+      "model_import_check": "pass_no_weights_loaded",
+      "full_model_smoke": "not_run_ram_admission_blocked",
+      "inventory": {
+        "relative_path": ".runtime/model-runtime-20261027/evidence/asr-cpu.inventory-v2.json",
+        "sha256": "c9e58cd3dec2d0b3358d90e3ec38fe9840813ad8a111f3c7258204fa76eda406"
+      }
+    },
+    "asr_cuda": {
+      "python_reported": "3.11.14",
+      "transformers_reported": "4.57.1",
+      "torch_reported": "2.8.0+cu128",
+      "torchaudio_reported": "2.8.0+cu128",
+      "additional_reported_versions": {
+        "numpy": "2.2.6",
+        "av": "18.1.0",
+        "sentencepiece": "0.2.1",
+        "tokenizers": "0.22.2",
+        "safetensors": "0.8.0",
+        "huggingface-hub": "0.36.2"
+      },
+      "precision": "fp32_weights_native_fp16_encoder_autocast",
+      "lock": null,
+      "fresh_rebuild": "blocked_missing_verified_resolver_lock_and_portable_paths",
+      "full_model_smoke": "not_run",
+      "received_version_snapshot_relative_to_package": "environments/rnnt-ctc-cuda/dev-asr-cuda-requirements.txt",
+      "received_version_snapshot_sha256": "2b35affae25db478530f49d716c9dedb17bde0d35d088eb2791973a889704be6",
+      "snapshot_is_installable_lock": false
+    },
+    "nemotron": {
+      "python_reported": "3.12.10",
+      "transformers_reported": "5.18.0.dev0",
+      "transformers_source_commit": "89b6b17574892ec0770551537a3fe69d6886703e",
+      "editable_source_cleanliness_verified": false,
+      "lock": "config/local-asr/model-runtime/environments/nemotron.lock",
+      "fresh_rebuild": "pass_fresh_isolated_windows_environment_hash_required_binary_install",
+      "historical_device": "cuda_gpu_separate_nemotron_worker",
+      "received_version_snapshot_relative_to_package": "environments/nemotron/runtime-requirements.frozen.txt",
+      "received_version_snapshot_sha256": "bfe4dc0a90aef551343ca614b31f7dc5277d5bea987995ee32ce5202b20341d7",
+      "snapshot_is_installable_lock": false,
+      "editable_source_cleanliness_evidence": "desktop_clean_commit_attestation_export_hashes_verified_no_local_git_checkout",
+      "editable_source_relative_to_package": "external/transformers",
+      "intentional_source_exclusion": "src/transformers/testing_utils.py_authentication_test_constant",
+      "lock_sha256": "6c29f7209f87a5c33212ca67fc9a79982760ce527e73718008ab00946bc0eda0",
+      "environment_relative_path": ".runtime/model-runtime-20261027/nemotron",
+      "installed_package_count": 57,
+      "dependency_check": "pass",
+      "model_import_check": "pass_no_weights_loaded",
+      "full_model_smoke": "not_run_ram_admission_blocked",
+      "inventory": {
+        "relative_path": ".runtime/model-runtime-20261027/evidence/nemotron.inventory-v2.json",
+        "sha256": "547485cca5a13242fee4dba22fa3830648b821b3caf561a9b6396e72024b9193"
+      },
+      "cuda_probe": {
+        "relative_path": ".runtime/model-runtime-20261027/evidence/nemotron-probe-v2.json",
+        "sha256": "e403105cde7f3b4356a459f943cbf4682aeef1f4f270fe91c26c5e3a47db6097"
+      }
+    },
+    "identity": {
+      "python_observed": "3.12.13",
+      "speechbrain_observed": "1.1.1",
+      "torch_observed": "2.8.0+cpu",
+      "torchaudio_observed": "2.8.0+cpu",
+      "huggingface_hub_observed": "0.36.2",
+      "lock": "config/voice-runtime/requirements.lock",
+      "lock_sha256": "7c9da9b2ffa225a2554744de0a05df219f0ef9ff0f9eedd97bfd6e40475cd585",
+      "model_manifest": "config/voice-runtime/model-manifest.json",
+      "model_manifest_sha256": "fc598890cba5e01d44231c44257ce5238ca0882dac3b0dd7e4162df02c3a13cb",
+      "loader_sha256": "e3cf17267e5765c98355852447c69822d48f9172820e79209b74cbf0012d4f09",
+      "worker_sha256": "5a812d63ccf534b8524cefbeafe62b5f0b84ceb1bd44cc4edde64a22e01e0747",
+      "model_revision": "0f99f2d0ebe89ac095bcc5903c4dd8f72b367286",
+      "embedding_dimension": 192,
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "local_artifacts_verified": 6,
+      "pip_check": "pass_existing_environment",
+      "fresh_rebuild": "not_run",
+      "quality": "not_qualified"
+    },
+    "evaluation_export": {
+      "reported_versions": {
+        "jiwer": "4.0.0",
+        "pyannote.metrics": "4.1",
+        "pyannote.core": "6.0.1",
+        "num2words": "0.5.14",
+        "reportlab": "4.4.9",
+        "pypdf": "6.10.0"
+      },
+      "lock": null,
+      "fresh_rebuild": "blocked_missing_verified_resolver_locks",
+      "production_dependency": false,
+      "evaluation_snapshot_relative_to_package": "environments/evaluation/official_scorer_requirements.frozen.txt",
+      "export_snapshot_present": false,
+      "export_inventory_relative_to_package": "environments/export/installed-metadata-inventory.json"
+    },
+    "package_tests": {
+      "purpose": "model_free_package_tests_only",
+      "status": "fresh_environment_verified_full_gate_passed",
+      "python_observed": "3.12.13",
+      "environment_relative_path": ".runtime/local-asr-test-runtime-20261026",
+      "lock": "config/local-asr/test-runtime/requirements.lock",
+      "lock_sha256": "9aef2fe4a06e49a75a43c6badf3e19a578cf759d53d12d2ee0fe74d036d6b70f",
+      "installed_package_count": 19,
+      "fresh_rebuild": "pass_isolated_windows_test_environment",
+      "dependency_check": "pass",
+      "model_packages_present": false,
+      "profile": "config/local-asr/test-runtime/environment-manifest.json",
+      "setup_receipt": ".runtime/local-asr-test-runtime-20261026-setup.json"
+    }
+  },
+  "resource_policy": {
+    "host_ram_free_mib_min": 6656,
+    "host_commit_free_mib_min": 9216,
+    "cuda_asr_vram_free_mib_min": 10240,
+    "cuda_asr_allocator_budget_mib": 8192,
+    "device_heavy_jobs_max": 1,
+    "cpu_asr_with_gpu_nemotron_reserves_gpu": true,
+    "historical_job_commit_cap_mib": 8192,
+    "historical_working_set_cap_mib": 4608,
+    "thresholds_are_model_universal_minimums": false,
+    "platform_live_admission_verified": false,
+    "nvidia_enabled": true,
+    "physical_gpu_id": "GPU-88dc7cf8-75af-3632-7d36-f9b16fd767aa",
+    "pilot_nemotron_vram_free_mib_min": 7168,
+    "latest_pilot_admission": {
+      "allowed": false,
+      "reasons": [
+        "insufficient_ram"
+      ],
+      "state": "waiting_resources"
+    },
+    "latest_snapshot": {
+      "free_commit_mib": 31210.5703125,
+      "free_ram_mib": 5071.36328125,
+      "gpu_free_mib": {
+        "GPU-88dc7cf8-75af-3632-7d36-f9b16fd767aa": 7791.58203125
+      },
+      "sampled_at": 3719.062
+    }
+  },
+  "blockers": [
+    "current_server_runtime_auth_device_contract_not_live_verified",
+    "scorer_license_and_ai_media_factory_provenance_unresolved_for_redistribution",
+    "voice_bank_current_user_dpapi_requires_explicit_migration_path",
+    "first_hardware_pilot_waiting_for_available_ram",
+    "real_inference_quality_long_recording_and_production_qualification_pending"
+  ],
+  "historical_cpu_entrypoint": {
+    "wrapper_relative_to_package": "external/cpu-long/scripts/run-dev-audio-experiment.ps1",
+    "profile": "gigaam-nemotron-ctc-long-v1",
+    "asr_device": "cpu",
+    "diarization_device": "cuda",
+    "cpu_threads": 4,
+    "window_seconds": 24,
+    "batch_windows": 128,
+    "batch_deadline_seconds": 300,
+    "stage_deadline_seconds": 1000,
+    "global_deadline_seconds": 3600,
+    "attempts": 2,
+    "portable_to_secretary": false,
+    "status": "source_contract_received_not_executed",
+    "reference_relative_to_package": "CPU_ENTRYPOINT.md"
+  },
+  "server_export": {
+    "reported_head": "90dd924573d599cd1e13ee9370165e7f94caa8e0",
+    "source_relative_to_package": "server/current",
+    "scope": "selected_contract_excerpts_not_standalone_checkout_or_live_server_verification",
+    "speaker_turns_persisted": false,
+    "asr_jobs_lease_fencing_in_main": false,
+    "dev_jobs_reference_relative_to_package": "working-tree/dev-asr-integration"
+  },
+  "package_test_qualification": {
+    "as_of": "2026-10-26",
+    "status": "MODEL_FREE_FULL_GATE_PASSED",
+    "scope": "adapted_windows_derivative_original_tests_unchanged",
+    "acceptance": {
+      "python_tests": 198,
+      "powershell_tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_files_unchanged": 3379
+    },
+    "receipt_relative_path": ".runtime/team-rollout/asr-package-qualification-a70c77a3a5b14bce978f124a6e4c6c34/qualification.json",
+    "receipt_sha256": "9b2cb44ddf1933900a91b729c5c7b5443572054c44e7a9796bd5a4a87cbf8269",
+    "original_package_manifest_sha256": "33e0a9a59d6278e9b2363e822b2ce7f875c3252b8d333270ffa139a3c45d7109",
+    "derivative_package_manifest_sha256": "8828ae7a0c5155585dd4c86662798d4f747883e3f8fdfe6d56d5015c4facaf8b",
+    "frozen_test_selection_sha256": "8018fb1c622e249d3a3a85e04b72b305d9ae40479e5161837363d003c127d6dd",
+    "model_inference": "NOT_RUN",
+    "runtime_qualified": false
+  },
+  "portable_executor_qualification": {
+    "as_of": "2026-10-27",
+    "status": "MODEL_FREE_APPLICATION_INTEGRATION_PASSED",
+    "receipt_relative_path": ".runtime/local-asr-stage1-qualification-20261027.json",
+    "receipt_sha256": "2239321a4a4d272b3e78515fd9ae581645327d33c4e0c8a0a817b75dba345951",
+    "local_asr_tests": 409,
+    "application_regression_tests": 201,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_generation": "received_current_canonical_export",
+    "entrypoint": "secretary_owned_controller_and_pinned_stage_adapter",
+    "activation_environment_variable": "SECRETARY_LOCAL_ASR_PROFILE",
+    "model_inference": "NOT_RUN",
+    "runtime_qualified": false
+  },
+  "resolved_by_portable_executor_stage1": [
+    "historical_current_cpu_source_drift_requires_explicit_generation_selection",
+    "fixed_desktop_paths_require_tested_portability_adapter"
+  ],
+  "installable_lock_scope": [
+    "asr_cpu",
+    "nemotron"
+  ],
+  "inference_authorization_scope": "one_bounded_public_sample_pilot_per_pinned_authority_not_production",
+  "production_activation": false,
+  "runtime_qualified": false,
+  "resolved_or_narrowed_by_stage2": [
+    "canonical_dependency_resolver_locks_and_clean_rebuild_missing",
+    "local_rnnt_ctc_nemotron_weight_hashes_not_verified",
+    "model_inference_pause_remains_active",
+    "rnnt_ref_correction_pending_target_weight_rehash_original_source_preserved",
+    "server_speaker_turns_persistence_and_asr_jobs_missing_in_main",
+    "target_resource_admission_not_repeated_initial_laptop_snapshot_ram_below_guard_vram_unknown"
+  ],
+  "hardware_pilot_preparation": {
+    "status": "prepared_inference_not_run_resource_gate_blocked",
+    "authorization": "user_stage2_and_explicit_nvidia_enablement_20261027",
+    "environment_provenance": {
+      "relative_path": ".runtime/model-runtime-20261027/evidence/environment-provenance.json",
+      "sha256": "243f43f39d439c92d22e70ee0dc535990cd8acfeeaa5176358bbd74aeb728638"
+    },
+    "ready_state": {
+      "relative_path": ".runtime/model-pilot-evidence-20261027/ready-state-01.json",
+      "sha256": "3792c952ac6b9504499e70be248ed8c541aa2dc724cfefc77e3029a4846a64a5"
+    },
+    "authority": {
+      "relative_path": ".runtime/model-pilot-evidence-20261027/authority-01.json",
+      "sha256": "afac05995a9dd059ce19a43f631a247c24f95c27a6450861daa3847ebe28b62f"
+    },
+    "gpu_enablement": {
+      "relative_path": ".runtime/model-pilot-evidence-20261027/gpu-enablement.json",
+      "sha256": "c21b730de20138ec84872abf59ec75027e2f61371f3f9e59bc80f17648c8def9"
+    },
+    "first_public_sample_seconds": 11.29,
+    "model_inference": "NOT_RUN",
+    "quality_evaluation": "NOT_RUN",
+    "application_publication": false,
+    "production_qualified": false,
+    "full_local_asr_tests": {
+      "passed": 431,
+      "failures": 0,
+      "skipped": 0,
+      "receipt": ".runtime/team-rollout/offline-342a7ed0bc914db2b0c21246a8a8958c/junit.xml"
+    },
+    "final_pilot_focused_tests": {
+      "passed": 39,
+      "failures": 0,
+      "receipt": ".runtime/team-rollout/offline-02397916d441465581fad613b900e023/junit.xml"
+    },
+    "postprocess_focused_tests": {
+      "passed": 63,
+      "failures": 0,
+      "receipt": ".runtime/team-rollout/offline-e0b293311e7b44caa9069a9ad1d6f762/junit.xml"
+    },
+    "test_counts_overlap": true
+  }
+}

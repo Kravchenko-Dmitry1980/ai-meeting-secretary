@@ -2,17 +2,17 @@
 
 React 19 + TypeScript 5.9 + Vite 8. Production files in `dist/` are served by the Secretary backend at `http://127.0.0.1:8765`. The normal application starts with the root `scripts/start.ps1`.
 
-Optional frontend development, with Secretary backend already running:
+Optional frontend development, from the clone root with Secretary backend already running:
 
 ```powershell
-Set-Location 'D:\AI\Projects\Active\Secretary\frontend'
+Set-Location -LiteralPath '.\frontend'
 npm.cmd ci --ignore-scripts
 npm.cmd run dev
 ```
 
 Vite binds only `127.0.0.1:5173` and proxies `/api` to backend `127.0.0.1:8765`. Node >=22.12 is required; verified here with Node 24.19.0 / npm 11.17.0. Dependencies are local to `frontend/node_modules`; npm cache is `frontend/.cache/npm`.
 
-Checks:
+Checks, from the `frontend` directory:
 
 ```powershell
 npm.cmd run api:types

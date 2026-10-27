@@ -73,6 +73,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Runs */
+        get: operations["runs_api_v1_meetings__meeting_id__local_asr_runs_get"];
+        put?: never;
+        /** Import Run */
+        post: operations["import_run_api_v1_meetings__meeting_id__local_asr_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Run */
+        get: operations["read_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Run */
+        get: operations["export_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/clusters/{speaker_label}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview */
+        get: operations["preview_api_v1_meetings__meeting_id__local_asr_runs__run_id__clusters__speaker_label__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/cluster-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Cluster */
+        post: operations["review_cluster_api_v1_meetings__meeting_id__local_asr_runs__run_id__cluster_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/segment-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Segment */
+        post: operations["review_segment_api_v1_meetings__meeting_id__local_asr_runs__run_id__segment_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare */
+        post: operations["prepare_api_v1_meetings__meeting_id__local_asr_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job */
+        get: operations["job_api_v1_meetings__meeting_id__local_asr_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_v1_meetings__meeting_id__local_asr_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_v1_meetings__meeting_id__local_asr_jobs__job_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/{path}": {
         parameters: {
             query?: never;
@@ -225,6 +396,23 @@ export interface paths {
         head?: never;
         /** Review Task Assignments */
         patch: operations["review_task_assignments_api_v1_meetings__meeting_id__task_assignments_patch"];
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/task-assignments/autofill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Autofill Task Assignments */
+        post: operations["autofill_task_assignments_api_v1_meetings__meeting_id__task_assignments_autofill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/meetings/{meeting_id}/task-publications/context": {
@@ -1053,7 +1241,7 @@ export interface components {
              * @default unknown
              * @enum {string}
              */
-            assignment_basis: "named_person" | "self_commitment" | "manual" | "unknown";
+            assignment_basis: "named_person" | "self_commitment" | "manual" | "unknown" | "all_attendees";
             /**
              * Assignment Revision
              * @default 0
@@ -1081,6 +1269,24 @@ export interface components {
             expected_roster_revision: number;
             /** Operation Id */
             operation_id: string;
+        };
+        /** AlignmentDiagnostics */
+        AlignmentDiagnostics: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "partial" | "unavailable";
+            /** Reason Codes */
+            reason_codes?: string[];
+            /** Unsupported Token Indices */
+            unsupported_token_indices?: number[];
+            /**
+             * Tokenizer Compatibility
+             * @default unverified
+             * @enum {string}
+             */
+            tokenizer_compatibility: "verified" | "unverified" | "unsupported";
         };
         /**
          * AssignmentProposal
@@ -1242,7 +1448,7 @@ export interface components {
              * Basis
              * @enum {string}
              */
-            basis: "named_person" | "self_commitment" | "manual" | "unknown";
+            basis: "named_person" | "self_commitment" | "manual" | "unknown" | "all_attendees";
             /**
              * Status
              * @enum {string}
@@ -1627,6 +1833,15 @@ export interface components {
             /** Bypass Attribution Revision */
             bypass_attribution_revision?: number | null;
         };
+        /** ImportLocalAsrRun */
+        ImportLocalAsrRun: {
+            /** Operation Id */
+            operation_id: string;
+            /** Transcript Version */
+            transcript_version: number;
+            result: components["schemas"]["LocalAsrV2"];
+            artifacts: components["schemas"]["LocalAsrArtifactsV1"];
+        };
         /** InvitationGrant */
         InvitationGrant: {
             /** Id */
@@ -1661,6 +1876,98 @@ export interface components {
         JobAccepted: {
             /** Job Id */
             job_id: string;
+        };
+        /** LocalAsrArtifactsV1 */
+        LocalAsrArtifactsV1: {
+            /**
+             * Schema Version
+             * @default secretary.local-asr-artifacts.v1
+             * @constant
+             */
+            schema_version: "secretary.local-asr-artifacts.v1";
+            /** Audio Ref */
+            audio_ref: string;
+            /** Input Sha256 */
+            input_sha256: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Selected Text */
+            selected_text: string;
+            /** Selected Text Sha256 */
+            selected_text_sha256: string;
+            /** Source Segments */
+            source_segments: components["schemas"]["SourceSegment"][];
+            /** Segment Sources */
+            segment_sources: components["schemas"]["SegmentSources"][];
+            /** Words */
+            words?: components["schemas"]["WordSpan"][];
+            alignment: components["schemas"]["AlignmentDiagnostics"];
+            /** Speaker Kinds */
+            speaker_kinds: {
+                [key: string]: "single" | "unknown" | "composite";
+            };
+            identity: components["schemas"]["RuntimeIdentity"];
+            /** Warnings */
+            warnings?: string[];
+            /** Fallback Counters */
+            fallback_counters?: {
+                [key: string]: number;
+            };
+            /** Runtime Receipts */
+            runtime_receipts?: components["schemas"]["RuntimeReceipt"][];
+        };
+        /** LocalAsrSegment */
+        LocalAsrSegment: {
+            /** Ordinal */
+            ordinal: number;
+            /** Speaker Label */
+            speaker_label: string;
+            /** Started Ms */
+            started_ms: number;
+            /** Ended Ms */
+            ended_ms: number;
+            /** Text */
+            text: string;
+        };
+        /** LocalAsrTurn */
+        LocalAsrTurn: {
+            /** Ordinal */
+            ordinal: number;
+            /** Speaker Label */
+            speaker_label: string;
+            /** Started Ms */
+            started_ms: number;
+            /** Ended Ms */
+            ended_ms: number;
+        };
+        /** LocalAsrV2 */
+        LocalAsrV2: {
+            /**
+             * Schema Version
+             * @default neurohr.local-asr.v2
+             * @constant
+             */
+            schema_version: "neurohr.local-asr.v2";
+            /** Provider */
+            provider: string;
+            /** Language */
+            language: string;
+            /** Input Sha256 */
+            input_sha256: string;
+            /** Transcript Text */
+            transcript_text: string;
+            /** Segments */
+            segments: number;
+            /** Segment Items */
+            segment_items: components["schemas"]["LocalAsrSegment"][];
+            /** Speaker Turns */
+            speaker_turns?: components["schemas"]["LocalAsrTurn"][];
+            /** Warnings */
+            warnings?: string[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
         };
         /** LocalReadinessComponent */
         LocalReadinessComponent: {
@@ -1843,6 +2150,13 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** PrepareLocalAsrJob */
+        PrepareLocalAsrJob: {
+            /** Operation Id */
+            operation_id: string;
+            /** Transcript Version */
+            transcript_version: number;
+        };
         /** PreviewPublications */
         PreviewPublications: {
             scope: components["schemas"]["PublicationScope"];
@@ -1897,7 +2211,7 @@ export interface components {
              * Stage
              * @enum {string}
              */
-            stage: "prepare" | "transcribe" | "identify_speakers" | "summarize";
+            stage: "prepare" | "transcribe" | "identify_speakers" | "summarize" | "local_asr";
             /** Intent Key */
             intent_key?: string | null;
             /** Run Id */
@@ -2175,7 +2489,15 @@ export interface components {
              * Basis
              * @enum {string}
              */
-            basis: "named_person" | "self_commitment" | "manual" | "unknown";
+            basis: "named_person" | "self_commitment" | "manual" | "unknown" | "all_attendees";
+            /**
+             * Audience
+             * @default person
+             * @enum {string}
+             */
+            audience: "person" | "all_attendees" | "unassigned";
+            /** Assignee Profile Id */
+            assignee_profile_id?: string | null;
             /**
              * Status
              * @enum {string}
@@ -2229,6 +2551,36 @@ export interface components {
             /** Changes */
             changes: components["schemas"]["AttributionChange"][];
         };
+        /** ReviewLocalAsrCluster */
+        ReviewLocalAsrCluster: {
+            /** Operation Id */
+            operation_id: string;
+            /** Expected Review Revision */
+            expected_review_revision: number;
+            /** Speaker Label */
+            speaker_label: string;
+            /** Shown Segment Ordinals */
+            shown_segment_ordinals: number[];
+            /** Excluded Segment Ordinals */
+            excluded_segment_ordinals?: number[];
+            /** Participant Id */
+            participant_id: string;
+            /** Listening Confirmed */
+            listening_confirmed: boolean;
+        };
+        /** ReviewLocalAsrSegment */
+        ReviewLocalAsrSegment: {
+            /** Operation Id */
+            operation_id: string;
+            /** Expected Review Revision */
+            expected_review_revision: number;
+            /** Segment Ordinal */
+            segment_ordinal: number;
+            /** Participant Id */
+            participant_id: string | null;
+            /** Listening Confirmed */
+            listening_confirmed: boolean;
+        };
         /** ReviewTaskAssignments */
         ReviewTaskAssignments: {
             /** Transcript Version */
@@ -2251,6 +2603,72 @@ export interface components {
             /** Expected Revision */
             expected_revision: number;
         };
+        /** RuntimeIdentity */
+        RuntimeIdentity: {
+            /**
+             * Profile
+             * @default nemotron-ctc
+             * @constant
+             */
+            profile: "nemotron-ctc";
+            /** Profile Digest */
+            profile_digest: string;
+            /** Code Digest */
+            code_digest: string;
+            /** Device */
+            device: string;
+            /** Precision */
+            precision: string;
+            /** Models */
+            models: components["schemas"]["RuntimeModel"][];
+            /** Asr Device */
+            asr_device?: ("cpu" | "cuda") | null;
+            /** Diarization Device */
+            diarization_device?: ("cpu" | "cuda") | null;
+            /** Physical Gpu Id */
+            physical_gpu_id?: string | null;
+        };
+        /** RuntimeModel */
+        RuntimeModel: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "rnnt" | "ctc" | "diarizer" | "identity";
+            /** Model Id */
+            model_id: string;
+            /** Revision */
+            revision: string;
+            /** Weights Sha256 */
+            weights_sha256: string;
+            /** Loader Sha256 */
+            loader_sha256: string;
+            /** Processor Sha256 */
+            processor_sha256: string;
+            /** Custom Code Sha256 */
+            custom_code_sha256: string;
+        };
+        /** RuntimeReceipt */
+        RuntimeReceipt: {
+            /** Stage */
+            stage: string;
+            /** Receipt Sha256 */
+            receipt_sha256: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "fallback" | "not_run";
+            /** Elapsed Ms */
+            elapsed_ms?: number | null;
+        };
+        /** SegmentSources */
+        SegmentSources: {
+            /** Ordinal */
+            ordinal: number;
+            /** Source Segment Ids */
+            source_segment_ids: string[];
+        };
         /** SegmentsPage */
         SegmentsPage: {
             /** Items */
@@ -2259,6 +2677,19 @@ export interface components {
             total: number;
             /** Transcript Version */
             transcript_version: number;
+        };
+        /** SourceSegment */
+        SourceSegment: {
+            /** Segment Id */
+            segment_id: string;
+            /** Text */
+            text: string;
+            /** Channel */
+            channel: string;
+            /** Started Ms */
+            started_ms: number | null;
+            /** Ended Ms */
+            ended_ms: number | null;
         };
         /** Speaker */
         Speaker: {
@@ -2427,9 +2858,11 @@ export interface components {
              * Decision
              * @enum {string}
              */
-            decision: "confirm_proposal" | "set_manual" | "clear";
+            decision: "confirm_proposal" | "set_manual" | "clear" | "assign_all" | "leave_unassigned" | "apply_automatic";
             /** Participant Id */
             participant_id?: string | null;
+            /** Assignee Profile Id */
+            assignee_profile_id?: string | null;
         };
         /** TaskOrigin */
         TaskOrigin: {
@@ -2614,6 +3047,21 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WordSpan */
+        WordSpan: {
+            /** Token Index */
+            token_index: number;
+            /** Text */
+            text: string;
+            /** Char Start */
+            char_start: number;
+            /** Char End */
+            char_end: number;
+            /** Started Ms */
+            started_ms: number;
+            /** Ended Ms */
+            ended_ms: number;
         };
     };
     responses: never;
@@ -3012,6 +3460,372 @@ export interface operations {
             };
         };
     };
+    runs_api_v1_meetings__meeting_id__local_asr_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_run_api_v1_meetings__meeting_id__local_asr_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLocalAsrRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_v1_meetings__meeting_id__local_asr_runs__run_id__clusters__speaker_label__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                run_id: string;
+                speaker_label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_cluster_api_v1_meetings__meeting_id__local_asr_runs__run_id__cluster_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewLocalAsrCluster"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_segment_api_v1_meetings__meeting_id__local_asr_runs__run_id__segment_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewLocalAsrSegment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_api_v1_meetings__meeting_id__local_asr_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepareLocalAsrJob"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_api_v1_meetings__meeting_id__local_asr_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_v1_meetings__meeting_id__local_asr_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_v1_meetings__meeting_id__local_asr_jobs__job_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preflight__path__options: {
         parameters: {
             query?: never;
@@ -3312,6 +4126,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssignmentReviewResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    autofill_task_assignments_api_v1_meetings__meeting_id__task_assignments_autofill_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4384,7 +5229,9 @@ export interface operations {
     };
     upload_api_v1_meetings__meeting_id__upload_post: {
         parameters: {
-            query?: never;
+            query?: {
+                processing_route?: "cloud" | "local";
+            };
             header?: never;
             path: {
                 meeting_id: string;

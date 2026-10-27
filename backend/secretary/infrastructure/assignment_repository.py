@@ -7,6 +7,7 @@ from secretary.application.assignments import (
     locally_revalidate, project_summary, resolve_summary, review_batch, snapshot,
 )
 from secretary.application.summary_context import assignment_context, freeze_summary_context
+from secretary.domain.assignment_evidence import DirectoryPerson
 from secretary.domain.summary_context import AssignmentReviewResult, AssignmentSnapshot, FrozenSummaryContext
 from secretary.domain.speakers import SpeakerConflict, SpeakerNotFound
 from secretary.infrastructure.database import now, uid, MEETING_FIELDS
@@ -41,6 +42,39 @@ ASSIGNMENT_MIGRATION = (
 )
 
 
+ASSIGNMENT_AUDIENCE_MIGRATION = (
+    "DROP TRIGGER IF EXISTS task_assignments_immutable_UPDATE",
+    "DROP TRIGGER IF EXISTS task_assignments_immutable_DELETE",
+    """CREATE TABLE task_assignments_v9(
+        meeting_id TEXT NOT NULL,summary_version INTEGER NOT NULL CHECK(typeof(summary_version)='integer' AND summary_version>=0),action_id TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>=0),participant_id TEXT,
+        basis TEXT NOT NULL CHECK(basis IN ('named_person','self_commitment','manual','unknown','all_attendees')),
+        source_segment_ids TEXT NOT NULL CHECK(json_valid(source_segment_ids) AND json_type(source_segment_ids)='array'),
+        evidence_quote TEXT NOT NULL,attribution_revision INTEGER NOT NULL CHECK(typeof(attribution_revision)='integer' AND attribution_revision>=0),
+        roster_revision INTEGER NOT NULL CHECK(typeof(roster_revision)='integer' AND roster_revision>=0),
+        status TEXT NOT NULL CHECK(status IN ('proposed','confirmed','needs_review')),named_owner_text TEXT,
+        audience TEXT NOT NULL DEFAULT 'person' CHECK(audience IN ('person','all_attendees','unassigned')),
+        assignee_profile_id TEXT REFERENCES person_profiles(id),
+        PRIMARY KEY(meeting_id,summary_version,action_id,revision),
+        FOREIGN KEY(meeting_id,summary_version) REFERENCES summaries(meeting_id,summary_version),
+        FOREIGN KEY(participant_id,meeting_id) REFERENCES meeting_participants(id,meeting_id),
+        CHECK((audience='person' AND basis!='all_attendees' AND (status!='confirmed' OR participant_id IS NOT NULL OR assignee_profile_id IS NOT NULL))
+            OR (audience='all_attendees' AND basis='all_attendees' AND participant_id IS NULL AND assignee_profile_id IS NULL)
+            OR (audience='unassigned' AND basis='unknown' AND status='confirmed' AND participant_id IS NULL AND assignee_profile_id IS NULL)))""",
+    """INSERT INTO task_assignments_v9(
+        meeting_id,summary_version,action_id,revision,participant_id,basis,source_segment_ids,evidence_quote,
+        attribution_revision,roster_revision,status,named_owner_text,audience,assignee_profile_id)
+        SELECT meeting_id,summary_version,action_id,revision,participant_id,basis,source_segment_ids,evidence_quote,
+        attribution_revision,roster_revision,status,named_owner_text,'person',NULL FROM task_assignments""",
+    "DROP TABLE task_assignments",
+    "ALTER TABLE task_assignments_v9 RENAME TO task_assignments",
+    """CREATE TRIGGER task_assignments_immutable_UPDATE BEFORE UPDATE ON task_assignments
+        BEGIN SELECT RAISE(ABORT,'Summary evidence is immutable'); END""",
+    """CREATE TRIGGER task_assignments_immutable_DELETE BEFORE DELETE ON task_assignments
+        BEGIN SELECT RAISE(ABORT,'Summary evidence is immutable'); END""",
+)
+
+
 class AssignmentRepository:
     def __init__(self, db):
         self.db = db
@@ -64,7 +98,12 @@ class AssignmentRepository:
         # contains only evidence, identity and explicit meeting roster.
         frozen = self.capture(conn,summary['meeting_id'],summary['transcript_version'],
             {'summary_model':'','summary_batch_chars':12000,'summary_max_output_tokens':8192})
-        return assignment_context(frozen,summary['summary_version'])
+        context = assignment_context(frozen,summary['summary_version'])
+        rows = conn.execute("SELECT id,display_name,aliases,enabled FROM person_profiles ORDER BY id").fetchall()
+        directory = tuple(DirectoryPerson(
+            profile_id=row["id"], display_name=row["display_name"],
+            aliases=tuple(json.loads(row["aliases"])), enabled=bool(row["enabled"])) for row in rows)
+        return context.model_copy(update={"directory": directory})
 
     @staticmethod
     def bind_job(conn, job):
@@ -152,10 +191,14 @@ class AssignmentRepository:
         conn.execute('INSERT INTO assignment_snapshots VALUES(?,?,?,?)',
             (state.meeting_id,state.summary_version,state.revision,state.model_dump_json()))
         for item in state.items:
-            conn.execute('INSERT INTO task_assignments VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (
+            conn.execute('''INSERT INTO task_assignments(
+                meeting_id,summary_version,action_id,revision,participant_id,basis,source_segment_ids,evidence_quote,
+                attribution_revision,roster_revision,status,named_owner_text,audience,assignee_profile_id)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
                 state.meeting_id,state.summary_version,item.action.action_id,state.revision,item.participant_id,
                 item.basis,canonical(item.action.source_segment_ids),item.action.evidence_quote,
-                item.attribution_revision,item.roster_revision,item.status,item.action.named_owner_text))
+                item.attribution_revision,item.roster_revision,item.status,item.action.named_owner_text,
+                item.audience,item.assignee_profile_id))
         conn.execute('''INSERT INTO task_assignment_state VALUES(?,?,?) ON CONFLICT(meeting_id,summary_version)
             DO UPDATE SET revision=excluded.revision''',(state.meeting_id,state.summary_version,state.revision))
 

@@ -1,0 +1,2 @@
+# Explicit empty configuration prevents discovery of user/project uv settings.
+# The setup command supplies the public PyPI index explicitly.

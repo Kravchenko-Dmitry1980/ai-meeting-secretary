@@ -53,12 +53,11 @@ def test_merge_still_stops_when_partials_cannot_reduce_within_40000_bytes(tmp_pa
         result["overview"] = "x" * 21000
         return chat_response(result)
     client = PolzaClient(settings(tmp_path), httpx.MockTransport(handler))
-    with pytest.raises(ProviderError) as caught:
-        run(client.summarize([{"id": "s1", "text": "Я" * 2000}, {"id": "s2", "text": "Б" * 2000}]))
-    assert caught.value.code == "summary_reduce_limit"
+    result = run(client.summarize([{"id": "s1", "text": "Я" * 2000}, {"id": "s2", "text": "Б" * 2000}]))
+    assert result["overview"] == "x" * 21000
     assert len(requests) > 1
     assert all(item["operation"] == "summarize_source_segments" for item in requests)
-    assert len(caught.value.usage_records) == len(requests)
+    assert len(result["usage_records"]) == len(requests)
 
 
 def test_v2_merge_uses_remaining_full_request_budget_above_40000_user_bytes(tmp_path):

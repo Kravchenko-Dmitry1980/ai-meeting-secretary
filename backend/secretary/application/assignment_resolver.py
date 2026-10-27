@@ -139,12 +139,65 @@ def _fingerprint(action: DraftAction, sources: list[SourceSegment], anchor: Quot
     })
 
 
+_ALL_ATTENDEE_LABELS = frozenset({
+    "все", "всем", "всех", "все участники", "всем участникам", "каждый участник",
+    "каждому участнику", "вся команда", "всей команде", "на всех участников",
+})
+_COLLECTIVE_NOISE = frozenset({
+    "unknown_basis", "named_owner_missing", "generic_named_owner",
+    "missing_named_owner", "named_owner_not_in_quote",
+})
+_ROLE_LABELS = frozenset("""
+ассистент ассистента ассистенту ассистентом ассистентка ассистентки ассистентке ассистенткой
+помощник помощника помощнику помощником помощница помощницы помощнице помощницей
+юрист юриста юристу юристом бухгалтер бухгалтера бухгалтеру бухгалтером
+секретарь секретаря секретарю секретарем
+куратор куратора куратору куратором наставник наставника наставнику наставником
+директор директора директору директором руководитель руководителя руководителю руководителем
+""".split())
+_ALL_ATTENDEE_QUOTE = re.compile(
+    r"\bвсем(?:\s+участникам)?\b|\bвсе участники\b|\bкаждому участнику\b|"
+    r"\bкаждый участник\b|\bвся команда\b|\bвсей команде\b|\bна всех участников\b")
+_INFO_REASONS = frozenset({"named_owner_outside_meeting"})
+
+
+def _label(value: str | None) -> str:
+    return normalize_name(value or "").strip(" .,!?;:«»\"'()[]{}")
+
+
 def _matching_participants(name: str, context: AssignmentContext):
     normalized = normalize_name(name)
     return [p for p in context.participants
             if p.meeting_id == context.scope.meeting_id and p.enabled
             and any(_name_allowed(label) and normalize_name(label) == normalized
                     for label in (p.display_name, *p.aliases))]
+
+
+def _matching_directory(name: str, context: AssignmentContext):
+    normalized = normalize_name(name)
+    return [p for p in context.directory if p.enabled
+            and any(_name_allowed(label) and normalize_name(label) == normalized
+                    for label in (p.display_name, *p.aliases))]
+
+
+def _named_people(source: SourceSegment, anchor: QuoteAnchor, context: AssignmentContext):
+    """Distinct people literally named in the anchor. Attendees win over directory."""
+    found: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    attended = {p.person_profile_id for p in context.participants if p.enabled and p.person_profile_id}
+    groups = [("p", p.participant_id, (p.display_name, *p.aliases), p.enabled and p.meeting_id == context.scope.meeting_id)
+              for p in context.participants]
+    groups.extend(("d", p.profile_id, (p.display_name, *p.aliases), p.enabled and p.profile_id not in attended)
+                  for p in context.directory)
+    for kind, person_id, labels, visible in groups:
+        if not visible:
+            continue
+        if any(_name_allowed(label) and _whole_name(label, source, anchor) for label in labels):
+            key = (kind, person_id)
+            if key not in seen:
+                seen.add(key)
+                found.append(key)
+    return found
 
 
 def _participant(participant_id: str | None, context: AssignmentContext):
@@ -210,7 +263,8 @@ def _identity_for(action: DraftAction, context: AssignmentContext):
 
 def _dependency_signature(action: DraftAction, context: AssignmentContext,
                           sources: list[SourceSegment], anchor: QuoteAnchor | None,
-                          candidate: str | None, reasons: list[str]):
+                          candidate: str | None, reasons: list[str],
+                          audience: str = "person", assignee_profile_id: str | None = None):
     # A revision bump alone is not a semantic change. Named assignments depend
     # on matching eligibility, self assignments on their exact source identity.
     identity = None
@@ -222,6 +276,8 @@ def _dependency_signature(action: DraftAction, context: AssignmentContext,
         "sources": sorted((s.segment_id, _source_hash(s), s.start_ms, s.end_ms) for s in sources),
         "anchor": anchor.model_dump() if anchor else None,
         "identity": identity, "candidate": candidate, "reasons": sorted(set(reasons)),
+        **({"audience": audience} if audience != "person" else {}),
+        **({"assignee_profile_id": assignee_profile_id} if assignee_profile_id else {}),
     })
 
 
@@ -232,24 +288,35 @@ def resolve_assignment(action: DraftAction, context: AssignmentContext) -> Resol
     if anchor_reason:
         reasons.append(anchor_reason)
     fingerprint = _fingerprint(action, sources, anchor) if anchor and not reasons else None
-    participant_id = None
+    participant_id, assignee_profile_id, audience = None, None, "person"
     source = next((s for s in sources if anchor and s.segment_id == anchor.segment_id), None)
+    owner_label = _label(action.named_owner_text)
     if action.basis == "named_person":
         if not action.named_owner_text:
             reasons.append("missing_named_owner")
+        elif owner_label in _ALL_ATTENDEE_LABELS:
+            audience = "all_attendees"
+        elif owner_label in _ROLE_LABELS:
+            reasons.append("role_without_person")
         elif not _name_allowed(action.named_owner_text):
             reasons.append("generic_named_owner")
         elif not anchor or not source or not _whole_name(action.named_owner_text, source, anchor):
             reasons.append("named_owner_not_in_quote")
         else:
             matches = _matching_participants(action.named_owner_text, context)
+            directory = _matching_directory(action.named_owner_text, context)
             if len(matches) == 1:
                 participant_id = matches[0].participant_id
                 _, participant_reason = _participant(participant_id, context)
                 if participant_reason:
                     reasons.append(participant_reason)
+            elif len(matches) > 1 or len(directory) > 1:
+                reasons.append("named_owner_ambiguous")
+            elif len(directory) == 1:
+                assignee_profile_id = directory[0].profile_id
+                reasons.append("named_owner_outside_meeting")
             else:
-                reasons.append("named_owner_missing" if not matches else "named_owner_ambiguous")
+                reasons.append("named_owner_missing")
         reasons.extend(_semantic_contradictions(action, source))
     elif action.basis == "self_commitment":
         if not action.commitment_segment_id:
@@ -271,17 +338,44 @@ def resolve_assignment(action: DraftAction, context: AssignmentContext) -> Resol
         reasons.extend(_semantic_contradictions(action, source))
     else:
         reasons.append("unknown_basis")
-    eligible = participant_id is not None and not reasons
+    if anchor and source and action.basis != "self_commitment":
+        named = _named_people(source, anchor, context)
+        if len(named) > 1:
+            reasons.append("multiple_named_owners")
+            participant_id, assignee_profile_id, audience = None, None, "person"
+    quote = normalize_name(action.evidence_quote)
+    if audience != "all_attendees" and _ALL_ATTENDEE_QUOTE.search(quote) and action.basis != "self_commitment":
+        named = _named_people(source, anchor, context) if anchor and source else []
+        if named or participant_id or assignee_profile_id:
+            reasons.append("audience_mixed")
+            participant_id, assignee_profile_id, audience = None, None, "person"
+        else:
+            audience = "all_attendees"
+    if audience == "all_attendees":
+        participant_id, assignee_profile_id = None, None
+        reasons = [reason for reason in reasons if reason not in _COLLECTIVE_NOISE]
+        reasons.extend(reason for reason in _semantic_contradictions(action, source) if reason not in reasons)
+        if not any(p.enabled and p.meeting_id == context.scope.meeting_id for p in context.participants):
+            reasons.append("all_attendees_empty")
+    elif assignee_profile_id is None and participant_id is None and "role_without_person" not in reasons:
+        if owner_label in _ROLE_LABELS or any(re.search(rf"\b{re.escape(role)}\b", quote) for role in _ROLE_LABELS):
+            reasons.append("role_without_person")
     # Invalid source scopes cannot provide even a displayable automatic candidate.
     if any(r in reasons for r in ("scope_mismatch", "foreign_source", "missing_source",
                                  "duplicate_source_reference", "duplicate_source_id")):
-        participant_id = None
+        participant_id, assignee_profile_id, audience = None, None, "person"
+    blocking = [reason for reason in reasons if reason not in _INFO_REASONS]
+    has_owner = participant_id is not None or assignee_profile_id is not None or audience == "all_attendees"
+    eligible = has_owner and not blocking
+    basis = "all_attendees" if audience == "all_attendees" else action.basis
     codes = tuple(dict.fromkeys(reasons)) or ("draft_evidence_valid",)
     return ResolvedAssignment(
-        action=action, participant_id=participant_id, basis=action.basis,
+        action=action, participant_id=participant_id, assignee_profile_id=assignee_profile_id,
+        audience=audience, basis=basis,
         status="proposed" if eligible else "needs_review", reason_codes=codes,
         confirm_eligible=eligible, anchor=anchor, fingerprint=fingerprint,
-        dependency_signature=_dependency_signature(action, context, sources, anchor, participant_id, reasons),
+        dependency_signature=_dependency_signature(
+            action, context, sources, anchor, participant_id, reasons, audience, assignee_profile_id),
         attribution_revision=context.attribution_revision, roster_revision=context.roster_revision,
     )
 
@@ -312,22 +406,63 @@ def review_assignment(previous: ResolvedAssignment, review: AssignmentReview,
             context.attribution_revision, context.roster_revision):
         raise AssignmentEvidenceError("review_revision_conflict")
     current = revalidate_assignment(previous, context)
+    if review.participant_id is not None and review.assignee_profile_id is not None:
+        raise AssignmentEvidenceError("review_assignee_ambiguous")
     if review.decision == "clear":
-        if review.participant_id is not None:
+        if review.participant_id is not None or review.assignee_profile_id is not None:
             raise AssignmentEvidenceError("clear_requires_null_participant")
         return current.model_copy(update={"basis": "unknown", "participant_id": None,
+            "assignee_profile_id": None, "audience": "person",
             "status": "needs_review", "confirm_eligible": False,
             "reason_codes": ("human_cleared",), "revision": previous.revision + 1})
-    if review.decision == "set_manual":
+    if review.decision == "leave_unassigned":
+        if review.participant_id is not None or review.assignee_profile_id is not None:
+            raise AssignmentEvidenceError("clear_requires_null_participant")
+        return current.model_copy(update={"basis": "unknown", "participant_id": None,
+            "assignee_profile_id": None, "audience": "unassigned",
+            "status": "confirmed", "confirm_eligible": False,
+            "reason_codes": ("human_left_unassigned",), "revision": previous.revision + 1})
+    if review.decision == "assign_all":
+        if review.participant_id is not None or review.assignee_profile_id is not None:
+            raise AssignmentEvidenceError("clear_requires_null_participant")
+        if not any(p.enabled and p.meeting_id == context.scope.meeting_id for p in context.participants):
+            raise AssignmentEvidenceError("all_attendees_empty")
+        return current.model_copy(update={"basis": "all_attendees", "participant_id": None,
+            "assignee_profile_id": None, "audience": "all_attendees",
+            "status": "confirmed", "confirm_eligible": False,
+            "reason_codes": ("human_assigned_all_attendees",), "revision": previous.revision + 1})
+    if review.decision in {"set_manual", "apply_automatic"}:
+        chosen = "automatic_assignment" if review.decision == "apply_automatic" else "human_manual_choice"
+        if review.assignee_profile_id is not None:
+            matches = [p for p in context.directory if p.profile_id == review.assignee_profile_id]
+            if len(matches) != 1 or not matches[0].enabled:
+                raise AssignmentEvidenceError("assignee_profile_unavailable")
+            attended = [p for p in context.participants
+                        if p.enabled and p.person_profile_id == review.assignee_profile_id
+                        and p.meeting_id == context.scope.meeting_id]
+            if len(attended) > 1:
+                raise AssignmentEvidenceError("participant_ambiguous")
+            if len(attended) == 1:
+                return current.model_copy(update={"basis": "manual", "participant_id": attended[0].participant_id,
+                    "assignee_profile_id": None, "audience": "person",
+                    "status": "confirmed", "confirm_eligible": False,
+                    "reason_codes": (chosen,), "revision": previous.revision + 1})
+            return current.model_copy(update={"basis": "manual", "participant_id": None,
+                "assignee_profile_id": review.assignee_profile_id, "audience": "person",
+                "status": "confirmed", "confirm_eligible": False,
+                "reason_codes": (chosen,), "revision": previous.revision + 1})
         _, reason = _participant(review.participant_id, context)
         if review.participant_id is None or reason:
             raise AssignmentEvidenceError(reason or "manual_participant_required")
         return current.model_copy(update={"basis": "manual", "participant_id": review.participant_id,
+            "assignee_profile_id": None, "audience": "person",
             "status": "confirmed", "confirm_eligible": False,
-            "reason_codes": ("human_manual_choice",), "revision": previous.revision + 1})
+            "reason_codes": (chosen,), "revision": previous.revision + 1})
     if current.basis in {"manual", "unknown"} or not current.confirm_eligible:
         raise AssignmentEvidenceError("proposal_not_eligible")
     if review.participant_id is not None and review.participant_id != current.participant_id:
+        raise AssignmentEvidenceError("proposal_participant_mismatch")
+    if review.assignee_profile_id is not None and review.assignee_profile_id != current.assignee_profile_id:
         raise AssignmentEvidenceError("proposal_participant_mismatch")
     if previous.dependency_signature != current.dependency_signature:
         raise AssignmentEvidenceError("proposal_evidence_changed")
@@ -340,20 +475,43 @@ def revalidate_assignment(previous: ResolvedAssignment, context: AssignmentConte
     """Local overlay only. Preserve explicit manual owner, expose conflicts."""
     current = resolve_assignment(previous.action, context)
     common = {"revision": previous.revision, "previous_provenance": previous.previous_provenance}
+    if previous.audience == "unassigned" or "human_left_unassigned" in previous.reason_codes:
+        return current.model_copy(update={**common, "participant_id": None, "assignee_profile_id": None,
+            "audience": "unassigned", "basis": "unknown", "status": "confirmed",
+            "reason_codes": ("human_left_unassigned",), "confirm_eligible": False})
+    if previous.audience == "all_attendees" and "human_assigned_all_attendees" in previous.reason_codes:
+        held = []
+        if not any(p.enabled and p.meeting_id == context.scope.meeting_id for p in context.participants):
+            held.append("all_attendees_empty")
+        if previous.fingerprint != current.fingerprint or previous.action.scope != context.scope:
+            held.append("manual_evidence_changed")
+        return current.model_copy(update={**common, "participant_id": None, "assignee_profile_id": None,
+            "audience": "all_attendees", "basis": "all_attendees",
+            "status": "needs_review" if held else previous.status,
+            "reason_codes": tuple(held) or ("human_assigned_all_attendees",), "confirm_eligible": False,
+            "anchor": previous.anchor, "fingerprint": previous.fingerprint})
     if previous.basis == "manual":
-        _, participant_reason = _participant(previous.participant_id, context)
         reasons = []
+        if previous.assignee_profile_id and not previous.participant_id:
+            profile = next((p for p in context.directory if p.profile_id == previous.assignee_profile_id), None)
+            participant_reason = None if profile and profile.enabled else "assignee_profile_unavailable"
+        else:
+            _, participant_reason = _participant(previous.participant_id, context)
         if participant_reason:
             reasons.append("manual_" + participant_reason)
         # A changed source/quote is a conflict, not permission to replace a person.
         if previous.fingerprint != current.fingerprint or previous.action.scope != context.scope:
             reasons.append("manual_evidence_changed")
         return current.model_copy(update={**common, "participant_id": previous.participant_id,
+            "assignee_profile_id": previous.assignee_profile_id, "audience": "person",
             "basis": "manual", "status": "needs_review" if reasons else previous.status,
-            "reason_codes": tuple(reasons) or ("human_manual_choice",), "confirm_eligible": False,
+            "reason_codes": tuple(reasons) or (("automatic_assignment",)
+                if "automatic_assignment" in previous.reason_codes else ("human_manual_choice",)),
+            "confirm_eligible": False,
             "anchor": previous.anchor, "fingerprint": previous.fingerprint})
     if "human_cleared" in previous.reason_codes:
-        return current.model_copy(update={**common, "participant_id": None, "basis": "unknown",
+        return current.model_copy(update={**common, "participant_id": None, "assignee_profile_id": None,
+            "audience": "person", "basis": "unknown",
             "status": "needs_review", "reason_codes": ("human_cleared",), "confirm_eligible": False})
     if "duplicate_action_evidence" in previous.reason_codes:
         return current.model_copy(update={**common, "status": "needs_review", "confirm_eligible": False,

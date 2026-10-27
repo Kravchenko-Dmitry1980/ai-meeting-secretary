@@ -124,7 +124,9 @@ class TaskAssignment(DTO):
     action_id: str
     revision: Revision
     participant_id: str | None
-    basis: Literal["named_person", "self_commitment", "manual", "unknown"]
+    basis: Literal["named_person", "self_commitment", "manual", "unknown", "all_attendees"]
+    audience: Literal["person", "all_attendees", "unassigned"] = "person"
+    assignee_profile_id: str | None = None
     source_segment_ids: list[str]
     evidence_quote: str
     attribution_revision: Revision

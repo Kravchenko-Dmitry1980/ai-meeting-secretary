@@ -153,6 +153,30 @@ def test_bounded_representatives_hash_once_and_real_progress(setup):
     assert all(len(batch)<=32 and sum(batch)<=120*16000 for batch in engine.calls)
 
 
+def test_per_utterance_groups_share_engine_runs_without_sharing_identity(setup):
+    _, _, segment, _, profiles = setup
+    segments = [segment(120000+i*2000, 122000+i*2000, raw_speaker_id=None) for i in range(4)]
+    output, _, engine = run(setup, segments=segments, engine=FakeEngine([VECTOR_A, VECTOR_B]*2))
+    assert engine.calls == [(32000,)*4]
+    assert [g.group_id for g in output] == [observation_group_id(s) for s in segments]
+    tops = [g.proposals[0].candidates[0].profile_id for g in output]
+    assert tops == [profiles[0].profile_id, profiles[1].profile_id]*2
+    assert all("group_disagreement" not in g.proposals[0].reason_codes for g in output)
+    assert output[-1].progress.observations_embedded == 4
+    assert output[-1].progress.inference_batches == 1
+
+
+def test_shared_batch_boundary_reports_each_group_once(setup):
+    root, _, segment, snapshot, _ = setup
+    segments = [segment(120000+i*1000, 121000+i*1000, raw_speaker_id=None) for i in range(40)]
+    engine = FakeEngine()
+    output = list(identify_groups(snapshot(segments), MeetingAudioReader(root), engine))
+    assert [len(batch) for batch in engine.calls] == [32, 8]
+    assert [g.proposals[0].segment_id for g in output] == [s.segment_id for s in segments]
+    assert [g.progress.observations_processed for g in output] == list(range(1, 41))
+    assert all(g.outcome == "completed" and g.proposals[0].candidates for g in output)
+
+
 def test_hash_once_across_groups(setup):
     _, chunk, segment, _, _ = setup
     output, reader, _ = run(setup, segments=[segment(raw_speaker_id=None),segment(123000,125000,raw_speaker_id=None)])

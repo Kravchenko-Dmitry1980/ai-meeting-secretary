@@ -10,7 +10,7 @@ from secretary.application.assignment_resolver import (
 )
 from secretary.domain.assignment_evidence import (
     AssignmentContext, AssignmentEvidenceError, AssignmentReview, AssignmentScope,
-    DraftAction, IdentityEvidence, RosterParticipant, SourceSegment,
+    DirectoryPerson, DraftAction, IdentityEvidence, RosterParticipant, SourceSegment,
 )
 
 SCOPE = AssignmentScope(meeting_id="meeting", transcript_version=1, summary_version=1)
@@ -468,3 +468,55 @@ def test_duplicate_content_and_action_id_are_review_and_batch_revalidates_locall
     assert all(not r.confirm_eligible for r in revalidate_assignments(results, context))
     collision = action.model_copy(update={"text": "Иной текст"})
     assert all(not r.confirm_eligible for r in resolve_assignments((action, collision), context))
+
+
+SVETLANA = DirectoryPerson(profile_id="svetlana", display_name="Светлана", aliases=("Света",))
+
+
+def test_named_company_person_outside_the_meeting_is_proposed_not_confirmed():
+    action, context = fixture("Светлана, подготовь счёт", basis="named_person", name="Светлана",
+        semantic="directive", identity_status="unknown", participant=None)
+    context = context.model_copy(update={"directory": (SVETLANA,)})
+    result = resolve_assignment(action, context)
+    assert result.participant_id is None and result.assignee_profile_id == "svetlana"
+    assert result.status == "proposed" and result.confirm_eligible
+    assert "named_owner_outside_meeting" in result.reason_codes
+    confirmed = review_assignment(result, command(result, context), context)
+    assert confirmed.status == "confirmed" and confirmed.assignee_profile_id == "svetlana"
+    assert revalidate_assignment(confirmed, context).status == "confirmed"
+
+
+def test_manual_assignment_can_target_a_person_who_did_not_attend():
+    action, context = fixture("Нужно подготовить счёт", basis="unknown", semantic="ambiguous")
+    context = context.model_copy(update={"directory": (SVETLANA,)})
+    result = resolve_assignment(action, context)
+    chosen = review_assignment(result, command(result, context, "set_manual").model_copy(
+        update={"participant_id": None, "assignee_profile_id": "svetlana"}), context)
+    assert (chosen.participant_id, chosen.assignee_profile_id, chosen.status) == (None, "svetlana", "confirmed")
+    assert revalidate_assignment(chosen, context).assignee_profile_id == "svetlana"
+
+
+def test_all_attendees_and_explicit_unassigned_are_stable_human_decisions():
+    action, context = fixture("Всем участникам подготовить отчёт", basis="named_person",
+        name="всем участникам", semantic="directive", identity_status="unknown", participant=None)
+    result = resolve_assignment(action, context)
+    assert result.audience == "all_attendees" and result.basis == "all_attendees" and result.confirm_eligible
+    confirmed = review_assignment(result, command(result, context), context)
+    assert confirmed.status == "confirmed" and confirmed.participant_id is None
+    assert revalidate_assignment(confirmed, context).audience == "all_attendees"
+    unknown, unknown_context = fixture("Потом решим", basis="unknown", semantic="ambiguous")
+    open_item = resolve_assignment(unknown, unknown_context)
+    resting = review_assignment(open_item, command(open_item, unknown_context, "leave_unassigned"), unknown_context)
+    assert resting.audience == "unassigned" and resting.status == "confirmed" and resting.participant_id is None
+    assert revalidate_assignment(resting, unknown_context).reason_codes == ("human_left_unassigned",)
+
+
+def test_several_named_people_and_a_bare_role_stay_unresolved():
+    action, context = fixture("Алексей и Павел Александрович подготовят смету", basis="named_person",
+        name="Алексей", semantic="directive")
+    result = resolve_assignment(action, context)
+    assert result.participant_id is None and result.confirm_eligible is False
+    assert "multiple_named_owners" in result.reason_codes
+    role, role_context = fixture("Связь держать с ассистенткой", basis="unknown", semantic="directive")
+    role_result = resolve_assignment(role, role_context)
+    assert role_result.participant_id is None and "role_without_person" in role_result.reason_codes

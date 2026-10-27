@@ -14,8 +14,8 @@
     "models": 200
   },
   "defaults": {
-    "summary_model": "qwen/qwen3-30b-a3b-instruct-2507",
-    "selection_status": "provisional_until_russian_benchmark",
+    "summary_model": "openai/gpt-6-luna-pro",
+    "selection_status": "owner_selected_2026-10-25",
     "stt_model": "openai/whisper-large-v3-turbo"
   },
   "models": [
@@ -200,6 +200,30 @@
       "price_status": "public_catalog_estimate_not_account_receipt",
       "observed_at": "2026-10-02",
       "source_urls": ["https://polza.ai/api/v1/models/openai/gpt-4.1-mini"]
+    },
+    {
+      "id": "openai/gpt-6-luna-pro",
+      "name": "OpenAI: GPT-6 Luna Pro",
+      "type": "chat",
+      "endpoints": ["/api/v1/chat/completions"],
+      "provider_at_observation": "openai/flex",
+      "price_rub_per_minute": null,
+      "input_rub_per_million": "5.91165000",
+      "output_rub_per_million": "29.55825000",
+      "billing_unit": "token",
+      "minimum_billing_seconds": null,
+      "russian_support": "manual_quality_review_required",
+      "timestamps": "not_applicable",
+      "diarization": false,
+      "async_operation": false,
+      "streaming_response": "not_qualified",
+      "live_ingress": false,
+      "context_length": 1050000,
+      "supported_parameters": ["max_tokens", "response_format", "structured_outputs", "reasoning", "reasoning_effort"],
+      "status": "assignment_candidate",
+      "price_status": "public_catalog_estimate_not_account_receipt",
+      "observed_at": "2026-10-25",
+      "source_urls": ["https://polza.ai/api/v1/models/openai/gpt-6-luna-pro"]
     },
     {
       "id": "qwen/qwen3-30b-a3b-instruct-2507",

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = Field(default=600, ge=10, le=1800)
     meeting_budget_rub: float = Field(default=100, ge=0, le=100000)
     local_cost_limits_enabled: bool = True
+    # Owner switch. False skips Secretary spend gates for new Polza requests.
+    # Polza can still reject the key. Default stays on so tests keep the guard.
+    polza_limits_enabled: bool = Field(
+        default=True, validation_alias=AliasChoices("POLZA_LIMITS_ENABLED", "polza_limits_enabled"))
     allow_unknown_price: bool = False
     unknown_request_reservation_rub: float | None = Field(default=None, gt=0, le=100000)
     cloud_enabled: bool = True

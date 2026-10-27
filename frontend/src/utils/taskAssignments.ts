@@ -1,29 +1,36 @@
 import { ApiError } from '../services/api.ts';
 import type { AssignmentChange, AssignmentCommand, AssignmentSnapshot, ResolvedAssignment } from '../services/taskAssignments.ts';
 
-export interface AssignmentParticipant { id: string; display_name: string; enabled: boolean }
+export interface AssignmentParticipant { id: string; display_name: string; enabled: boolean; person_profile_id?: string | null }
+export interface DirectoryPerson { id: string; display_name: string; enabled: boolean }
 export const ASSIGNMENT_BATCH_MAX = 1000;
 export function assignmentStamp(item: ResolvedAssignment): string {
   return JSON.stringify([item.action.scope, item.action.action_id, item.revision, item.dependency_signature, item.participant_id, item.status, item.confirm_eligible]);
 }
-export function canConfirmAssignment(item: ResolvedAssignment, roster: readonly AssignmentParticipant[]): boolean {
+export function canConfirmAssignment(item: ResolvedAssignment, roster: readonly AssignmentParticipant[], directory: readonly DirectoryPerson[] = []): boolean {
   // Revalidated evidence may require human review while remaining eligible.
   // The server owns eligibility; an explicit click supplies that human review.
-  return ['proposed', 'needs_review'].includes(item.status) && ['named_person', 'self_commitment'].includes(item.basis)
-    && item.confirm_eligible && item.participant_id !== null &&
+  if (!['proposed', 'needs_review'].includes(item.status) || !item.confirm_eligible) return false;
+  if ((item.audience ?? 'person') === 'all_attendees' && item.basis === 'all_attendees') return true;
+  if (item.assignee_profile_id && !item.participant_id) {
+    return item.basis === 'named_person' && directory.filter((person) => person.id === item.assignee_profile_id && person.enabled).length === 1;
+  }
+  return ['named_person', 'self_commitment'].includes(item.basis) && item.participant_id !== null &&
     roster.filter((person) => person.id === item.participant_id && person.enabled).length === 1;
 }
-export function captureAssignmentCommand(snapshot: AssignmentSnapshot, changes: AssignmentChange[], roster: readonly AssignmentParticipant[], operationId: string): AssignmentCommand {
+export function captureAssignmentCommand(snapshot: AssignmentSnapshot, changes: AssignmentChange[], roster: readonly AssignmentParticipant[], operationId: string, directory: readonly DirectoryPerson[] = []): AssignmentCommand {
   if (!changes.length || changes.length > ASSIGNMENT_BATCH_MAX || new Set(changes.map((item) => item.action_id)).size !== changes.length) throw new Error('Отметьте от 1 до 1000 разных задач.');
   if (!operationId || [snapshot.transcript_version, snapshot.summary_version, snapshot.revision, snapshot.attribution_revision, snapshot.roster_revision].some((value) => !Number.isSafeInteger(value) || value < 0)) throw new Error('Обновите состояние задач перед сохранением.');
   for (const change of changes) {
     const matches = snapshot.items.filter((item) => item.action.action_id === change.action_id);
     const item = matches[0];
     if (matches.length !== 1 || item.action.scope.meeting_id !== snapshot.meeting_id || item.action.scope.transcript_version !== snapshot.transcript_version || item.action.scope.summary_version !== snapshot.summary_version) throw new Error('Задача относится к другой версии итогов.');
-    if (change.decision === 'confirm_proposal' && (snapshot.captured_context_hash === null || !canConfirmAssignment(item, roster) || (change.participant_id !== null && change.participant_id !== item.participant_id))) throw new Error('Предложение изменилось или требует ручного выбора.');
-    if (change.decision === 'set_manual' && (!change.participant_id || roster.filter((person) => person.id === change.participant_id && person.enabled).length !== 1)) throw new Error('Выберите доступного участника этой встречи.');
-    if (change.decision === 'clear' && change.participant_id !== null) throw new Error('При снятии назначения ответственный должен быть пустым.');
-    if (!['confirm_proposal', 'set_manual', 'clear'].includes(change.decision)) throw new Error('Неизвестное действие с задачей.');
+    if (change.decision === 'confirm_proposal' && (snapshot.captured_context_hash === null || !canConfirmAssignment(item, roster, directory) || (change.participant_id !== null && change.participant_id !== item.participant_id) || (change.assignee_profile_id != null && change.assignee_profile_id !== item.assignee_profile_id))) throw new Error('Предложение изменилось или требует ручного выбора.');
+    const manualRoster = change.decision === 'set_manual' && !!change.participant_id && !change.assignee_profile_id && roster.filter((person) => person.id === change.participant_id && person.enabled).length === 1;
+    const manualDirectory = change.decision === 'set_manual' && !change.participant_id && !!change.assignee_profile_id && directory.filter((person) => person.id === change.assignee_profile_id && person.enabled).length === 1;
+    if (change.decision === 'set_manual' && !manualRoster && !manualDirectory) throw new Error('Выберите сотрудника: участника совещания или человека из справочника компании.');
+    if ((change.decision === 'clear' || change.decision === 'assign_all' || change.decision === 'leave_unassigned') && (change.participant_id !== null || change.assignee_profile_id)) throw new Error('Для этого решения поле ответственного должно быть пустым.');
+    if (!['confirm_proposal', 'set_manual', 'clear', 'assign_all', 'leave_unassigned'].includes(change.decision)) throw new Error('Неизвестное действие с задачей.');
   }
   // Freeze the full CAS tuple and every change, so retry cannot observe later drafts.
   return Object.freeze({ transcript_version: snapshot.transcript_version, summary_version: snapshot.summary_version,
@@ -44,7 +51,15 @@ export function assignmentError(error: unknown): string {
 const reasons: Record<string, string> = {
   draft_evidence_valid: 'Есть основание для предложения; нужна проверка человеком.',
   human_confirmed_assignment: 'Назначение проверено человеком.', human_manual_choice: 'Ответственный выбран человеком.', human_cleared: 'Ответственный снят человеком.',
-  named_owner_missing: 'Названный человек отсутствует в составе встречи.', named_owner_ambiguous: 'Имя соответствует нескольким участникам.',
+  named_owner_missing: 'Имя не найдено ни среди участников совещания, ни в справочнике компании. Добавьте сотрудника без образца голоса и назначьте задачу вручную.', named_owner_ambiguous: 'Имя соответствует нескольким людям.',
+  named_owner_outside_meeting: 'Человек есть в справочнике компании и не участвовал в совещании. Подтвердите назначение.',
+  multiple_named_owners: 'В цитате названы несколько людей. Выберите одного, всех участников совещания или оставьте задачу без ответственного.',
+  role_without_person: 'Названа роль, а не человек. Выберите сотрудника вручную.',
+  audience_mixed: 'В цитате есть и общий адресат, и конкретное имя. Выберите вручную.',
+  all_attendees_empty: 'В совещании нет включённых участников.',
+  human_left_unassigned: 'Ответственный сознательно не назначен.',
+  human_assigned_all_attendees: 'Задача назначена на всех участников совещания.',
+  automatic_assignment: 'Назначено автоматически. Можно изменить, если человек указан неверно.',
   missing_named_owner: 'В предложении нет имени ответственного.', generic_named_owner: 'Общее обозначение не определяет человека.', named_owner_not_in_quote: 'Имя не подтверждено этой цитатой.',
   missing_evidence: 'Дословная цитата отсутствует.', quote_not_found: 'Цитата не найдена в источнике.', ambiguous_quote_anchor: 'Цитата встречается несколько раз.',
   missing_sources: 'Нет ссылок на исходные реплики.', missing_source: 'Исходная реплика недоступна.', foreign_source: 'Источник относится к другой расшифровке.', scope_mismatch: 'Версии источника и итогов различаются.',

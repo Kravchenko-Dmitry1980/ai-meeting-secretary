@@ -464,6 +464,565 @@
         }
       }
     },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs": {
+      "get": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Runs",
+        "operationId": "runs_api_v1_meetings__meeting_id__local_asr_runs_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Import Run",
+        "operationId": "import_run_api_v1_meetings__meeting_id__local_asr_runs_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportLocalAsrRun"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Read Run",
+        "operationId": "read_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/export": {
+      "get": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Export Run",
+        "operationId": "export_run_api_v1_meetings__meeting_id__local_asr_runs__run_id__export_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/clusters/{speaker_label}/preview": {
+      "get": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Preview",
+        "operationId": "preview_api_v1_meetings__meeting_id__local_asr_runs__run_id__clusters__speaker_label__preview_get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "speaker_label",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Speaker Label"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/cluster-reviews": {
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Review Cluster",
+        "operationId": "review_cluster_api_v1_meetings__meeting_id__local_asr_runs__run_id__cluster_reviews_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewLocalAsrCluster"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/runs/{run_id}/segment-reviews": {
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Review Segment",
+        "operationId": "review_segment_api_v1_meetings__meeting_id__local_asr_runs__run_id__segment_reviews_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewLocalAsrSegment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs": {
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Prepare",
+        "operationId": "prepare_api_v1_meetings__meeting_id__local_asr_jobs_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareLocalAsrJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Job",
+        "operationId": "job_api_v1_meetings__meeting_id__local_asr_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Cancel",
+        "operationId": "cancel_api_v1_meetings__meeting_id__local_asr_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/local-asr/jobs/{job_id}/resume": {
+      "post": {
+        "tags": [
+          "local-asr"
+        ],
+        "summary": "Resume",
+        "operationId": "resume_api_v1_meetings__meeting_id__local_asr_jobs__job_id__resume_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{path}": {
       "options": {
         "summary": "Preflight",
@@ -872,6 +1431,43 @@
                 "schema": {
                   "$ref": "#/components/schemas/AssignmentReviewResult"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meetings/{meeting_id}/task-assignments/autofill": {
+      "post": {
+        "summary": "Autofill Task Assignments",
+        "operationId": "autofill_task_assignments_api_v1_meetings__meeting_id__task_assignments_autofill_post",
+        "parameters": [
+          {
+            "name": "meeting_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meeting Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -2277,6 +2873,20 @@
               "type": "string",
               "title": "Meeting Id"
             }
+          },
+          {
+            "name": "processing_route",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "cloud",
+                "local"
+              ],
+              "type": "string",
+              "default": "cloud",
+              "title": "Processing Route"
+            }
           }
         ],
         "requestBody": {
@@ -3569,7 +4179,8 @@
               "named_person",
               "self_commitment",
               "manual",
-              "unknown"
+              "unknown",
+              "all_attendees"
             ],
             "title": "Assignment Basis",
             "default": "unknown"
@@ -3688,6 +4299,55 @@
           "operation_id"
         ],
         "title": "AddParticipant"
+      },
+      "AlignmentDiagnostics": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "unavailable"
+            ],
+            "title": "Status"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:/+-]+$"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Reason Codes"
+          },
+          "unsupported_token_indices": {
+            "items": {
+              "type": "integer",
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "title": "Unsupported Token Indices"
+          },
+          "tokenizer_compatibility": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "unverified",
+              "unsupported"
+            ],
+            "title": "Tokenizer Compatibility",
+            "default": "unverified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AlignmentDiagnostics"
       },
       "AssignmentProposal": {
         "properties": {
@@ -4120,7 +4780,8 @@
               "named_person",
               "self_commitment",
               "manual",
-              "unknown"
+              "unknown",
+              "all_attendees"
             ],
             "title": "Basis"
           },
@@ -5298,6 +5959,36 @@
         ],
         "title": "IdentificationState"
       },
+      "ImportLocalAsrRun": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id"
+          },
+          "transcript_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Transcript Version"
+          },
+          "result": {
+            "$ref": "#/components/schemas/LocalAsrV2"
+          },
+          "artifacts": {
+            "$ref": "#/components/schemas/LocalAsrArtifactsV1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "transcript_version",
+          "result",
+          "artifacts"
+        ],
+        "title": "ImportLocalAsrRun"
+      },
       "InvitationGrant": {
         "properties": {
           "id": {
@@ -5390,6 +6081,293 @@
           "job_id"
         ],
         "title": "JobAccepted"
+      },
+      "LocalAsrArtifactsV1": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "secretary.local-asr-artifacts.v1",
+            "title": "Schema Version",
+            "default": "secretary.local-asr-artifacts.v1"
+          },
+          "audio_ref": {
+            "type": "string",
+            "pattern": "^meeting:[A-Za-z0-9_-]{1,128}$",
+            "title": "Audio Ref"
+          },
+          "input_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Sha256"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Duration Ms"
+          },
+          "selected_text": {
+            "type": "string",
+            "maxLength": 10000000,
+            "title": "Selected Text"
+          },
+          "selected_text_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Selected Text Sha256"
+          },
+          "source_segments": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSegment"
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "minItems": 1,
+            "title": "Source Segments"
+          },
+          "segment_sources": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentSources"
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "minItems": 1,
+            "title": "Segment Sources"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/WordSpan"
+            },
+            "type": "array",
+            "maxItems": 1000000,
+            "title": "Words"
+          },
+          "alignment": {
+            "$ref": "#/components/schemas/AlignmentDiagnostics"
+          },
+          "speaker_kinds": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "single",
+                "unknown",
+                "composite"
+              ]
+            },
+            "propertyNames": {
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "type": "object",
+            "title": "Speaker Kinds"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/RuntimeIdentity"
+          },
+          "warnings": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:/+-]+$"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Warnings"
+          },
+          "fallback_counters": {
+            "patternProperties": {
+              "^[A-Za-z0-9_.:/+-]+$": {
+                "type": "integer",
+                "minimum": 0.0
+              }
+            },
+            "propertyNames": {
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "type": "object",
+            "title": "Fallback Counters"
+          },
+          "runtime_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReceipt"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Runtime Receipts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "audio_ref",
+          "input_sha256",
+          "duration_ms",
+          "selected_text",
+          "selected_text_sha256",
+          "source_segments",
+          "segment_sources",
+          "alignment",
+          "speaker_kinds",
+          "identity"
+        ],
+        "title": "LocalAsrArtifactsV1"
+      },
+      "LocalAsrSegment": {
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ordinal"
+          },
+          "speaker_label": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Speaker Label"
+          },
+          "started_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Started Ms"
+          },
+          "ended_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Ended Ms"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 10000000,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ordinal",
+          "speaker_label",
+          "started_ms",
+          "ended_ms",
+          "text"
+        ],
+        "title": "LocalAsrSegment"
+      },
+      "LocalAsrTurn": {
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ordinal"
+          },
+          "speaker_label": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Speaker Label"
+          },
+          "started_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Started Ms"
+          },
+          "ended_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Ended Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ordinal",
+          "speaker_label",
+          "started_ms",
+          "ended_ms"
+        ],
+        "title": "LocalAsrTurn"
+      },
+      "LocalAsrV2": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "neurohr.local-asr.v2",
+            "title": "Schema Version",
+            "default": "neurohr.local-asr.v2"
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Language"
+          },
+          "input_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Sha256"
+          },
+          "transcript_text": {
+            "type": "string",
+            "maxLength": 10000000,
+            "title": "Transcript Text"
+          },
+          "segments": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Segments"
+          },
+          "segment_items": {
+            "items": {
+              "$ref": "#/components/schemas/LocalAsrSegment"
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "title": "Segment Items"
+          },
+          "speaker_turns": {
+            "items": {
+              "$ref": "#/components/schemas/LocalAsrTurn"
+            },
+            "type": "array",
+            "maxItems": 500000,
+            "title": "Speaker Turns"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Warnings"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "language",
+          "input_sha256",
+          "transcript_text",
+          "segments",
+          "segment_items"
+        ],
+        "title": "LocalAsrV2"
       },
       "LocalReadinessComponent": {
         "properties": {
@@ -6029,6 +7007,28 @@
         ],
         "title": "PersonProfile"
       },
+      "PrepareLocalAsrJob": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id"
+          },
+          "transcript_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Transcript Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "transcript_version"
+        ],
+        "title": "PrepareLocalAsrJob"
+      },
       "PreviewPublications": {
         "properties": {
           "scope": {
@@ -6155,7 +7155,8 @@
               "prepare",
               "transcribe",
               "identify_speakers",
-              "summarize"
+              "summarize",
+              "local_asr"
             ],
             "title": "Stage"
           },
@@ -7107,9 +8108,31 @@
               "named_person",
               "self_commitment",
               "manual",
-              "unknown"
+              "unknown",
+              "all_attendees"
             ],
             "title": "Basis"
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "person",
+              "all_attendees",
+              "unassigned"
+            ],
+            "title": "Audience",
+            "default": "person"
+          },
+          "assignee_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Profile Id"
           },
           "status": {
             "type": "string",
@@ -7270,6 +8293,114 @@
         ],
         "title": "ReviewAttribution"
       },
+      "ReviewLocalAsrCluster": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id"
+          },
+          "expected_review_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Review Revision"
+          },
+          "speaker_label": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Speaker Label"
+          },
+          "shown_segment_ordinals": {
+            "items": {
+              "type": "integer",
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "minItems": 1,
+            "title": "Shown Segment Ordinals"
+          },
+          "excluded_segment_ordinals": {
+            "items": {
+              "type": "integer",
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "title": "Excluded Segment Ordinals"
+          },
+          "participant_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Participant Id"
+          },
+          "listening_confirmed": {
+            "type": "boolean",
+            "title": "Listening Confirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_review_revision",
+          "speaker_label",
+          "shown_segment_ordinals",
+          "participant_id",
+          "listening_confirmed"
+        ],
+        "title": "ReviewLocalAsrCluster"
+      },
+      "ReviewLocalAsrSegment": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Operation Id"
+          },
+          "expected_review_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Review Revision"
+          },
+          "segment_ordinal": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Segment Ordinal"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "listening_confirmed": {
+            "type": "boolean",
+            "title": "Listening Confirmed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_review_revision",
+          "segment_ordinal",
+          "participant_id",
+          "listening_confirmed"
+        ],
+        "title": "ReviewLocalAsrSegment"
+      },
       "ReviewTaskAssignments": {
         "properties": {
           "transcript_version": {
@@ -7341,6 +8472,235 @@
         ],
         "title": "RevokeMember"
       },
+      "RuntimeIdentity": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "const": "nemotron-ctc",
+            "title": "Profile",
+            "default": "nemotron-ctc"
+          },
+          "profile_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Profile Digest"
+          },
+          "code_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Code Digest"
+          },
+          "device": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Device"
+          },
+          "precision": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Precision"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeModel"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Models"
+          },
+          "asr_device": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cpu",
+                  "cuda"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Device"
+          },
+          "diarization_device": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cpu",
+                  "cuda"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diarization Device"
+          },
+          "physical_gpu_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.:/+-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physical Gpu Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile_digest",
+          "code_digest",
+          "device",
+          "precision",
+          "models"
+        ],
+        "title": "RuntimeIdentity"
+      },
+      "RuntimeModel": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "rnnt",
+              "ctc",
+              "diarizer",
+              "identity"
+            ],
+            "title": "Role"
+          },
+          "model_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Model Id"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Revision"
+          },
+          "weights_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Weights Sha256"
+          },
+          "loader_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Loader Sha256"
+          },
+          "processor_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Processor Sha256"
+          },
+          "custom_code_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Custom Code Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "model_id",
+          "revision",
+          "weights_sha256",
+          "loader_sha256",
+          "processor_sha256",
+          "custom_code_sha256"
+        ],
+        "title": "RuntimeModel"
+      },
+      "RuntimeReceipt": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Stage"
+          },
+          "receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Receipt Sha256"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "fallback",
+              "not_run"
+            ],
+            "title": "Status"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "receipt_sha256",
+          "status"
+        ],
+        "title": "RuntimeReceipt"
+      },
+      "SegmentSources": {
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ordinal"
+          },
+          "source_segment_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Source Segment Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ordinal",
+          "source_segment_ids"
+        ],
+        "title": "SegmentSources"
+      },
       "SegmentsPage": {
         "properties": {
           "items": {
@@ -7366,6 +8726,64 @@
           "transcript_version"
         ],
         "title": "SegmentsPage"
+      },
+      "SourceSegment": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Segment Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 10000000,
+            "title": "Text"
+          },
+          "channel": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/+-]+$",
+            "title": "Channel"
+          },
+          "started_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 604800000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started Ms"
+          },
+          "ended_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 604800000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "segment_id",
+          "text",
+          "channel",
+          "started_ms",
+          "ended_ms"
+        ],
+        "title": "SourceSegment"
       },
       "Speaker": {
         "properties": {
@@ -7874,7 +9292,10 @@
             "enum": [
               "confirm_proposal",
               "set_manual",
-              "clear"
+              "clear",
+              "assign_all",
+              "leave_unassigned",
+              "apply_automatic"
             ],
             "title": "Decision"
           },
@@ -7890,6 +9311,19 @@
               }
             ],
             "title": "Participant Id"
+          },
+          "assignee_profile_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Profile Id"
           }
         },
         "additionalProperties": false,
@@ -8453,6 +9887,54 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WordSpan": {
+        "properties": {
+          "token_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Token Index"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "char_start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Char Start"
+          },
+          "char_end": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Char End"
+          },
+          "started_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Started Ms"
+          },
+          "ended_ms": {
+            "type": "integer",
+            "maximum": 604800000.0,
+            "minimum": 0.0,
+            "title": "Ended Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token_index",
+          "text",
+          "char_start",
+          "char_end",
+          "started_ms",
+          "ended_ms"
+        ],
+        "title": "WordSpan"
       }
     }
   }

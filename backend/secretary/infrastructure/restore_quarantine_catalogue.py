@@ -1,4 +1,4 @@
-"""Closed restore-quarantine catalogue for Secretary 9/10, Team 9 and Billing 4.
+"""Closed restore-quarantine catalogue for Secretary, Team 9 and Billing 4.
 
 Only declarations live here: no settings, database opens, migrations or writer
 capability. Native Vikunja is represented by the whole-source R1 watermark.
@@ -169,6 +169,7 @@ EXPECTED_COLUMNS = {
         "meeting_id", "summary_version", "action_id", "revision",
         "participant_id", "basis", "source_segment_ids", "evidence_quote",
         "attribution_revision", "roster_revision", "status", "named_owner_text",
+        "audience", "assignee_profile_id",
     ),
     ("secretary", "task_publication_batch_items"): (
         "operation_id", "ordinal", "delivery_operation_id",
@@ -1000,4 +1001,86 @@ EXPLICIT_LINKS = (
         target_role="secretary", target_family="meetings",
         target_columns=("id",), relation="source_reference",
     ),
+)
+
+# Additive local-ASR v1 is an explicitly known, all-or-none extension. Keep the
+# baseline catalogue separate so old schema-9/10/11 stores remain readable;
+# absence of an optional family must not be mistaken for an empty new family.
+LOCAL_ASR_FAMILY_DISPOSITIONS = {
+    "local_asr_schema": "evidence_only",
+    "local_asr_runs": "evidence_only",
+    "local_asr_review_state": "evidence_only",
+    "local_asr_review_events": "evidence_only",
+    "local_asr_operations": "no_replay",
+    "local_asr_executions": "no_replay",
+    "local_asr_attempts": "no_replay",
+    "local_asr_checkpoints": "no_replay",
+}
+OPTIONAL_FAMILY_GROUPS = {"secretary": (tuple(LOCAL_ASR_FAMILY_DISPOSITIONS),)}
+ALL_FAMILY_DISPOSITIONS = {
+    **FAMILY_DISPOSITIONS,
+    "secretary": {**FAMILY_DISPOSITIONS["secretary"], **LOCAL_ASR_FAMILY_DISPOSITIONS},
+}
+EXPECTED_COLUMNS.update({
+    ("secretary", "local_asr_schema"): ("version", "applied_at"),
+    ("secretary", "local_asr_runs"): (
+        "id", "owner_scope", "meeting_id", "transcript_version", "revision",
+        "artifact_digest", "manifest", "created_at",
+    ),
+    ("secretary", "local_asr_review_state"): ("run_id", "revision"),
+    ("secretary", "local_asr_review_events"): (
+        "run_id", "segment_ordinal", "revision", "participant_id", "person_id",
+        "status", "source", "speaker_cluster_id", "confirmed_at",
+    ),
+    ("secretary", "local_asr_operations"): (
+        "operation_id", "owner_scope", "kind", "scope", "request_hash", "response", "created_at",
+    ),
+    ("secretary", "local_asr_executions"): (
+        "job_id", "application", "owner_scope", "request_id", "request_digest", "plan", "plan_digest",
+        "state", "reason", "worker_id", "owner_pid", "owner_started", "attempt_id", "fence",
+        "lease_until", "attempt_count", "stage", "progress", "artifact_digest", "result_run_id", "qualification",
+    ),
+    ("secretary", "local_asr_attempts"): (
+        "attempt_id", "job_id", "fence", "worker_id", "owner_pid", "owner_started", "state",
+        "started_at", "ended_at", "reason",
+    ),
+    ("secretary", "local_asr_checkpoints"): ("job_id", "stage", "identity", "payload", "payload_digest"),
+})
+PRIMARY_KEYS.update({
+    ("secretary", "local_asr_schema"): ("version",),
+    ("secretary", "local_asr_runs"): ("id",),
+    ("secretary", "local_asr_review_state"): ("run_id",),
+    ("secretary", "local_asr_review_events"): ("run_id", "segment_ordinal", "revision"),
+    ("secretary", "local_asr_operations"): ("operation_id",),
+    ("secretary", "local_asr_executions"): ("job_id",),
+    ("secretary", "local_asr_attempts"): ("attempt_id",),
+    ("secretary", "local_asr_checkpoints"): ("job_id", "stage"),
+})
+SEMANTIC_KEYS.update({
+    ("secretary", "local_asr_runs"): (
+        ("analysis_artifact", ("owner_scope", "meeting_id", "transcript_version", "artifact_digest")),
+    ),
+    ("secretary", "local_asr_operations"): (
+        ("local_command", ("owner_scope", "kind", "scope", "request_hash")),
+    ),
+    ("secretary", "local_asr_executions"): (
+        ("scoped_request", ("application", "owner_scope", "request_id")),
+        ("frozen_request", ("application", "owner_scope", "request_digest")),
+    ),
+    ("secretary", "local_asr_attempts"): (("fenced_attempt", ("job_id", "fence")),),
+    ("secretary", "local_asr_checkpoints"): (("stage_checkpoint", ("job_id", "stage")),),
+})
+EXPLICIT_LINKS += (
+    ReferenceSpec("secretary", "local_asr_executions", ("job_id",),
+                  "secretary", "jobs", ("id",), "authorized_by"),
+    ReferenceSpec("secretary", "local_asr_executions", ("result_run_id",),
+                  "secretary", "local_asr_runs", ("id",), "evidence_for"),
+    ReferenceSpec("secretary", "local_asr_attempts", ("job_id",),
+                  "secretary", "local_asr_executions", ("job_id",), "authorized_by"),
+    ReferenceSpec("secretary", "local_asr_checkpoints", ("job_id",),
+                  "secretary", "local_asr_executions", ("job_id",), "authorized_by"),
+    ReferenceSpec("secretary", "local_asr_review_events", ("participant_id",),
+                  "secretary", "meeting_participants", ("id",), "source_reference"),
+    ReferenceSpec("secretary", "local_asr_review_events", ("person_id",),
+                  "secretary", "person_profiles", ("id",), "source_reference"),
 )

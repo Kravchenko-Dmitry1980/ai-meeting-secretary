@@ -1,0 +1,6 @@
+# The exact local Transformers export is added as a verified local wheel.
+torch==2.8.0+cu128
+transformers==5.18.0.dev0
+librosa==0.11.0
+numpy==2.5.3
+soundfile==0.14.0

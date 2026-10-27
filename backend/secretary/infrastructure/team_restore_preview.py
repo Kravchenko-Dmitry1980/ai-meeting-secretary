@@ -127,7 +127,7 @@ def _source_snapshot(role, path, doc, budget):
         version_rows = list(conn.execute('SELECT version FROM ' + version_table)) if version_table and version_table in tables else []
         if version_table:
             versions = {row[0] for row in version_rows}
-            supported = (versions in (set(range(1, 10)), set(range(1, 11))) if role == 'secretary'
+            supported = (versions in (set(range(1, 10)), set(range(1, 11)), set(range(1, 12))) if role == 'secretary'
                          else versions == set(range(1, 10)) if role == 'team'
                          else bool(version_rows) and len(versions) == 1 and next(iter(versions)) in {3, 4})
             if not supported:

@@ -8,7 +8,7 @@ import pytest
 
 from secretary.infrastructure.polza import PolzaClient, ProviderError
 from secretary.settings import Settings
-from test_monthly_budget import ledger
+from test_monthly_budget import NOW, ledger
 
 KEY_TAG = hashlib.sha256(b"synthetic-not-real").hexdigest()
 
@@ -38,6 +38,38 @@ async def test_disabled_legacy_limits_cannot_bypass_monthly_guard(tmp_path):
     assert failure.value.code == "monthly_budget_exhausted"
     assert failure.value.uncertain is False
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_enabled_limits_still_block_stale_monthly_snapshot(tmp_path):
+    from datetime import timedelta
+    current = [NOW]
+    budget = ledger(tmp_path, key=KEY_TAG, clock=lambda: current[0])
+    current[0] = NOW + timedelta(seconds=61)
+    calls = []
+    client = PolzaClient(settings(tmp_path), httpx.MockTransport(lambda request: calls.append(request)),
+                         budget=budget, charge_context={"key_tag": KEY_TAG, "category": "meeting_stt"})
+    with pytest.raises(ProviderError) as failure:
+        await client.transcribe(audio(tmp_path))
+    assert failure.value.code == "monthly_budget_stale"
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_disabled_polza_limits_send_despite_stale_snapshot(tmp_path):
+    from datetime import timedelta
+    current = [NOW]
+    budget = ledger(tmp_path, key=KEY_TAG, clock=lambda: current[0])
+    current[0] = NOW + timedelta(seconds=61)
+    calls = []
+    client = PolzaClient(settings(tmp_path, polza_limits_enabled=False), httpx.MockTransport(
+        lambda request: calls.append(request) or httpx.Response(200, json={"id": "synthetic-open", "text": "synthetic"})),
+        budget=budget, charge_context={"key_tag": KEY_TAG, "category": "meeting_stt"})
+    await client.transcribe(audio(tmp_path))
+    assert len(calls) == 1
+    assert budget.snapshot().paused_code == "monthly_budget_stale"
+    assert budget.snapshot().reserved_micro == 0
+    assert budget.snapshot().confirmed_micro == 0
 
 
 @pytest.mark.asyncio
@@ -344,6 +376,19 @@ async def test_async_http_rejection_with_cost_is_charged_and_never_auto_retried(
     assert budget.snapshot().reserved_micro == 0
     assert failure.value.retryable is False
     assert failure.value.usage_records[0]["confirmed_rub"] == 5
+
+
+@pytest.mark.asyncio
+async def test_router_without_providers_releases_monthly_reservation(tmp_path):
+    budget = ledger(tmp_path, key=KEY_TAG)
+    client = PolzaClient(settings(tmp_path), httpx.MockTransport(lambda request: httpx.Response(503,
+        json={"error": {"code": "SERVICE_UNAVAILABLE", "metadata": {"reason": "noProvidersForModel"}}})),
+        budget=budget, charge_context={"key_tag": KEY_TAG, "category": "meeting_stt"})
+    with pytest.raises(ProviderError) as failure:
+        await client.transcribe(audio(tmp_path))
+    assert failure.value.code == "model_unavailable" and failure.value.uncertain is False
+    assert budget.snapshot().reserved_micro == 0
+    assert budget.snapshot().confirmed_micro == 0
 
 
 @pytest.mark.asyncio

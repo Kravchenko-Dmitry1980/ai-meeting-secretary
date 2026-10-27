@@ -27,7 +27,13 @@ SUMMARY_CONTEXT_INSTRUCTION = """
 Для каждой задачи assignment_proposal содержит только семантический черновик.
 Не выдавай confirmed/manual, не удостоверяй участника и не утверждай согласие на
 поручение. named_person требует literal имени/явного alias в evidence_quote;
-я/мы/ты/он и остальные местоимения не имена. self_commitment указывает точный
+я/мы/ты/он и остальные местоимения не имена. Человека, которого нет в roster,
+всё равно записывай как named_person и literal named_owner_text: он может быть
+сотрудником компании вне совещания. Если поручение адресовано всем участникам
+этого совещания, basis=unknown и named_owner_text равен дословной фразе вроде
+«всем» или «всем участникам». Если названа только роль без имени, basis=unknown
+и named_owner_text равен этой роли. Если названы несколько людей, basis=unknown.
+self_commitment указывает точный
 commitment_segment_id исходной реплики, а не первого участника группы. При
 вопросе, отрицании, гипотезе, чужой цитате или неоднозначности сохраняй это в
 semantic_flag; если основание неясно, basis=unknown. evidence_quote копируй
@@ -110,6 +116,30 @@ def map_batches(context: FrozenSummaryContext, byte_limit: int) -> list[list[dic
     if current:
         batches.append(current)
     return batches
+
+
+def assemble_partials(partials: list[dict]) -> dict:
+    """Combine grounded partials locally when another model merge would not fit.
+
+    Identical items are kept once. Already validated quotes and source ids stay intact.
+    """
+    fields = ("decisions", "action_items", "open_questions")
+    assembled = {"overview": "", **{field: [] for field in fields}}
+    seen, overviews = set(), []
+    for partial in partials:
+        overview = partial.get("overview")
+        if isinstance(overview, str) and overview and overview not in overviews:
+            overviews.append(overview)
+        for field in fields:
+            for item in partial.get(field) or []:
+                identity = (field, item.get("text"), item.get("evidence_quote"),
+                            tuple(item.get("source_segment_ids") or ()))
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                assembled[field].append(copy.deepcopy(item))
+    assembled["overview"] = "\n\n".join(overviews)
+    return assembled
 
 
 def merge_batches(context: FrozenSummaryContext, partials: list[dict], byte_limit: int, *,

@@ -54,6 +54,15 @@ class RosterParticipant(EvidenceDTO):
     person_profile_id: str | None = None
 
 
+class DirectoryPerson(EvidenceDTO):
+    """Company person who can receive a task without attending the meeting."""
+
+    profile_id: Identifier
+    display_name: str = Field(repr=False)
+    aliases: tuple[str, ...] = Field(default=(), repr=False)
+    enabled: bool = True
+
+
 class IdentityEvidence(EvidenceDTO):
     meeting_id: Identifier
     transcript_version: Revision
@@ -77,6 +86,7 @@ class AssignmentContext(EvidenceDTO):
     sources: tuple[SourceSegment, ...]
     participants: tuple[RosterParticipant, ...]
     identities: tuple[IdentityEvidence, ...] = ()
+    directory: tuple[DirectoryPerson, ...] = ()
 
 
 class QuoteAnchor(EvidenceDTO):
@@ -90,14 +100,16 @@ class CarryoverProvenance(EvidenceDTO):
     summary_version: Revision
     action_id: Identifier
     assignment_revision: Revision
-    basis: Literal["named_person", "self_commitment", "manual", "unknown"]
+    basis: Literal["named_person", "self_commitment", "manual", "unknown", "all_attendees"]
     status: Literal["proposed", "confirmed", "needs_review"]
 
 
 class ResolvedAssignment(EvidenceDTO):
     action: DraftAction
     participant_id: str | None
-    basis: Literal["named_person", "self_commitment", "manual", "unknown"]
+    basis: Literal["named_person", "self_commitment", "manual", "unknown", "all_attendees"]
+    audience: Literal["person", "all_attendees", "unassigned"] = "person"
+    assignee_profile_id: str | None = None
     status: Literal["proposed", "confirmed", "needs_review"]
     reason_codes: tuple[str, ...]
     confirm_eligible: bool
@@ -114,8 +126,9 @@ class AssignmentReview(EvidenceDTO):
     """A human command, separate from the model draft. CAS/persistence is Task5b."""
     scope: AssignmentScope
     action_id: Identifier
-    decision: Literal["confirm_proposal", "set_manual", "clear"]
+    decision: Literal["confirm_proposal", "set_manual", "clear", "assign_all", "leave_unassigned", "apply_automatic"]
     participant_id: str | None = None
+    assignee_profile_id: str | None = None
     expected_attribution_revision: Revision
     expected_roster_revision: Revision
 

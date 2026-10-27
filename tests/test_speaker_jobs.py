@@ -152,7 +152,7 @@ def test_routes_pipeline_and_ordinary_remain_distinct(ctx):
 def test_voice_route_never_inherits_whisper_price_and_rebinding_is_frozen(ctx):
     m=meeting(ctx)
     version,route=ctx.worker.routes.bind(m)
-    assert version==1 and route['settings']=={'stt_model':'aiesa/transcribe','stt_price_rub_per_minute':None}
+    assert version==1 and route['settings']=={'stt_model':'openai/whisper-1','stt_price_rub_per_minute':None}
     ctx.settings.stt_model='other/model'; ctx.settings.stt_price_rub_per_minute=99
     assert ctx.worker.routes.bind(m)==(version,route)
     with pytest.raises(sqlite3.IntegrityError):
@@ -164,7 +164,7 @@ def test_voice_route_never_inherits_whisper_price_and_rebinding_is_frozen(ctx):
 
 
 def test_same_model_price_is_frozen(ctx):
-    ctx.settings.stt_model='aiesa/transcribe'
+    ctx.settings.stt_model='openai/whisper-1'
     m=meeting(ctx)
     assert ctx.worker.routes.bind(m)[1]['settings']['stt_price_rub_per_minute']==7
 
@@ -354,15 +354,19 @@ def test_calibrated_proposed_only_and_revoked_overlay_requires_review(ctx):
 
 
 def test_schema7_atomic_failure_reopen_and_private_data_unchanged(ctx,monkeypatch):
-    from secretary.infrastructure import database
+    from secretary.infrastructure import database, task_publication_repository, summary_resume_repository
     path=ctx.settings.data_dir/'schema6.sqlite3'
-    # Existing approved schema6 generated without executing the new migration.
-    original=Database._migrate_identification
-    monkeypatch.setattr(Database,'_migrate_identification',lambda self:None)
-    old=Database(path)
+    # Generate genuine schema6 without migration7 or its downstream dependants.
+    with monkeypatch.context() as legacy:
+        for method in ('_migrate_identification','_migrate_assignments','_migrate_assignment_audience'):
+            legacy.setattr(Database,method,lambda self:None)
+        legacy.setattr(task_publication_repository,'migrate_task_publications',lambda db:None)
+        legacy.setattr(summary_resume_repository,'migrate_summary_resumes',lambda db:None)
+        old=Database(path)
+    with old.connection() as conn:
+        assert {r[0] for r in conn.execute('SELECT version FROM schema_migrations')} == set(range(1,7))
     old.execute("INSERT INTO meetings(id,title,status,created_at,updated_at) VALUES('old','keep','ready',?,?)",(now(),now()))
     old.execute("INSERT INTO configuration VALUES('local_cost_limits_enabled','false')")
-    monkeypatch.setattr(Database,'_migrate_identification',original)
     statements=database.IDENTIFICATION_MIGRATION
     monkeypatch.setattr(database,'IDENTIFICATION_MIGRATION',(*statements[:3],'INVALID SQL',*statements[3:]))
     with pytest.raises(sqlite3.OperationalError): Database(path)
@@ -415,7 +419,7 @@ def test_api_local_fields_security_and_202_without_inference(tmp_path):
         schema=app.openapi(); assert 'identify_speakers' in schema['components']['schemas']['ProcessingJob']['properties']['stage']['enum']
         response=api.post(f'/api/v1/meetings/{m}/upload',files={'file':('synthetic.wav',waveform(),'audio/wav')},headers=headers)
         assert response.status_code==202 and app.state.db.meeting(m)['transcript_version']==1
-        assert app.state.worker.routes.get(m,1)['settings']['stt_model']=='aiesa/transcribe'
+        assert app.state.worker.routes.get(m,1)['settings']['stt_model']=='openai/whisper-1'
 
 
 def test_api_local_receipt_replays_202_after_terminal_and_progress_is_discoverable(tmp_path):
@@ -683,7 +687,8 @@ def test_partial_manual_reviews_replay_keep_exact_proposal_lineage_across_versio
     untouched=next(i for i in old.items if i.segment_id==remaining.segment_id)
     assert untouched.review_candidates==remaining.review_candidates and untouched.group_id==remaining.group_id
     assert not next(i for i in old.items if i.segment_id==first.segment_id).review_candidates
-    assert ctx.cloud.posts==2 and ctx.cloud.llm==0 and ctx.engine.calls==2
+    # Both chunk-scoped groups share one engine batch per identification run.
+    assert ctx.cloud.posts==2 and ctx.cloud.llm==0 and ctx.engine.calls==1
     lineage=ctx.db.one('SELECT * FROM attribution_proposal_lineage WHERE run_id=?',(untouched.run_id,))
     with pytest.raises(sqlite3.IntegrityError):
         ctx.db.execute('UPDATE attribution_proposal_lineage SET source_intent_id=source_intent_id WHERE run_id=?',(untouched.run_id,))
@@ -696,7 +701,7 @@ def test_partial_manual_reviews_replay_keep_exact_proposal_lineage_across_versio
     with pytest.raises(sqlite3.IntegrityError):
         ctx.db.execute('INSERT INTO attribution_proposal_lineage VALUES(?,?,?,?,?,?)',
             (new.items[0].run_id,first.segment_id,m,2,new.revision,lineage['source_intent_id']))
-    assert ctx.cloud.posts==4 and ctx.cloud.llm==0 and ctx.engine.calls==4
+    assert ctx.cloud.posts==4 and ctx.cloud.llm==0 and ctx.engine.calls==2
 
 
 @pytest.mark.parametrize('shape',['all_manual','empty'])

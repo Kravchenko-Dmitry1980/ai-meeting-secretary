@@ -83,6 +83,27 @@ class EmbeddingEngine(Protocol):
     def embed(self, clips, *, cancel=None): ...
 
 
+@dataclass(repr=False)
+class _GroupWork:
+    group_id: str
+    members: list
+    reasons: dict = field(default_factory=dict)
+    matched: dict = field(default_factory=dict)
+    excerpt_winners: set = field(default_factory=set)
+    outcome: str = "completed"
+    failure: str | None = None
+
+
+@dataclass(repr=False)
+class _SharedBatch:
+    clips: list = field(default_factory=list)
+    owners: list = field(default_factory=list)
+    works: dict = field(default_factory=dict)
+
+    def exceeds(self, count, samples):
+        return len(self.clips) + count > 32 or sum(n for _, n in self.owners) + samples > 120*16000
+
+
 def observation_group_id(segment: SegmentSnapshot) -> str:
     """A raw label is local to this chunk/version/channel; null is per segment."""
     value = (segment.meeting_id, segment.transcript_version, segment.chunk_id,
@@ -196,13 +217,13 @@ def _embed_matches(engine, clips, owners, snapshot, cancel):
             or len(batch.vectors) != len(clips)
             or any(not valid_vector(v) for v in batch.vectors)):
         raise VoiceError("invalid_engine_response")
-    queries, winners = {}, set()
+    queries, winners = {}, {}
     for owner, vector in zip(owners, batch.vectors):
         check_cancel(cancel)
         queries.setdefault(owner[0], []).append(vector)
         review = match_voice((vector,), snapshot.candidates, model=snapshot.model, duration_samples=16000)
         if review.candidates and (len(review.candidates) == 1 or review.candidates[0].raw_score > review.candidates[1].raw_score):
-            winners.add(review.candidates[0].profile_id)
+            winners.setdefault(owner[0], set()).add(review.candidates[0].profile_id)
     results = {}
     for segment_id, vectors in queries.items():
         check_cancel(cancel)
@@ -218,10 +239,11 @@ def identify_groups(snapshot: IdentificationInput, reader: MeetingAudioReader,
                     engine: EmbeddingEngine | None, *, cancel=None) -> Iterator[IdentificationGroupResult]:
     """Yield small results one scoped group at a time in snapshot order.
 
-    All eligible observations are read in batches <=32 clips / 120 seconds;
-    each observation uses at most three 1..10s excerpts. Identity is never copied
-    from another observation. Only current batch PCM/vectors live in inference.
-    Caller may stream results to its
+    Eligible observations of consecutive groups share engine batches <=32 clips /
+    120 seconds, so per-utterance groups do not start one engine run each; a group
+    is yielded only after all of its clips were embedded. Each observation uses at
+    most three 1..10s excerpts. Identity is never copied from another observation.
+    Only current batch PCM/vectors live in inference. Caller may stream results to its
     run store; it must not mistake partial iteration for successful completion.
     Cancellation raises VoiceError('cancelled'), including after inference.
     """
@@ -231,90 +253,46 @@ def identify_groups(snapshot: IdentificationInput, reader: MeetingAudioReader,
     groups = {}
     for s in snapshot.segments:
         groups.setdefault(observation_group_id(s), []).append(s)
-    processed = embedded = skipped = batches = excerpts = 0
+    totals = {"processed": 0, "embedded": 0, "batches": 0, "excerpts": 0}
     started = time.monotonic()
-    for group_id, members in groups.items():
+    shared, waiting = _SharedBatch(), []
+
+    def flush():
+        if not shared.clips:
+            return
         check_cancel(cancel)
-        reasons = {}
-        eligible = []
-        for s in members:
-            reason = _timing_reason(s, chunks[s.chunk_id])
-            if s.overlap or s.segment_id in contaminated:
-                reason = "overlap"
-            elif not s.quality_ok:
-                reason = "bad_quality"
-            if reason:
-                reasons[s.segment_id] = reason
-            else:
-                eligible.append(s)
-        matched, outcome, excerpt_winners = {}, "completed", set()
-        clips, owners = [], []
-        failure = None
+        totals["batches"] += 1
+        try:
+            results, winners = _embed_matches(engine, shared.clips, shared.owners, snapshot, cancel)
+            totals["excerpts"] += len(shared.clips)
+            for segment_id, result in results.items():
+                work = shared.works[segment_id]
+                work.matched[segment_id] = result
+                work.excerpt_winners.update(winners.get(segment_id, ()))
+        except VoiceError as error:
+            if error.reason == "cancelled":
+                raise
+            for segment_id, work in shared.works.items():
+                work.failure = error.reason
+                work.outcome = "runtime_unavailable" if error.reason in RUNTIME_UNAVAILABLE else "error"
+                work.reasons[segment_id] = error.reason
+        finally:
+            shared.clips.clear()
+            shared.owners.clear()
+            shared.works.clear()
 
-        def flush():
-            nonlocal embedded, batches, excerpts, outcome, failure
-            if not clips:
-                return
-            check_cancel(cancel)
-            batches += 1
-            try:
-                results, winners = _embed_matches(engine, clips, owners, snapshot, cancel)
-                matched.update(results)
-                excerpt_winners.update(winners)
-                embedded += len(results)
-                excerpts += len(clips)
-            except VoiceError as error:
-                if error.reason == "cancelled":
-                    raise
-                failure = error.reason
-                outcome = "runtime_unavailable" if failure in RUNTIME_UNAVAILABLE else "error"
-                for segment_id, _ in owners:
-                    reasons[segment_id] = failure
-            finally:
-                clips.clear()
-                owners.clear()
-
-        for s in eligible:
-            check_cancel(cancel)
-            if not snapshot.candidates:
-                reasons[s.segment_id] = "no_candidates"
-                continue
-            if engine is None:
-                reasons[s.segment_id] = "runtime_missing"
-                outcome = "runtime_unavailable"
-                continue
-            windows = _windows(s, chunks[s.chunk_id], 3)
-            samples = sum(end-begin for begin, end in windows)
-            if len(clips) + len(windows) > 32 or sum(n for _, n in owners) + samples > 120*16000:
-                flush()
-            if failure:
-                reasons[s.segment_id] = failure
-                continue
-            try:
-                # A rejected excerpt rejects the observation as a whole.
-                observation_clips = _read_observation(reader, chunks[s.chunk_id], windows, cancel)
-                clips.extend(observation_clips)
-                owners.extend((s.segment_id, len(pcm)//2) for pcm in observation_clips)
-                del observation_clips
-            except VoiceError as error:
-                if error.reason == "cancelled":
-                    raise
-                reasons[s.segment_id] = error.reason
-                if error.reason in RUNTIME_UNAVAILABLE:
-                    outcome = "runtime_unavailable"
-        flush()
-        del flush, clips, owners
+    def report(work):
         # Calibrated disagreement and uncalibrated unique rank disagreement
         # both require group review. No mean/dominant winner can erase them.
         winners = set()
-        for result in matched.values():
+        for result in work.matched.values():
             if result.candidates and (len(result.candidates) == 1 or result.candidates[0].raw_score > result.candidates[1].raw_score):
                 winners.add(result.candidates[0].profile_id)
-        group_conflict = len(winners | excerpt_winners) > 1 or any(r.status == "conflict" for r in matched.values())
+        group_conflict = len(winners | work.excerpt_winners) > 1 or any(r.status == "conflict" for r in work.matched.values())
         proposals = []
-        for s in members:
-            result = matched.get(s.segment_id)
-            reason = reasons.get(s.segment_id)
+        for s in work.members:
+            result = work.matched.get(s.segment_id)
+            reason = work.reasons.get(s.segment_id)
             if reason:
                 status, profile, score, codes, candidates = ("conflict" if reason == "overlap" else "unknown"), None, None, (reason,), ()
             elif result:
@@ -323,9 +301,62 @@ def identify_groups(snapshot: IdentificationInput, reader: MeetingAudioReader,
                 status, profile, score, codes, candidates = "unknown", None, None, ("no_usable_excerpt",), ()
             if group_conflict:
                 status, profile, codes = "conflict", None, tuple(dict.fromkeys((*codes, "group_disagreement")))
-            proposals.append(SegmentProposal(s.segment_id, group_id, status, profile, score, codes, candidates, s))
-        processed += len(members)
-        skipped = processed - embedded
-        progress = IdentificationProgress(processed, embedded, skipped, batches, excerpts, time.monotonic()-started)
+            proposals.append(SegmentProposal(s.segment_id, work.group_id, status, profile, score, codes, candidates, s))
+        totals["processed"] += len(work.members)
+        totals["embedded"] += len(work.matched)
+        processed, embedded = totals["processed"], totals["embedded"]
+        progress = IdentificationProgress(processed, embedded, processed - embedded, totals["batches"],
+                                          totals["excerpts"], time.monotonic()-started)
+        return IdentificationGroupResult(work.group_id, tuple(proposals), progress, work.outcome)
+
+    for group_id, members in groups.items():
         check_cancel(cancel)
-        yield IdentificationGroupResult(group_id, tuple(proposals), progress, outcome)
+        work = _GroupWork(group_id, members)
+        eligible = []
+        for s in members:
+            reason = _timing_reason(s, chunks[s.chunk_id])
+            if s.overlap or s.segment_id in contaminated:
+                reason = "overlap"
+            elif not s.quality_ok:
+                reason = "bad_quality"
+            if reason:
+                work.reasons[s.segment_id] = reason
+            else:
+                eligible.append(s)
+        for s in eligible:
+            check_cancel(cancel)
+            if not snapshot.candidates:
+                work.reasons[s.segment_id] = "no_candidates"
+                continue
+            if engine is None:
+                work.reasons[s.segment_id] = "runtime_missing"
+                work.outcome = "runtime_unavailable"
+                continue
+            windows = _windows(s, chunks[s.chunk_id], 3)
+            if shared.exceeds(len(windows), sum(end-begin for begin, end in windows)):
+                flush()
+                # Waiting groups added all their clips before this flush.
+                while waiting:
+                    check_cancel(cancel)
+                    yield report(waiting.pop(0))
+            if work.failure:
+                work.reasons[s.segment_id] = work.failure
+                continue
+            try:
+                # A rejected excerpt rejects the observation as a whole.
+                observation_clips = _read_observation(reader, chunks[s.chunk_id], windows, cancel)
+                shared.clips.extend(observation_clips)
+                shared.owners.extend((s.segment_id, len(pcm)//2) for pcm in observation_clips)
+                shared.works[s.segment_id] = work
+                del observation_clips
+            except VoiceError as error:
+                if error.reason == "cancelled":
+                    raise
+                work.reasons[s.segment_id] = error.reason
+                if error.reason in RUNTIME_UNAVAILABLE:
+                    work.outcome = "runtime_unavailable"
+        waiting.append(work)
+    flush()
+    for work in waiting:
+        check_cancel(cancel)
+        yield report(work)

@@ -110,14 +110,16 @@ def test_ambiguous_or_accepted_without_id_does_not_resume_or_change_cap(tmp_path
     assert db.job(job['id'])['status']==status and not requests
 
 
-@pytest.mark.parametrize('mode',['standard','voice'])
-def test_foreign_global_model_never_supplies_cap_to_frozen_model(tmp_path,mode):
+@pytest.mark.parametrize('mode,foreign,frozen',[
+    ('standard','openai/whisper-1',{'stt_model':'aiesa/transcribe','stt_price_rub_per_minute':.048}),
+    ('voice','aiesa/transcribe-fast',{'stt_model':'openai/whisper-1','stt_price_rub_per_minute':None})])
+def test_foreign_global_model_never_supplies_cap_to_frozen_model(tmp_path,mode,foreign,frozen):
     db,settings,m,worker,requests=context(tmp_path,mode=mode)
     asyncio.run(worker.run_once())
     route=db.one('SELECT * FROM meeting_transcript_routes')
-    settings.stt_model='openai/whisper-1'; settings.stt_price_rub_per_minute=.06
+    settings.stt_model=foreign; settings.stt_price_rub_per_minute=.06
     worker.enqueue_transcription(m['id'],resume=True)
-    assert all(json.loads(j['payload'])['settings']=={'stt_model':'aiesa/transcribe','stt_price_rub_per_minute':.048} for j in transcript_jobs(db))
+    assert all(json.loads(j['payload'])['settings']==frozen for j in transcript_jobs(db))
     assert db.one('SELECT * FROM meeting_transcript_routes')==route
 
 

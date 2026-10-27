@@ -78,7 +78,7 @@ class ActionItem(EvidenceItem):
     assignment_proposal: AssignmentProposal | None = None
     participant_id: str | None = None
     assignment_status: Literal['proposed','confirmed','needs_review'] = 'needs_review'
-    assignment_basis: Literal['named_person','self_commitment','manual','unknown'] = 'unknown'
+    assignment_basis: Literal['named_person','self_commitment','manual','unknown','all_attendees'] = 'unknown'
     assignment_revision: int = Field(default=0,ge=0,strict=True)
     assignment_reason_codes: list[str] = Field(default_factory=list)
     assignment_anchor: QuoteAnchor | None = None
@@ -103,7 +103,7 @@ class ProcessingJob(Entity):
     meeting_id: str
     version: int = 0
     chunk_id: str | None = None
-    stage: Literal["prepare", "transcribe", "identify_speakers", "summarize"]
+    stage: Literal["prepare", "transcribe", "identify_speakers", "summarize", "local_asr"]
     intent_key: str | None = None
     run_id: str | None = None
     local_outcome: str | None = None

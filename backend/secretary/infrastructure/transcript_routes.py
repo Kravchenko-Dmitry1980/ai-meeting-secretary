@@ -5,6 +5,10 @@ from secretary.infrastructure.database import now
 from secretary.infrastructure.speaker_repository import canonical
 
 
+# Voice identification needs per-utterance timestamps; on Polza only whisper-1 returns them.
+VOICE_STT_MODEL = 'openai/whisper-1'
+
+
 class RouteConflict(ValueError):
     pass
 
@@ -14,7 +18,7 @@ class TranscriptRoutes:
         self.db, self.settings = db, settings
 
     def configured(self, mode):
-        model = 'aiesa/transcribe' if mode == 'voice_identification' else self.settings.stt_model
+        model = VOICE_STT_MODEL if mode == 'voice_identification' else self.settings.stt_model
         price = self.settings.stt_price_rub_per_minute if model == self.settings.stt_model else None
         return {'provider': 'polza', 'adapter_revision': 'polza-stt-v1',
                 'settings': {'stt_model': model, 'stt_price_rub_per_minute': price}}
@@ -24,6 +28,12 @@ class TranscriptRoutes:
             meeting = conn.execute('SELECT * FROM meetings WHERE id=?', (meeting_id,)).fetchone()
             if meeting is None:
                 raise KeyError(meeting_id)
+            current = conn.execute('SELECT route FROM meeting_transcript_routes WHERE meeting_id=? AND transcript_version=?',
+                                   (meeting_id, meeting['transcript_version'])).fetchone()
+            if current and json.loads(current['route']).get('provider') == 'local':
+                # Publication and route/version mutation share the writer lock.
+                # An earlier caller-side check cannot fence a concurrent publish.
+                raise RouteConflict('local_asr_cloud_retranscription_requires_new_route')
             version = max(1, meeting['transcript_version'])
             if new_version:
                 if meeting['recording'] or conn.execute("SELECT 1 FROM jobs WHERE meeting_id=? AND status='running' AND stage IN ('transcribe','summarize')", (meeting_id,)).fetchone():

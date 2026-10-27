@@ -1,0 +1,8 @@
+def run_stage_process(command, *, environment=None, timeout_seconds=1000, cancel_requested=None, on_poll=None):
+    """Execute through an owned suspended-start Job Object; never kill by PID."""
+    from dev_asr_process import run_owned_stage, StageProcessStopped as OwnedStageStopped
+    try:
+        return run_owned_stage(command, environment=environment, timeout_seconds=timeout_seconds,
+                               cancel_requested=cancel_requested, on_poll=on_poll)
+    except OwnedStageStopped as error:
+        raise StageProcessStopped(str(error), error.exit_code) from error

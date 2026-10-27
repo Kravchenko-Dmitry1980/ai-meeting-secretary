@@ -33,7 +33,9 @@ from secretary.application.diagnostics import build_readiness_report
 from secretary.application.worker import Worker
 from secretary.application.speakers import SpeakerService
 from secretary.infrastructure.speaker_repository import SpeakerRepository
+from secretary.application.assignment_autofill import autofill_assignments
 from secretary.infrastructure.assignment_repository import AssignmentRepository
+from secretary.infrastructure.polza import ProviderError, build_polza_client
 from secretary.domain.summary_context import AssignmentSnapshot, AssignmentReviewResult, ReviewTaskAssignments
 from secretary.domain.assignment_evidence import AssignmentEvidenceError
 from secretary.domain.speakers import (
@@ -81,7 +83,9 @@ class BodyLimitMiddleware:
         enrollment_upload = bool(re.fullmatch(r'/api/v1/participants/[^/]+/enrollments', scope['path']))
         meeting_upload = scope["path"].endswith("/upload")
         storage_bounded_upload = enrollment_upload or meeting_upload
-        limit = MAX_PAYLOAD + 65536 if enrollment_upload else (self.max_upload_bytes + 65536 if meeting_upload else 1024 * 1024)
+        artifact_import = bool(re.fullmatch(r'/api/v1/meetings/[^/]+/local-asr/runs', scope['path']))
+        limit = MAX_PAYLOAD + 65536 if enrollment_upload else (self.max_upload_bytes + 65536 if meeting_upload else
+                (16 * 1024 * 1024 if artifact_import else 1024 * 1024))
         headers = dict(scope.get("headers", []))
         try:
             length = int(headers.get(b"content-length", b"0"))
@@ -355,7 +359,8 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                enrollment_capture=None, voice_store=None, enrollment_decoder=None, voice_engine=None, voice_model=None,
                task_publications_factory=None, team_auth_factory=None, publication_worker_factory=None,
                database_path=None, billing_path=None, maintenance=None, participant_id=None,
-               outbound_enabled=True, enforce_single_instance=True) -> FastAPI:
+               outbound_enabled=True, enforce_single_instance=True, local_asr_plan_factory=None,
+               local_asr_runtime=None, local_asr_executor_factory=None) -> FastAPI:
     settings = settings or Settings()
     from secretary.infrastructure.maintenance_binding import restore_guard_present
     from secretary.team_settings import RuntimeConfigurationError
@@ -375,6 +380,11 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     project_tmp.mkdir(exist_ok=True)
     tempfile.tempdir = str(project_tmp)  # only Secretary's own process; no Windows setting
     db = Database(secretary_path, maintenance=maintenance, participant_id=participant_id)
+    from secretary.infrastructure.local_asr_repository import initialize_local_asr_schema
+    from secretary.application.local_asr_lifecycle import LocalAsrLifecycle
+    initialize_local_asr_schema(db)
+    local_asr_lifecycle = LocalAsrLifecycle(db)
+    local_asr_lifecycle.initialize_schema()
     speaker_service = SpeakerService(SpeakerRepository(db))
     stored = db.configuration()
     settings = Settings(**{**settings.model_dump(), **stored}, _env_file=None)
@@ -407,6 +417,10 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     recovery = getattr(capture, "recover", None)
     def recover_storage():
         db.recover()
+        if local_asr_executor is not None and instance_lock is not None:
+            # Only exclusive application bootstrap can repair a crash between
+            # the queue claim and recording the contained controller owner.
+            local_asr_executor.recover_startup()
         if recovery:
             for saved_meeting in db.list_meetings():
                 if (settings.data_dir / "audio" / saved_meeting["id"] / "capture.json").exists():
@@ -414,7 +428,30 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
                         recovery(saved_meeting["id"], on_chunk=lambda chunk, mid=saved_meeting["id"]: db.add_chunk(mid, chunk))
                     except Exception:
                         db.update_meeting(saved_meeting["id"], status="partial_error", capture_error="Capture recovery needs inspection; original files retained")
-    worker = Worker(db, settings, provider_factory, recovery=False, enrollments=enrollment_service, coordinator=inference)
+    # Only a server-side profile can configure executable/model paths. The
+    # browser and persisted user settings have no execution authority.
+    if local_asr_runtime is None and os.environ.get('SECRETARY_LOCAL_ASR_PROFILE'):
+        from secretary.infrastructure.local_asr_runtime import load_local_asr_runtime
+        local_asr_runtime = load_local_asr_runtime(Path(os.environ['SECRETARY_LOCAL_ASR_PROFILE']))
+    local_asr_executor = None
+    if local_asr_runtime is not None:
+        if local_asr_plan_factory is not None:
+            raise ValueError('local_asr_ambiguous_runtime_configuration')
+        if local_asr_executor_factory is None:
+            from secretary.application.local_asr_executor import LocalAsrExecutor
+            from secretary.infrastructure.local_asr_publication import publish_execution_result
+            from secretary.infrastructure.local_asr_resource_probe import sample_resources
+            local_asr_executor = LocalAsrExecutor(
+                db, settings, local_asr_runtime,
+                shared_resource_root=local_asr_runtime.profile.shared_resource_root,
+                resource_snapshot=lambda: sample_resources(local_asr_runtime.profile.identity.physical_gpu_id),
+                publish_result=lambda conn, context, command, trusted_sha: publish_execution_result(
+                    db, conn, context, command, trusted_sha))
+        else:
+            local_asr_executor = local_asr_executor_factory(db, settings, local_asr_runtime)
+        local_asr_plan_factory = local_asr_executor.plan_factory
+    worker = Worker(db, settings, provider_factory, recovery=False, enrollments=enrollment_service,
+                    coordinator=inference, local_asr_executor=local_asr_executor)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -472,6 +509,7 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         from secretary.interface.maintenance_middleware import MaintenanceMiddleware
         app.add_middleware(MaintenanceMiddleware, maintenance=maintenance, participant_id=participant_id)
     app.state.db, app.state.worker, app.state.settings, app.state.capture = db, worker, settings, capture
+    app.state.local_asr_executor = local_asr_executor
     app.state.playback_cache = PlaybackCache(settings.data_dir, MAX_PLAYBACK_CACHE_BYTES)
     app.state.speakers = speaker_service
     assignment_service = AssignmentRepository(db)
@@ -490,6 +528,9 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     app.state.cloud_budget_history = PolzaHistoryClient(settings)
     app.state.enrollments, app.state.voice_inference, app.state.capture_lease = enrollment_service, inference, capture_lease
     app.state.enrollment_capture = enrollment_capture
+    from secretary.interface.local_asr_routes import create_local_asr_router
+    app.include_router(create_local_asr_router(db, settings, plan_factory=local_asr_plan_factory,
+        queue_prepared=local_asr_executor.queue_prepared if local_asr_executor is not None else None))
     audio_locks: dict[str, asyncio.Lock] = {}
 
     @app.middleware("http")
@@ -674,6 +715,27 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
     @app.patch('/api/v1/meetings/{meeting_id}/task-assignments',response_model=AssignmentReviewResult)
     async def review_task_assignments(meeting_id: str, body: ReviewTaskAssignments):
         return assignment_service.review(meeting_id,body)
+
+    @app.post('/api/v1/meetings/{meeting_id}/task-assignments/autofill')
+    async def autofill_task_assignments(meeting_id: str):
+        if not settings.cloud_enabled:
+            raise HTTPException(409, 'Облачная обработка выключена')
+        client = build_polza_client(settings)
+        client.charge_context['meeting_id'] = meeting_id
+        try:
+            return await autofill_assignments(assignment_service, meeting_id, client)
+        except ProviderError:
+            raise HTTPException(502, 'Не удалось получить назначение от модели. Повтор неопределённого запроса не выполняется.') from None
+        except ValueError as exc:
+            messages = {
+                'assignment_model_missing': 'Выберите модель текстовых итогов',
+                'assignment_summary_missing': 'Сначала нужны готовые итоги',
+                'assignment_result_unknown': 'Прошлый запрос назначения уже отправлен, повтор запрещён',
+                'assignment_response_missing': 'Ответ модели не удалось разобрать. Повтор этого запроса не отправляется.',
+                'assignment_response_invalid': 'Ответ модели не удалось разобрать. Повтор этого запроса не отправляется.',
+                'assignment_request_too_large': 'Задач слишком много для одного запроса назначения',
+            }
+            raise HTTPException(409, messages.get(str(exc), 'Назначение не выполнено')) from None
 
     @app.exception_handler(TeamConflict)
     async def team_conflict(request, exc):
@@ -925,7 +987,11 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.post("/api/v1/meetings/{meeting_id}/upload", status_code=202, response_model=JobAccepted,
               responses={507: {"model": ErrorResponse, "description": "Недостаточно места для загрузки аудиозаписи"}})
-    async def upload(meeting_id: str, file: UploadFile = File(...)):
+    async def upload(meeting_id: str, file: UploadFile = File(...),
+                     processing_route: Literal['cloud', 'local'] = Query(default='cloud')):
+        if processing_route == 'local' and local_asr_executor is None:
+            await file.close()
+            raise HTTPException(503, 'local_asr_profile_bundle_unavailable')
         reported_size_value = getattr(file, "size", None)
         reported_size = (reported_size_value if type(reported_size_value) is int and reported_size_value >= 0
                          else settings.max_upload_bytes)
@@ -975,6 +1041,24 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
         finally:
             await file.close()
         db.update_meeting(meeting_id, media_path=str(final), status="preparing", error=None)
+        if processing_route == 'local':
+            from secretary.application.local_asr_lifecycle import LocalExecutionError
+            from secretary.application.local_asr_media import verified_meeting_input, LocalAsrMediaError
+            try:
+                verified = await asyncio.to_thread(verified_meeting_input, db, settings.data_dir,
+                    meeting_id, max_bytes=settings.max_upload_bytes)
+                plan = await asyncio.to_thread(local_asr_executor.plan_factory, meeting_id, 1, verified, None)
+                prepared = local_asr_lifecycle.prepare(meeting_id, 1, plan, 'local-upload-' + token)
+            except (LocalExecutionError, LocalAsrMediaError):
+                db.update_meeting(meeting_id, status='prepared', error='local_asr_configuration_unavailable')
+                raise HTTPException(409, 'local_asr_configuration_unavailable') from None
+            try:
+                await asyncio.to_thread(local_asr_executor.queue_prepared, prepared['job_id'])
+            except LocalExecutionError:
+                # Retain the accepted input and blocked job for explicit resume;
+                # a missing qualification never selects the cloud route.
+                pass
+            return {'job_id': prepared['job_id']}
         version, _ = worker.routes.bind(meeting_id)
         db.authorize_pipeline(meeting_id,version)
         job = db.enqueue(meeting_id, "prepare",version=version, payload={"chunk_seconds": settings.chunk_seconds})
@@ -1119,6 +1203,9 @@ def create_app(settings: Settings | None = None, *, provider_factory=None, captu
 
     @app.post("/api/v1/jobs/{job_id}/cancel", response_model=ProcessingJob)
     async def cancel(job_id: str):
+        if db.job(job_id)["stage"] == "local_asr":
+            local_asr_lifecycle.request_cancel(job_id)
+            return db.job(job_id)
         result = db.cancel(job_id)
         intent = db.one('SELECT run_id FROM identification_intents WHERE job_id=?', (job_id,))
         if intent:

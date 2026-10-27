@@ -268,6 +268,26 @@ test('runtime error gives local recovery and exact counters, without a cloud-key
   assert.equal(text(tree).includes('%'), false);
 });
 
+test('per-utterance proposals are confirmed in one batch per proposed participant', () => {
+  const runtime = hookRuntime(); const sent = [];
+  const { SpeakerReview } = load('components/SpeakerReview.tsx', { react: runtime.react, '../utils/speakers': load('utils/speakers.ts', {}), '../utils/format': { timeOffset: () => '0:01' }, '../services/api': { api: {} } });
+  const proposed = (prefix, participant, count) => Array.from({ length: count }, (_, i) => ({ segment_id: `${prefix}${i}`, group_id: `g${prefix}${i}`, status: 'proposed', participant_id: participant, raw_score: 0.9 - i / 100, reason_codes: ['human_review_required'], review_candidates: [] }));
+  const items = [...proposed('a', 'mpA', 30), ...proposed('b', 'mpB', 2),
+    { segment_id: 'c', group_id: 'gc', status: 'conflict', participant_id: null, reason_codes: ['ambiguous_candidates'], review_candidates: [] },
+    { segment_id: 'd', group_id: 'gd', status: 'confirmed', participant_id: 'mpA', reason_codes: [], review_candidates: [] }];
+  const participants = [{ id: 'mpA', display_name: 'Анна', enabled: true }, { id: 'mpB', display_name: 'Борис', enabled: false }];
+  const workflow = { snapshot: { items, participants, meeting_id: 'A', transcript_version: 1, revision: 2, roster_revision: 1 }, review: (changes) => sent.push(changes) };
+  const tree = runtime.render(() => SpeakerReview({ workflow, onSource() {} }));
+  assert.equal(walk(tree).some((node) => typeof node.type === 'function' && node.type.name === 'GroupReview'), false);
+  const cards = walk(tree).filter((node) => typeof node.type === 'function' && node.type.name === 'ProposalReview');
+  assert.deepEqual(cards.map((card) => card.props.batch.items.length), [30, 2]);
+  assert.deepEqual(JSON.parse(JSON.stringify(cards[0].props.batch.weakest.map((item) => item.segment_id))), ['a29', 'a28', 'a27']);
+  const card = (index) => runtime.render(() => cards[index].type(cards[index].props));
+  get(card(0), (node) => node.type === 'Button').props.onClick();
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), [items.slice(0, 30).map((item) => ({ segment_id: item.segment_id, participant_id: 'mpA' }))]);
+  assert.equal(get(card(1), (node) => node.type === 'Button').props.disabled, true);
+});
+
 test('representative and disputed review render bounded pages for large anonymous transcripts', () => {
   const runtime = hookRuntime(); const { SpeakerReview } = load('components/SpeakerReview.tsx', { react: runtime.react, '../utils/speakers': load('utils/speakers.ts', {}), '../utils/format': { timeOffset: () => '0:01' }, '../services/api': { api: {} } });
   const items = Array.from({ length: 151 }, (_, i) => ({ segment_id: `s${i}`, group_id: `g${i}`, status: 'unknown', participant_id: null, reason_codes: [], review_candidates: [] }));

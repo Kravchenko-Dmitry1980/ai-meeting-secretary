@@ -11,7 +11,7 @@ from secretary.application.summary_context import (
 from secretary.domain.assignment_evidence import AssignmentEvidenceError
 from secretary.domain.summary_context import FrozenSummaryContext, ReviewTaskAssignments
 from secretary.infrastructure.summary_context_payloads import (
-    SummaryContextPayloadError, body_bytes, map_batches, merge_batches, summary_body,
+    SummaryContextPayloadError, assemble_partials, body_bytes, map_batches, merge_batches, summary_body,
 )
 
 
@@ -250,6 +250,17 @@ def test_merge_preserves_quote_proposal_and_captured_roster():
         assert body["untrusted_summary_context"]["source_identities"][0]["id"] == "s"
         assert group[0]["action_items"][0]["evidence_quote"] == f.sources[0].text
         assert group[0]["action_items"][0]["assignment_proposal"]["basis"] == "self_commitment"
+
+
+def test_assemble_partials_keeps_each_grounded_item_once():
+    first = {"overview": "Первая часть", "decisions": [{"text": "a", "evidence_quote": "a", "source_segment_ids": ["s"]}],
+             "action_items": [], "open_questions": []}
+    second = {"overview": "Первая часть", "decisions": [{"text": "a", "evidence_quote": "a", "source_segment_ids": ["s"]},
+                                                        {"text": "b", "evidence_quote": "b", "source_segment_ids": ["s2"]}],
+              "action_items": [], "open_questions": []}
+    assembled = assemble_partials([first, second])
+    assert assembled["overview"] == "Первая часть"
+    assert [item["text"] for item in assembled["decisions"]] == ["a", "b"]
 
 
 def test_manual_identity_cannot_clear_original_overlap_or_chunk_ambiguity():

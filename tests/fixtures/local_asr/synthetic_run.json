@@ -1,0 +1,293 @@
+{
+  "operation_id": "import-1",
+  "transcript_version": 1,
+  "result": {
+    "schema_version": "neurohr.local-asr.v2",
+    "provider": "gigaam-v3-e2e-rnnt+gigaam-ctc+nemotron-3-diarization",
+    "language": "ru",
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "transcript_text": "Спикер 1: Первый фрагмент.\nСпикер 1: Второй фрагмент.\nСпикер 1: Третий фрагмент.\nСпикер 1 + Спикер 2: Смешанная речь.\nСпикер неизвестен: Неизвестный голос.\n",
+    "segments": 5,
+    "segment_items": [
+      {
+        "ordinal": 0,
+        "speaker_label": "Спикер 1",
+        "started_ms": 0,
+        "ended_ms": 800,
+        "text": "Первый фрагмент."
+      },
+      {
+        "ordinal": 1,
+        "speaker_label": "Спикер 1",
+        "started_ms": 1000,
+        "ended_ms": 1800,
+        "text": "Второй фрагмент."
+      },
+      {
+        "ordinal": 2,
+        "speaker_label": "Спикер 1",
+        "started_ms": 2000,
+        "ended_ms": 2800,
+        "text": "Третий фрагмент."
+      },
+      {
+        "ordinal": 3,
+        "speaker_label": "Спикер 1 + Спикер 2",
+        "started_ms": 3000,
+        "ended_ms": 3800,
+        "text": "Смешанная речь."
+      },
+      {
+        "ordinal": 4,
+        "speaker_label": "Спикер неизвестен",
+        "started_ms": 4000,
+        "ended_ms": 4800,
+        "text": "Неизвестный голос."
+      }
+    ],
+    "speaker_turns": [
+      {
+        "ordinal": 0,
+        "speaker_label": "Спикер 1",
+        "started_ms": 0,
+        "ended_ms": 800
+      },
+      {
+        "ordinal": 1,
+        "speaker_label": "Спикер 1",
+        "started_ms": 1000,
+        "ended_ms": 1800
+      },
+      {
+        "ordinal": 2,
+        "speaker_label": "Спикер 1",
+        "started_ms": 2000,
+        "ended_ms": 2800
+      },
+      {
+        "ordinal": 3,
+        "speaker_label": "Спикер 1",
+        "started_ms": 3000,
+        "ended_ms": 3800
+      },
+      {
+        "ordinal": 4,
+        "speaker_label": "Спикер 2",
+        "started_ms": 3000,
+        "ended_ms": 3800
+      },
+      {
+        "ordinal": 5,
+        "speaker_label": "Спикер неизвестен",
+        "started_ms": 4000,
+        "ended_ms": 4800
+      }
+    ],
+    "warnings": [],
+    "metrics": {
+      "synthetic": true
+    }
+  },
+  "artifacts": {
+    "schema_version": "secretary.local-asr-artifacts.v1",
+    "audio_ref": "meeting:meeting",
+    "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "duration_ms": 5000,
+    "selected_text": "Первый фрагмент.\nВторой фрагмент.\nТретий фрагмент.\nСмешанная речь.\nНеизвестный голос.",
+    "selected_text_sha256": "5050567583b33bb420ed28e51505fd4f2d0e41b863368e7656c3543359670b11",
+    "source_segments": [
+      {
+        "segment_id": "source-0",
+        "text": "Первый фрагмент.",
+        "channel": "import",
+        "started_ms": 0,
+        "ended_ms": 800
+      },
+      {
+        "segment_id": "source-1",
+        "text": "Второй фрагмент.",
+        "channel": "import",
+        "started_ms": 1000,
+        "ended_ms": 1800
+      },
+      {
+        "segment_id": "source-2",
+        "text": "Третий фрагмент.",
+        "channel": "import",
+        "started_ms": 2000,
+        "ended_ms": 2800
+      },
+      {
+        "segment_id": "source-3",
+        "text": "Смешанная речь.",
+        "channel": "import",
+        "started_ms": 3000,
+        "ended_ms": 3800
+      },
+      {
+        "segment_id": "source-4",
+        "text": "Неизвестный голос.",
+        "channel": "import",
+        "started_ms": 4000,
+        "ended_ms": 4800
+      }
+    ],
+    "segment_sources": [
+      {
+        "ordinal": 0,
+        "source_segment_ids": [
+          "source-0"
+        ]
+      },
+      {
+        "ordinal": 1,
+        "source_segment_ids": [
+          "source-1"
+        ]
+      },
+      {
+        "ordinal": 2,
+        "source_segment_ids": [
+          "source-2"
+        ]
+      },
+      {
+        "ordinal": 3,
+        "source_segment_ids": [
+          "source-3"
+        ]
+      },
+      {
+        "ordinal": 4,
+        "source_segment_ids": [
+          "source-4"
+        ]
+      }
+    ],
+    "words": [
+      {
+        "token_index": 0,
+        "text": "Первый",
+        "char_start": 0,
+        "char_end": 6,
+        "started_ms": 0,
+        "ended_ms": 390
+      },
+      {
+        "token_index": 1,
+        "text": "фрагмент.",
+        "char_start": 7,
+        "char_end": 16,
+        "started_ms": 400,
+        "ended_ms": 790
+      },
+      {
+        "token_index": 2,
+        "text": "Второй",
+        "char_start": 17,
+        "char_end": 23,
+        "started_ms": 1000,
+        "ended_ms": 1390
+      },
+      {
+        "token_index": 3,
+        "text": "фрагмент.",
+        "char_start": 24,
+        "char_end": 33,
+        "started_ms": 1400,
+        "ended_ms": 1790
+      },
+      {
+        "token_index": 4,
+        "text": "Третий",
+        "char_start": 34,
+        "char_end": 40,
+        "started_ms": 2000,
+        "ended_ms": 2390
+      },
+      {
+        "token_index": 5,
+        "text": "фрагмент.",
+        "char_start": 41,
+        "char_end": 50,
+        "started_ms": 2400,
+        "ended_ms": 2790
+      },
+      {
+        "token_index": 6,
+        "text": "Смешанная",
+        "char_start": 51,
+        "char_end": 60,
+        "started_ms": 3000,
+        "ended_ms": 3390
+      },
+      {
+        "token_index": 7,
+        "text": "речь.",
+        "char_start": 61,
+        "char_end": 66,
+        "started_ms": 3400,
+        "ended_ms": 3790
+      },
+      {
+        "token_index": 8,
+        "text": "Неизвестный",
+        "char_start": 67,
+        "char_end": 78,
+        "started_ms": 4000,
+        "ended_ms": 4390
+      },
+      {
+        "token_index": 9,
+        "text": "голос.",
+        "char_start": 79,
+        "char_end": 85,
+        "started_ms": 4400,
+        "ended_ms": 4790
+      }
+    ],
+    "alignment": {
+      "status": "complete",
+      "reason_codes": [],
+      "unsupported_token_indices": [],
+      "tokenizer_compatibility": "verified"
+    },
+    "speaker_kinds": {
+      "Спикер 1": "single",
+      "Спикер 2": "single",
+      "Спикер 1 + Спикер 2": "composite",
+      "Спикер неизвестен": "unknown"
+    },
+    "identity": {
+      "profile": "nemotron-ctc",
+      "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "code_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "device": "cpu-asr_cuda-diarizer",
+      "precision": "float32",
+      "models": [
+        {
+          "role": "ctc",
+          "model_id": "ai-sage/GigaAM-v3",
+          "revision": "cec030b4c4f35d928e4a9044a3bdb29ebd499fac",
+          "weights_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "loader_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "processor_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "custom_code_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "asr_device": "cpu",
+      "diarization_device": "cuda",
+      "physical_gpu_id": "GPU-synthetic"
+    },
+    "warnings": [],
+    "fallback_counters": {},
+    "runtime_receipts": [
+      {
+        "stage": "synthetic_fixture",
+        "receipt_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "status": "not_run",
+        "elapsed_ms": null
+      }
+    ]
+  }
+}

@@ -31,6 +31,7 @@ if (Test-Path -LiteralPath $StatePath) {
         if ($ExistingOffline -ne [bool]$Offline) { throw 'An existing Secretary process has a different outbound mode. No process was adopted or stopped.' }
         if ($TeamRuntimeConfig -and $State.team_runtime_config -ne $TeamRuntimeConfig) { throw 'An existing Secretary process has a different Team configuration. No process was adopted or stopped.' }
         Write-Output "Secretary is already running: http://127.0.0.1:$($State.port)"
+        if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$($State.port)" }
         exit 0
     }
 }

@@ -3,12 +3,13 @@ import { ApiError } from '../services/api';
 import { taskAssignmentsApi } from '../services/taskAssignments';
 import type { AssignmentChange, AssignmentCommand, AssignmentSnapshot } from '../services/taskAssignments';
 import { ASSIGNMENT_BATCH_MAX, assignmentError, assignmentReason, assignmentStamp, assignmentUncertain, canConfirmAssignment, captureAssignmentCommand } from '../utils/taskAssignments';
-import type { AssignmentParticipant } from '../utils/taskAssignments';
+import type { AssignmentParticipant, DirectoryPerson } from '../utils/taskAssignments';
 import { Button } from './ui/Button';
 
 export interface AssignmentReviewPanelProps {
   meetingId: string; transcriptVersion: number; summaryVersion: number | null;
   roster: readonly AssignmentParticipant[];
+  directory?: readonly DirectoryPerson[];
   /** Deadline metadata from the same selected Summary, keyed by action_id. */
   dueDates?: Readonly<Record<string, string | null | undefined>>;
   refreshKey?: string | number;
@@ -22,7 +23,7 @@ interface Pending {
   command: AssignmentCommand; draftEdits: Record<string, number>; selectedStamps: Record<string, string>;
 }
 interface View { scopeKey: string; snapshot: AssignmentSnapshot; latest: AssignmentSnapshot | null }
-const basisText = { named_person: 'По имени в источнике', self_commitment: 'По словам автора о своём действии', manual: 'Ручной выбор', unknown: 'Основание не определено' };
+const basisText: Record<string, string> = { named_person: 'По имени в источнике', self_commitment: 'По словам автора о своём действии', manual: 'Ручной выбор', unknown: 'Основание не определено', all_attendees: 'На всех участников совещания' };
 const statusText = { proposed: 'Предложение · не проверено', confirmed: 'Назначение проверено человеком', needs_review: 'Нужна проверка' };
 
 /** Prefer key={`${meetingId}:${transcriptVersion}:${summaryVersion}:${assignmentRevision ?? 'current'}`}.
@@ -30,7 +31,7 @@ const statusText = { proposed: 'Предложение · не проверен�
  * Scope changes and unmount also invalidate async ownership internally. No form means native
  * required/select validation cannot block a replay of the already captured command.
  */
-export function AssignmentReviewPanel({ meetingId, transcriptVersion, summaryVersion, roster, dueDates, refreshKey, assignmentRevision, onSource, onChanged }: AssignmentReviewPanelProps) {
+export function AssignmentReviewPanel({ meetingId, transcriptVersion, summaryVersion, roster, directory = [], dueDates, refreshKey, assignmentRevision, onSource, onChanged }: AssignmentReviewPanelProps) {
   const scopeKey = JSON.stringify([meetingId, transcriptVersion, summaryVersion, assignmentRevision]);
   const [view, setView] = useState<View | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -89,14 +90,18 @@ export function AssignmentReviewPanel({ meetingId, transcriptVersion, summaryVer
   const historical = !!snapshot && (assignmentRevision !== undefined || view?.latest?.transcript_version !== snapshot.transcript_version || view?.latest?.summary_version !== snapshot.summary_version);
   const editable = !!snapshot && fresh && !loading && !historical;
   const blocked = !editable || busy || retry;
-  const eligibleSelection = snapshot?.captured_context_hash !== null ? snapshot?.items.filter((item) => selected[item.action.action_id] === assignmentStamp(item) && canConfirmAssignment(item, roster)) ?? [] : [];
+  const eligibleSelection = snapshot?.captured_context_hash !== null ? snapshot?.items.filter((item) => selected[item.action.action_id] === assignmentStamp(item) && canConfirmAssignment(item, roster, directory)) ?? [] : [];
+  const outsideDirectory = directory.filter((person) => person.enabled && !roster.some((participant) => participant.person_profile_id === person.id && participant.enabled));
+  const openItems = snapshot?.items.filter((item) => item.status !== 'confirmed') ?? [];
+  const doneItems = snapshot?.items.filter((item) => item.status === 'confirmed') ?? [];
+  const clearEligible = snapshot?.captured_context_hash != null ? snapshot.items.filter((item) => canConfirmAssignment(item, roster, directory)) : [];
   const send = async (changes?: AssignmentChange[]) => {
     if (locked.current || !snapshot) return;
     let operation = pending.current;
     if (!operation) {
       if (!editable || !changes) return;
       try {
-        const command = captureAssignmentCommand(snapshot, changes, roster, crypto.randomUUID());
+        const command = captureAssignmentCommand(snapshot, changes, roster, crypto.randomUUID(), directory);
         operation = { command, draftEdits: {}, selectedStamps: {} };
         for (const change of changes) {
           if (drafts[change.action_id]) operation.draftEdits[change.action_id] = drafts[change.action_id].edit;
@@ -131,10 +136,63 @@ export function AssignmentReviewPanel({ meetingId, transcriptVersion, summaryVer
     // A parent callback failure is not an uncertain server mutation.
     if (accepted && owner === life.current) callbacks.current.onChanged?.(accepted);
   };
+  const autofill = async () => {
+    if (locked.current || !editable) return;
+    locked.current = true;
+    const owner = life.current;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await taskAssignmentsApi.autofill(meetingId);
+      if (owner !== life.current) return;
+      if (result.current.meeting_id === meetingId && result.current.transcript_version === transcriptVersion && result.current.summary_version === snapshot?.summary_version) {
+        setView((previous) => previous?.scopeKey === scopeKey ? { ...previous, snapshot: result.current } : previous);
+      } else await refresh();
+      if (owner !== life.current) return;
+      setNotice(result.applied > 0 ? `Назначено автоматически: ${result.applied}. Осталось проверить: ${result.remaining}.` : result.remaining > 0 ? `Модель не выбрала ответственных, которых можно сохранить. Осталось проверить: ${result.remaining}.` : 'Все задачи уже назначены.');
+      callbacks.current.onChanged?.(result.current);
+    } catch (failure) {
+      if (owner !== life.current) return;
+      setError(failure instanceof ApiError && failure.message ? failure.message : 'Не удалось назначить автоматически.');
+    } finally { if (owner === life.current) { locked.current = false; setBusy(false); } }
+  };
+  const renderAssignment = (item: NonNullable<typeof snapshot>['items'][number], index: number) => {
+    if (!snapshot) return null;
+    const id = item.action.action_id;
+    const eligible = snapshot.captured_context_hash !== null && canConfirmAssignment(item, roster, directory);
+    const person = roster.find((participant) => participant.id === item.participant_id);
+    const profile = directory.find((candidate) => candidate.id === item.assignee_profile_id);
+    const audience = item.audience ?? 'person';
+    const owner = audience === 'all_attendees' ? 'Все участники совещания' : audience === 'unassigned' ? 'Без ответственного' : item.participant_id ? person ? `${person.display_name}${person.enabled ? '' : ' · отключён'}` : 'Участник недоступен' : profile ? `${profile.display_name} · не был на совещании` : 'Не определён';
+    const draft = drafts[id]?.value ?? item.participant_id ?? (item.assignee_profile_id ? `profile:${item.assignee_profile_id}` : '');
+    const draftProfile = draft.startsWith('profile:') ? draft.slice('profile:'.length) : '';
+    const manualAvailable = roster.filter((participant) => participant.id === draft && participant.enabled).length === 1 || directory.filter((candidate) => candidate.id === draftProfile && candidate.enabled).length === 1;
+    const checked = selected[id] === assignmentStamp(item) && eligible;
+    const automatic = item.reason_codes.includes('automatic_assignment');
+    return <article key={id} className="space-y-3 rounded-xl border border-white/10 p-4">
+      <h4 className="break-words font-medium text-white">{item.action.text}</h4>
+      {dueDates?.[id] && <p className="text-sm text-slate-400">Срок: {dueDates[id]}</p>}
+      <p className="text-sm text-slate-300">Ответственный: {owner}</p>
+      <p className="text-sm text-slate-400">{automatic ? 'Назначено автоматически' : basisText[item.basis]} · <span className={item.status === 'confirmed' ? 'text-mint' : 'text-amber-200'}>{automatic ? 'Назначено автоматически' : statusText[item.status]}</span></p>
+      {item.action.evidence_quote ? <blockquote className="whitespace-pre-wrap break-words border-l-2 border-violet-400/40 pl-3 text-sm text-slate-200">{item.action.evidence_quote}</blockquote> : <p className="text-sm text-slate-400">Дословная цитата не сохранена.</p>}
+      <div className="flex flex-wrap gap-2">{item.action.source_segment_ids.map((segmentId, sourceIndex) => <Button key={`${segmentId}:${sourceIndex}`} variant="ghost" onClick={() => onSource(segmentId, snapshot.transcript_version)}>Источник {sourceIndex + 1}</Button>)}</div>
+      <ul className="space-y-1 text-sm text-slate-400">{item.reason_codes.map((reason, reasonIndex) => <li key={`${reason}:${reasonIndex}`}>{assignmentReason(reason)}</li>)}</ul>
+      {item.previous_provenance && <p className="text-sm text-amber-200">Есть предложение из прежних итогов; проверьте его заново.</p>}
+      <label className="field-label">Ответственный для задачи {index + 1}<select disabled={historical} value={draft} onChange={(event) => { const edit = ++edits.current; setDrafts((current) => ({ ...current, [id]: { value: event.target.value, edit } })); }}>
+        <option value="">Выберите сотрудника</option>
+        {draft && !roster.some((participant) => participant.id === draft) && !directory.some((candidate) => `profile:${candidate.id}` === draft) && <option value={draft} disabled>Сотрудник недоступен</option>}
+        <optgroup label="Участники совещания">{roster.map((participant) => <option key={participant.id} value={participant.id} disabled={!participant.enabled}>{participant.display_name}{participant.enabled ? '' : ' · отключён'}</option>)}</optgroup>
+        <optgroup label="Сотрудники вне совещания">{outsideDirectory.map((candidate) => <option key={candidate.id} value={`profile:${candidate.id}`}>{candidate.display_name}</option>)}</optgroup>
+      </select></label>
+      <div className="flex flex-wrap gap-2"><Button disabled={blocked || !manualAvailable} onClick={() => { void send([{ action_id: id, decision: 'set_manual', participant_id: draftProfile ? null : draft, ...(draftProfile ? { assignee_profile_id: draftProfile } : {}) }]); }}>Назначить вручную</Button><Button variant="ghost" disabled={blocked || !roster.some((participant) => participant.enabled)} onClick={() => { void send([{ action_id: id, decision: 'assign_all', participant_id: null }]); }}>На всех участников</Button><Button variant="ghost" disabled={blocked} onClick={() => { void send([{ action_id: id, decision: 'leave_unassigned', participant_id: null }]); }}>Оставить без ответственного</Button><Button variant="ghost" disabled={blocked || (!item.participant_id && !item.assignee_profile_id && audience === 'person')} onClick={() => { void send([{ action_id: id, decision: 'clear', participant_id: null }]); }}>Снять ответственного</Button><Button variant="ghost" disabled={blocked || !eligible} onClick={() => { void send([{ action_id: id, decision: 'confirm_proposal', participant_id: null }]); }}>Подтвердить предложение</Button></div>
+      <label className="checkbox-label"><input type="checkbox" checked={checked} disabled={blocked || !eligible || (!checked && eligibleSelection.length >= ASSIGNMENT_BATCH_MAX)} onChange={(event) => { setSelected((current) => { const next = { ...current }; if (event.target.checked && eligible && eligibleSelection.length < ASSIGNMENT_BATCH_MAX) next[id] = assignmentStamp(item); else delete next[id]; return next; }); }} /><span>Проверено мной · включить в подтверждение</span></label>
+      <details className="text-xs text-slate-500"><summary>Технические сведения</summary><p className="break-all">ID задачи: {id}; версия итогов: {snapshot.summary_version}; ревизия: {snapshot.revision}</p><p className="break-all">Причины: {item.reason_codes.join(', ')}</p></details>
+    </article>;
+  };
 
   return <section aria-label="Проверка ответственных за задачи" className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-white">Ответственные за задачи</h3><Button variant="ghost" disabled={busy || loading} onClick={() => { setError(''); void refresh(); }}>Обновить назначения</Button></div>
-    <p className="text-sm leading-6 text-slate-400">Подтверждение означает проверку назначения человеком. Оно само по себе не доказывает согласие участника принять обязательство.</p>
+    <p className="text-sm leading-6 text-slate-400">Одна кнопка назначает задачи по составу совещания и справочнику компании. Уже проверенные не перезаписываются. Неясные остаются открытыми. Назначение само по себе не доказывает согласие участника принять обязательство. Сотрудника вне совещания можно выбрать из справочника: образец голоса для этого не нужен.</p>
+    <div className="flex flex-wrap gap-2"><Button disabled={blocked || openItems.length === 0} onClick={() => { void autofill(); }}>Назначить автоматически</Button><Button variant="ghost" disabled={blocked || clearEligible.length === 0} onClick={() => { void send(clearEligible.map((item) => ({ action_id: item.action.action_id, decision: 'confirm_proposal', participant_id: null }))); }}>Принять все ясные ({clearEligible.length})</Button></div>
     {loading && <p role="status">Загрузка назначений…</p>}
     {error && <p role="alert" className="break-words text-sm text-rose-200">{error}</p>}
     {notice && <p role="status" className="text-sm text-mint">{notice}</p>}
@@ -142,32 +200,8 @@ export function AssignmentReviewPanel({ meetingId, transcriptVersion, summaryVer
     {snapshot?.captured_context_hash === null && <p className="text-sm text-amber-200">В этих итогах нет сохранённой проверки назначений. Для текущей версии можно явно выбрать ответственного вручную.</p>}
     {retry && <div className="space-y-2"><p className="text-sm text-amber-200">Новый запрос недоступен, пока результат прежней операции неизвестен. Черновик можно менять; повтор отправит исходное решение.</p><Button disabled={busy} onClick={() => { void send(); }}>Повторить тот же запрос</Button></div>}
     {snapshot && !snapshot.items.length && <p className="text-sm text-slate-400">В этой версии итогов нет задач.</p>}
-    {snapshot?.items.map((item, index) => {
-      const id = item.action.action_id;
-      const eligible = snapshot.captured_context_hash !== null && canConfirmAssignment(item, roster);
-      const person = roster.find((participant) => participant.id === item.participant_id);
-      const draft = drafts[id]?.value ?? item.participant_id ?? '';
-      const manualAvailable = roster.filter((participant) => participant.id === draft && participant.enabled).length === 1;
-      const checked = selected[id] === assignmentStamp(item) && eligible;
-      return <article key={id} className="space-y-3 rounded-xl border border-white/10 p-4">
-        <h4 className="break-words font-medium text-white">{item.action.text}</h4>
-        {dueDates?.[id] && <p className="text-sm text-slate-400">Срок: {dueDates[id]}</p>}
-        <p className="text-sm text-slate-300">Ответственный: {item.participant_id ? person ? `${person.display_name}${person.enabled ? '' : ' · отключён'}` : 'Участник недоступен' : 'Не определён'}</p>
-        <p className="text-sm text-slate-400">{basisText[item.basis]} · <span className={item.status === 'confirmed' ? 'text-mint' : 'text-amber-200'}>{statusText[item.status]}</span></p>
-        {item.action.evidence_quote ? <blockquote className="whitespace-pre-wrap break-words border-l-2 border-violet-400/40 pl-3 text-sm text-slate-200">{item.action.evidence_quote}</blockquote> : <p className="text-sm text-slate-400">Дословная цитата не сохранена.</p>}
-        <div className="flex flex-wrap gap-2">{item.action.source_segment_ids.map((segmentId, sourceIndex) => <Button key={`${segmentId}:${sourceIndex}`} variant="ghost" onClick={() => onSource(segmentId, snapshot.transcript_version)}>Источник {sourceIndex + 1}</Button>)}</div>
-        <ul className="space-y-1 text-sm text-slate-400">{item.reason_codes.map((reason, reasonIndex) => <li key={`${reason}:${reasonIndex}`}>{assignmentReason(reason)}</li>)}</ul>
-        {item.previous_provenance && <p className="text-sm text-amber-200">Есть предложение из прежних итогов; проверьте его заново.</p>}
-        <label className="field-label">Ответственный для задачи {index + 1}<select disabled={historical} value={draft} onChange={(event) => { const edit = ++edits.current; setDrafts((current) => ({ ...current, [id]: { value: event.target.value, edit } })); }}>
-          <option value="">Выберите участника</option>
-          {draft && !roster.some((participant) => participant.id === draft) && <option value={draft} disabled>Участник недоступен</option>}
-          {roster.map((participant) => <option key={participant.id} value={participant.id} disabled={!participant.enabled}>{participant.display_name}{participant.enabled ? '' : ' · отключён'}</option>)}
-        </select></label>
-        <div className="flex flex-wrap gap-2"><Button disabled={blocked || !manualAvailable} onClick={() => { void send([{ action_id: id, decision: 'set_manual', participant_id: draft }]); }}>Назначить вручную</Button><Button variant="ghost" disabled={blocked || !item.participant_id} onClick={() => { void send([{ action_id: id, decision: 'clear', participant_id: null }]); }}>Снять ответственного</Button><Button variant="ghost" disabled={blocked || !eligible} onClick={() => { void send([{ action_id: id, decision: 'confirm_proposal', participant_id: null }]); }}>Подтвердить предложение</Button></div>
-        <label className="checkbox-label"><input type="checkbox" checked={checked} disabled={blocked || !eligible || (!checked && eligibleSelection.length >= ASSIGNMENT_BATCH_MAX)} onChange={(event) => { setSelected((current) => { const next = { ...current }; if (event.target.checked && eligible && eligibleSelection.length < ASSIGNMENT_BATCH_MAX) next[id] = assignmentStamp(item); else delete next[id]; return next; }); }} /><span>Проверено мной · включить в подтверждение</span></label>
-        <details className="text-xs text-slate-500"><summary>Технические сведения</summary><p className="break-all">ID задачи: {id}; версия итогов: {snapshot.summary_version}; ревизия: {snapshot.revision}</p><p className="break-all">Причины: {item.reason_codes.join(', ')}</p></details>
-      </article>;
-    })}
+    {openItems.map((item, index) => renderAssignment(item, index))}
+    {!!doneItems.length && <details className="space-y-3"><summary className="cursor-pointer text-sm text-slate-200">Уже назначено · {doneItems.length}. Откройте, чтобы поправить исключение.</summary>{doneItems.map((item, index) => renderAssignment(item, openItems.length + index))}</details>}
     {!!snapshot?.items.length && <div className="flex flex-wrap items-center gap-3"><Button disabled={blocked || !eligibleSelection.length || eligibleSelection.length > ASSIGNMENT_BATCH_MAX} onClick={() => { void send(eligibleSelection.map((item) => ({ action_id: item.action.action_id, decision: 'confirm_proposal', participant_id: null }))); }}>Подтвердить проверенные задачи</Button><span className="text-sm text-slate-400">Отмечено: {eligibleSelection.length} · максимум {ASSIGNMENT_BATCH_MAX}</span></div>}
   </section>;
 }

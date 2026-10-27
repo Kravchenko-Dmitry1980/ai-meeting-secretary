@@ -6,7 +6,7 @@ import { AssignmentReviewPanel } from './AssignmentReviewPanel';
 import type { AssignmentReviewPanelProps } from './AssignmentReviewPanel';
 import { TaskPublicationPanel } from './TaskPublicationPanel';
 
-interface Props { summary: Summary | null; status: string; tab: string; onSource: (id: string, version?: number) => void; assignments?: Pick<AssignmentReviewPanelProps, 'meetingId' | 'roster' | 'refreshKey' | 'onChanged'> }
+interface Props { summary: Summary | null; status: string; tab: string; onSource: (id: string, version?: number) => void; assignments?: Pick<AssignmentReviewPanelProps, 'meetingId' | 'roster' | 'directory' | 'refreshKey' | 'onChanged'> }
 export function MeetingResults({ summary, status, tab, onSource, assignments }: Props) {
   const evidence = (item: EvidenceItem) => (
     <div className="mt-3 flex flex-wrap gap-2">

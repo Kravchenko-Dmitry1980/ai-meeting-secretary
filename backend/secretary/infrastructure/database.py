@@ -201,6 +201,7 @@ class Database:
         self._migrate_enrollment_receipts()
         self._migrate_identification()
         self._migrate_assignments()
+        self._migrate_assignment_audience()
         from secretary.infrastructure.task_publication_repository import migrate_task_publications
         migrate_task_publications(self)
         from secretary.infrastructure.summary_resume_repository import migrate_summary_resumes
@@ -216,6 +217,19 @@ class Database:
             if conn.execute('PRAGMA foreign_key_check').fetchone():
                 raise sqlite3.IntegrityError('Assignment migration foreign key failure')
             conn.execute('INSERT INTO schema_migrations VALUES(8,?)',(now(),))
+
+    def _migrate_assignment_audience(self):
+        from secretary.infrastructure.assignment_repository import ASSIGNMENT_AUDIENCE_MIGRATION
+        with self.transaction() as conn:
+            if conn.execute('SELECT 1 FROM schema_migrations WHERE version=11').fetchone():
+                return
+            columns = {row[1] for row in conn.execute('PRAGMA table_info(task_assignments)')}
+            if 'audience' not in columns:
+                for statement in ASSIGNMENT_AUDIENCE_MIGRATION:
+                    conn.execute(statement)
+            if conn.execute('PRAGMA foreign_key_check').fetchone():
+                raise sqlite3.IntegrityError('Assignment audience migration foreign key failure')
+            conn.execute('INSERT INTO schema_migrations VALUES(11,?)', (now(),))
 
     def _migrate_identification(self):
         with self.transaction() as conn:

@@ -109,8 +109,9 @@ class FrozenSummaryContext(EvidenceDTO):
 
 class TaskAssignmentChange(EvidenceDTO):
     action_id: Identifier
-    decision: Literal["confirm_proposal", "set_manual", "clear"]
+    decision: Literal["confirm_proposal", "set_manual", "clear", "assign_all", "leave_unassigned", "apply_automatic"]
     participant_id: Identifier | None = None
+    assignee_profile_id: Identifier | None = None
 
 
 class AssignmentProposal(EvidenceDTO):

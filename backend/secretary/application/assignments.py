@@ -40,7 +40,8 @@ def context_hash(context: AssignmentContext) -> str:
     value["sources"].sort(key=lambda row: row["segment_id"])
     value["identities"].sort(key=lambda row: row["segment_id"])
     value["participants"].sort(key=lambda row: row["participant_id"])
-    for row in value["participants"]:
+    value["directory"].sort(key=lambda row: row["profile_id"])
+    for row in (*value["participants"], *value["directory"]):
         row["aliases"] = sorted(set(row["aliases"]))
     return content_hash(value)
 
@@ -111,7 +112,7 @@ def review_batch(
             continue
         result.append(review_assignment(item, AssignmentReview(
             scope=current.scope, action_id=change.action_id, decision=change.decision,
-            participant_id=change.participant_id,
+            participant_id=change.participant_id, assignee_profile_id=change.assignee_profile_id,
             expected_attribution_revision=command.attribution_revision,
             expected_roster_revision=command.roster_revision,
         ), current))
@@ -131,6 +132,7 @@ def project_summary(summary: Mapping, assignments: AssignmentSnapshot,
     if assignments.current_context_hash != context_hash(current):
         raise AssignmentEvidenceError("assignment_context_changed")
     people = {participant.participant_id: participant for participant in current.participants}
+    directory = {person.profile_id: person for person in current.directory}
     items = {item.action.action_id: item for item in assignments.items}
     result = copy.deepcopy(dict(summary))
     for action in result["action_items"]:
@@ -140,9 +142,17 @@ def project_summary(summary: Mapping, assignments: AssignmentSnapshot,
             action.update(owner=None, assignment_status="needs_review", assignment_basis="unknown",
                           participant_id=None, assignment_reason_codes=["assignment_evidence_unavailable"])
             continue
-        person = people.get(item.participant_id)
+        if item.audience == "all_attendees":
+            owner = "Все участники совещания"
+        elif item.audience == "unassigned":
+            owner = None
+        else:
+            person = people.get(item.participant_id) if item.participant_id else None
+            if person is None and item.assignee_profile_id:
+                person = directory.get(item.assignee_profile_id)
+            owner = person.display_name if person is not None else None
         action.update(
-            owner=person.display_name if person is not None else None,
+            owner=owner,
             participant_id=item.participant_id, assignment_status=item.status,
             assignment_basis=item.basis, assignment_revision=assignments.revision,
             assignment_reason_codes=list(item.reason_codes), evidence_quote=item.action.evidence_quote,

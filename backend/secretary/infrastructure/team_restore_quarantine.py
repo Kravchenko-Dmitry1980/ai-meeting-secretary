@@ -30,7 +30,10 @@ def _unsupported():
 
 def _catalogue_hash(json_version):
     return digest({'protocol': 1, 'json_rules': json_version,
-        'families': catalogue.FAMILY_DISPOSITIONS,
+        'families': catalogue.ALL_FAMILY_DISPOSITIONS,
+        'optional_family_groups': catalogue.OPTIONAL_FAMILY_GROUPS,
+        'secretary_schema_versions': (9, 10, 11),
+        'legacy_assignment_columns': catalogue.EXPECTED_COLUMNS['secretary', 'task_assignments'][:-2],
         'columns': sorted((list(key), value) for key, value in catalogue.EXPECTED_COLUMNS.items()),
         'primary': sorted((list(key), value) for key, value in catalogue.PRIMARY_KEYS.items()),
         'semantic': sorted((list(key), value) for key, value in catalogue.SEMANTIC_KEYS.items()),
@@ -68,7 +71,7 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
             links.add(QuarantineLink(child, parent, relation)); bounded()
 
         def add_semantic(role, family, label, values, parents, *, relation='authorized_by'):
-            if role not in AUTHORITIES or family not in catalogue.FAMILY_DISPOSITIONS[role]:
+            if role not in AUTHORITIES or family not in catalogue.ALL_FAMILY_DISPOSITIONS[role]:
                 _unsupported()
             origin = Origin(role, family, key_digest(role, family, values,
                 kind='semantic:' + label), 'semantic:' + label)
@@ -86,18 +89,31 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
                 conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
                 tables = _tables(conn)
                 expected_tables = set(catalogue.FAMILY_DISPOSITIONS[role])
+                for optional_group in catalogue.OPTIONAL_FAMILY_GROUPS.get(role, ()):
+                    group = set(optional_group)
+                    present = tables & group
+                    if present:
+                        if present != group:
+                            _unsupported()
+                        expected_tables.update(group)
+                if role == 'secretary' and 'local_asr_schema' in tables:
+                    if list(conn.execute('SELECT version FROM local_asr_schema')) != [(1,)]:
+                        _unsupported()
                 if role == 'secretary':
                     versions = {item[0] for item in conn.execute('SELECT version FROM schema_migrations')}
                     if versions == set(range(1, 10)):
                         expected_tables.remove('summary_resume_operations')
-                    elif versions != set(range(1, 11)):
+                    elif versions not in (set(range(1, 11)), set(range(1, 12))):
                         _unsupported()
                 if tables != expected_tables: _unsupported()
                 for table in sorted(tables):
                     key = (role, table)
                     info = conn.execute('PRAGMA table_info(' + _quoted(table) + ')').fetchall()
                     columns = tuple(item[1] for item in info)
-                    if columns != catalogue.EXPECTED_COLUMNS[key]: _unsupported()
+                    expected_columns = catalogue.EXPECTED_COLUMNS[key]
+                    if key == ('secretary', 'task_assignments') and 11 not in versions:
+                        expected_columns = expected_columns[:-2]
+                    if columns != expected_columns: _unsupported()
                     declared = tuple(item[1] for item in sorted(info, key=lambda item: item[5]) if item[5])
                     if table not in ('billing_schema', 'sqlite_sequence') and declared != catalogue.PRIMARY_KEYS[key]:
                         _unsupported()
@@ -132,7 +148,7 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
                                  ('state', 'status', 'outcome', 'execution', 'cancel_requested', 'revision')]
                         entries[origin] = QuarantineEntry(origin, digest(typed(values)),
                             digest([(column, typed((value,))) for column, value in state]),
-                            catalogue.FAMILY_DISPOSITIONS[role][table])
+                            catalogue.ALL_FAMILY_DISPOSITIONS[role][table])
                         rows.append((origin, row)); bounded()
                     records[key] = tuple(rows)
                     counts.append((role, table, len(rows)))
@@ -166,7 +182,12 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
                     if not parents: raise RestoreQuarantineError('restore_quarantine_lineage_invalid')
                     for parent in parents: add_link(origin, parent, 'source_reference')
                 bounded()
+        optional_families = {(role, family) for role, groups in catalogue.OPTIONAL_FAMILY_GROUPS.items()
+                             for group in groups for family in group}
         for spec in catalogue.EXPLICIT_LINKS:
+            if any(key in optional_families and key not in records for key in (
+                    (spec.source_role, spec.source_family), (spec.target_role, spec.target_family))):
+                continue
             # Schema 9 has no continuation family. It must remain absent, rather
             # than being invented or made optional in a schema 10 store.
             if ((spec.target_role, spec.target_family) == ('secretary', 'summary_resume_operations')
@@ -183,7 +204,7 @@ def collect_quarantine(backup_dir, restore_dir, *, expected_preview_sha256):
         for origin, parents in sorted(contributors.items()):
             row_hashes = sorted(entries[parent].row_sha256 for parent in parents)
             state_hashes = sorted(entries[parent].state_sha256 for parent in parents)
-            disposition = catalogue.FAMILY_DISPOSITIONS[origin.authority][origin.family]
+            disposition = catalogue.ALL_FAMILY_DISPOSITIONS[origin.authority][origin.family]
             entries[origin] = QuarantineEntry(origin, digest(row_hashes), digest(state_hashes), disposition)
             contributors.pop(origin)
             bounded()
